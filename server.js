@@ -190,6 +190,7 @@ class Table {
     this.deadline = 0;
     this.deadlineTotal = 0;
     this.stakesHeld = false; // jsou někde strženy sázky, které ještě nebyly vyplaceny?
+    this.everSeated = false; // seděl u stolu už někdo? (prázdný nový stůl se nesmí hned zrušit)
     this.destroyed = false;
     this._waiters = new Set();
     this.run();
@@ -246,6 +247,7 @@ class Table {
 
   addSeat(account) {
     const seat = new Seat(++this.sidSeq, account);
+    this.everSeated = true;
     this.seats.push(seat);
     account.table = this;
     account.seat = seat;
@@ -419,7 +421,7 @@ class Table {
       try {
         this.cleanupSeats();
         if (this.seats.length === 0) {
-          if (!this.permanent) { this.destroy(); return; }
+          if (!this.permanent && this.everSeated) { this.destroy(); return; }
           this.phase = 'betting';
           this.dealer = { cards: [], hidden: false };
           this.note = '';
@@ -853,7 +855,7 @@ function handleMessage(ws, msg) {
       if (tables.size >= CFG.MAX_TABLES) return err(ws, 'Je otevřeno příliš mnoho stolů.');
       const tb = createTable(name, false);
       const e = joinTable(acc, tb);
-      if (e) err(ws, e);
+      if (e) { err(ws, e); tb.destroy(); }
       break;
     }
     case 'join': {
