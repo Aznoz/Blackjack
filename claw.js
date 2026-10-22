@@ -20,7 +20,7 @@ const CLAW = Object.freeze({
     { id: 'bunny', name: 'Králíček', value: 750 },
     { id: 'panda', name: 'Panda', value: 1000 },
     { id: 'unicorn', name: 'Jednorožec', value: 1500 },
-    { id: 'phone', name: 'Telefon', value: 5000 },
+    { id: 'phone', name: 'Telefon', value: 2500 },
   ],
 });
 
