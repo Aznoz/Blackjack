@@ -2,14 +2,14 @@
 /**
  * Automat na plyšáky: serverová část (peníze).
  * Hra sama běží v prohlížeči; server hlídá jen to, co se týká zůstatku:
- *  - nákup her (100 za 1, 500 za 6),
+ *  - nákup her (200 za 1, 1000 za 6),
  *  - spotřebu hry při startu,
  *  - odměnu za vyhraného plyšáka (jedna odměna na jednu hru, nejdřív po minimální době hry).
  */
 const SC = Number(process.env.TIME_SCALE) > 0 ? Number(process.env.TIME_SCALE) : 1;
 
 const CLAW = Object.freeze({
-  PACKS: { 1: 100, 6: 500 },        // počet her -> cena
+  PACKS: { 1: 200, 6: 1000 },        // počet her -> cena
   MAX_PLAYS: 60,
   MIN_PLAY_MS: Math.max(50, Math.round(7000 * SC)), // rychleji se hra odehrát nedá
   MAX_PLAY_MS: 10 * 60 * 1000,
