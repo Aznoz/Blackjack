@@ -14,20 +14,31 @@ const CLAW = Object.freeze({
   MIN_PLAY_MS: Math.max(50, Math.round(7000 * SC)), // rychleji se hra odehrát nedá
   MAX_PLAY_MS: 10 * 60 * 1000,
   PRIZES: [
-    { id: 'chick', name: 'Kuřátko', value: 50 },
-    { id: 'frog', name: 'Žabka', value: 80 },
-    { id: 'bear', name: 'Medvídek', value: 120 },
-    { id: 'bunny', name: 'Králíček', value: 200 },
-    { id: 'panda', name: 'Panda', value: 400 },
-    { id: 'unicorn', name: 'Jednorožec', value: 1000 },
+    { id: 'chick', name: 'Kuřátko', value: 150 },
+    { id: 'frog', name: 'Žabka', value: 300 },
+    { id: 'bear', name: 'Medvídek', value: 500 },
+    { id: 'bunny', name: 'Králíček', value: 750 },
+    { id: 'panda', name: 'Panda', value: 1000 },
+    { id: 'unicorn', name: 'Jednorožec', value: 1500 },
+    { id: 'phone', name: 'Telefon', value: 5000 },
   ],
 });
 
-module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance, TOKEN_RE }) {
+module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance, TOKEN_RE, FLOOR = 200 }) {
   const active = new Map(); // acc.key -> { id, at }
   let seq = 0;
 
-  const state = (acc) => ({ balance: acc.balance, plays: acc.clawPlays | 0, prizes: CLAW.PRIZES, packs: CLAW.PACKS });
+  const state = (acc, extra) => ({ balance: acc.balance, plays: acc.clawPlays | 0, prizes: CLAW.PRIZES, packs: CLAW.PACKS, floor: FLOOR, ...extra });
+
+  /** Obnova kreditu: když hráč dohraje všechny hry a zůstatek je pod minimem, doplní se na minimum (jako v blackjacku). */
+  function topUp(acc) {
+    if ((acc.clawPlays | 0) > 0 || active.has(acc.key) || acc.seat || acc.htable) return false;
+    if (acc.balance >= FLOOR) return false;
+    acc.balance = FLOOR;
+    markDirty();
+    notifyBalance(acc);
+    return true;
+  }
   const bad = (status, error) => ({ status, json: { error } });
 
   /** @returns {{status:number, json:object}} */
@@ -37,7 +48,7 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
     acc.lastSeen = Date.now();
     acc.clawPlays = acc.clawPlays | 0;
 
-    if (action === 'state') return { status: 200, json: state(acc) };
+    if (action === 'state') { const r = topUp(acc); return { status: 200, json: state(acc, { refilled: r }) }; }
 
     if (action === 'buy') {
       const n = Number(body.pack);
@@ -58,7 +69,7 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
       const play = { id: ++seq, at: Date.now() };
       active.set(acc.key, play);
       markDirty();
-      return { status: 200, json: { ...state(acc), playId: play.id } };
+      return { status: 200, json: state(acc, { playId: play.id }) };
     }
 
     if (action === 'claim') {
@@ -72,13 +83,15 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
       acc.balance += prize.value;
       markDirty();
       notifyBalance(acc);
-      return { status: 200, json: { ...state(acc), won: prize } };
+      const refilled = topUp(acc);
+      return { status: 200, json: state(acc, { won: prize, refilled }) };
     }
 
     if (action === 'end') { // hra skončila bez výhry
       const play = active.get(acc.key);
       if (play && play.id === Number(body.playId)) active.delete(acc.key);
-      return { status: 200, json: state(acc) };
+      const refilled = topUp(acc);
+      return { status: 200, json: state(acc, { refilled }) };
     }
 
     return bad(404, 'Neznámá akce.');

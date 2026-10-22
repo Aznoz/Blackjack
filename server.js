@@ -1204,7 +1204,7 @@ hockey = createHockey({
 });
 hwss.on('connection', (ws) => hockey.handleConnection(ws));
 
-const claw = createClaw({ resolveAccount, markDirty, TOKEN_RE, notifyBalance: (acc) => notifyProfile(acc) }); // automat na plyšáky (HTTP API /api/claw/*)
+const claw = createClaw({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // automat na plyšáky (HTTP API /api/claw/*)
 
 function err(ws, msg) {
   send(ws, { t: 'error', msg });
