@@ -13,6 +13,7 @@ const { WebSocketServer } = require('ws');
 const R = require('./rules');
 const { verifyIdToken } = require('./google');
 const persist = require('./persist');
+const createHockey = require('./hockey');
 const { CFG } = R;
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -905,12 +906,82 @@ function readJson(req, limit = 8192) {
   });
 }
 
+let hockey = null; // modul air hockey (nastaví se při startu)
+
+/** Účet hráče propojený s Google účtem (jméno, profilovka a zůstatek jsou společné pro všechny hry). */
+function ensureGoogleAccount(u, anonToken, hintName) {
+  const gkey = 'g:' + u.sub;
+  let acc = accounts.get(gkey);
+  let isNew = false;
+  if (!acc) {
+    const anonKey = typeof anonToken === 'string' && TOKEN_RE.test(anonToken) ? keyOf(anonToken) : null;
+    const anon = anonKey ? accounts.get(anonKey) : null;
+    if (anon) {
+      // první přihlášení: postup z tohoto zařízení se převede na Google účet
+      accounts.delete(anonKey);
+      anon.key = gkey;
+      acc = anon;
+    } else {
+      acc = makeAccount(gkey, { name: cleanName(hintName) });
+      isNew = true;
+    }
+    accounts.set(gkey, acc);
+    markDirty();
+  }
+  return { acc, isNew };
+}
+
 function googleProfile(u) {
-  const acc = accounts.get('g:' + u.sub);
+  const { acc } = ensureGoogleAccount(u);
   return {
-    name: u.name, email: u.email, picture: u.picture, favorites: u.favorites,
-    blackjack: acc ? { balance: acc.balance, name: acc.name, avatar: acc.avatar, custom: acc.custom, rounds: acc.stats.rounds } : null,
+    name: acc.name, googleName: u.name, email: u.email, picture: u.picture, favorites: u.favorites,
+    balance: acc.balance, avatar: acc.avatar, custom: acc.custom, rounds: acc.stats.rounds,
   };
+}
+
+/** Po změně jména/profilovky/zůstatku dá vědět otevřeným hrám. */
+function notifyProfile(acc, saved) {
+  if (acc.ws) send(acc.ws, { t: 'profile', ...publicProfile(acc), saved });
+  if (acc.table) acc.table.broadcast();
+  if (hockey) hockey.refresh(acc, saved);
+}
+
+function setAccountName(acc, raw) {
+  const name = cleanName(raw);
+  if (!name) return 'Přezdívka musí mít 2–16 znaků (písmena, čísla, mezera, _ . -).';
+  acc.name = name;
+  markDirty();
+  return null;
+}
+
+function chooseAvatar(acc, id) {
+  if (typeof id !== 'string' || !(AVATAR_PRESET_RE.test(id) || (acc.custom && id === 'u:' + acc.custom))) return 'Neplatná profilovka.';
+  acc.avatar = id;
+  markDirty();
+  return null;
+}
+
+/** Zkontroluje a uloží nahraný obrázek. Vrací text chyby nebo null. */
+function uploadAccountAvatar(acc, b64) {
+  const now = Date.now();
+  if (now - acc.lastUpload < 3000) return 'Počkej chvilku před další změnou obrázku.';
+  acc.lastUpload = now;
+  const r = decodeAvatar(b64);
+  if (r.error) return r.error;
+  const hash = crypto.createHash('sha256').update(r.buf).digest('hex').slice(0, 16);
+  if (!customAvatars.has(hash)) {
+    if (avatarBytes + r.buf.length > MAX_AVATAR_TOTAL) return 'Server už nemá místo na další obrázky.';
+    customAvatars.set(hash, r.buf);
+    avatarBytes += r.buf.length;
+    try { fs.mkdirSync(AVATAR_DIR, { recursive: true }); } catch (e) { /* ignore */ }
+    fs.writeFile(avatarFile(hash), r.buf, (e) => { if (e) console.error('Uložení obrázku selhalo:', e.message); });
+  }
+  const old = acc.custom;
+  acc.custom = hash;
+  acc.avatar = 'u:' + hash;
+  if (old && old !== hash) releaseCustom(old);
+  markDirty();
+  return null;
 }
 
 function deleteGoogleAccount(u) {
@@ -925,6 +996,7 @@ function deleteGoogleAccount(u) {
       send(w, { t: 'kicked', reason: 'Účet byl smazán.' });
       w.close();
     }
+    if (hockey) hockey.removeAccount(acc);
     accounts.delete(key);
     releaseCustom(acc.custom);
   }
@@ -959,6 +1031,7 @@ async function handleApi(req, res, p) {
         googleUsers.set(info.sub, u);
       }
       u.name = info.name; u.email = info.email; u.picture = info.picture; u.lastSeen = Date.now();
+      ensureGoogleAccount(u, body.anonToken, info.name.slice(0, 16)); // převezme anonymní postup z tohoto zařízení
       const session = newSession(u);
       saveNow();
       return apiJson(res, 200, { session, profile: googleProfile(u) }, cors);
@@ -979,6 +1052,22 @@ async function handleApi(req, res, p) {
       u.favorites = fav;
       markDirty();
       return apiJson(res, 200, { favorites: fav }, cors);
+    }
+    if (p === '/api/profile' && req.method === 'PUT') {
+      const body = await readJson(req);
+      const { acc } = ensureGoogleAccount(u);
+      const e = setAccountName(acc, body.name);
+      if (e) return apiJson(res, 400, { error: e }, cors);
+      notifyProfile(acc, 'name');
+      return apiJson(res, 200, googleProfile(u), cors);
+    }
+    if (p === '/api/avatar' && (req.method === 'PUT' || req.method === 'POST')) {
+      const { acc } = ensureGoogleAccount(u);
+      const body = await readJson(req, req.method === 'POST' ? 150000 : 8192);
+      const e = req.method === 'POST' ? uploadAccountAvatar(acc, body.data) : chooseAvatar(acc, body.avatar);
+      if (e) return apiJson(res, 400, { error: e }, cors);
+      notifyProfile(acc, 'avatar');
+      return apiJson(res, 200, googleProfile(u), cors);
     }
     if (p === '/api/logout' && req.method === 'POST') {
       const h = keyOf(m[1]);
@@ -1035,7 +1124,7 @@ const server = http.createServer((req, res) => {
     });
     return res.end(req.method === 'HEAD' ? undefined : buf);
   }
-  if (p === '/') p = '/index.html';
+  if (p.endsWith('/')) p += 'index.html'; // '/' i '/airhockey/'
   const file = path.join(PUBLIC_DIR, path.normalize(p));
   if (!file.startsWith(PUBLIC_DIR + path.sep)) {
     res.writeHead(403);
@@ -1059,11 +1148,23 @@ const server = http.createServer((req, res) => {
 // WebSocket
 // ============================================================================
 
+// dvě WebSocket cesty: /ws (blackjack) a /hockey (air hockey), obě sdílejí účty
 const wss = new WebSocketServer({
-  server,
-  path: '/ws',
+  noServer: true,
   maxPayload: 131072, // větší zprávy smí jen uploadAvatar (viz níže), ostatní max 2 KB
-  verifyClient: (info) => !ALLOWED_ORIGINS.length || ALLOWED_ORIGINS.includes(info.origin),
+});
+const hwss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
+
+server.on('upgrade', (req, socket, head) => {
+  let p;
+  try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
+  if (ALLOWED_ORIGINS.length && !ALLOWED_ORIGINS.includes(req.headers.origin)) {
+    socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
+    return socket.destroy();
+  }
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : null;
+  if (!target) return socket.destroy();
+  target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });
 
 function allow(ws) {
@@ -1076,6 +1177,12 @@ function allow(ws) {
 }
 
 const TOKEN_RE = /^[A-Za-z0-9_-]{20,64}$/;
+
+hockey = createHockey({
+  send, markDirty, resolveAccount, cleanTableName, TOKEN_RE,
+  notifyBalance: (acc) => notifyProfile(acc), // výhra v air hockeyi změní společný zůstatek
+});
+hwss.on('connection', (ws) => hockey.handleConnection(ws));
 
 function err(ws, msg) {
   send(ws, { t: 'error', msg });
@@ -1094,6 +1201,24 @@ function joinTable(acc, tb) {
   return null;
 }
 
+/** Najde (nebo vytvoří) účet podle relace Google / tajného tokenu zařízení. Sdílí ho blackjack i air hockey. */
+function resolveAccount(msg) {
+  const linked = typeof msg.session === 'string' ? sessionUser(msg.session) : null;
+  if (linked) {
+    const r = ensureGoogleAccount(linked, msg.token, msg.name);
+    return { acc: r.acc, isNew: r.isNew, linked };
+  }
+  const key = keyOf(msg.token);
+  let acc = accounts.get(key);
+  let isNew = false;
+  if (!acc) {
+    acc = makeAccount(key, { name: cleanName(msg.name) });
+    accounts.set(key, acc);
+    isNew = true;
+  }
+  return { acc, isNew, linked: null };
+}
+
 function handleMessage(ws, msg) {
   if (!msg || typeof msg.t !== 'string') return;
 
@@ -1102,36 +1227,7 @@ function handleMessage(ws, msg) {
       err(ws, 'Neplatný token.');
       return ws.close();
     }
-    let acc = null;
-    let isNew = false;
-    const linked = typeof msg.session === 'string' ? sessionUser(msg.session) : null;
-    if (linked) {
-      // účet propojený s Google účtem (stejný zůstatek na všech zařízeních)
-      const gkey = 'g:' + linked.sub;
-      acc = accounts.get(gkey);
-      if (!acc) {
-        const anonKey = keyOf(msg.token);
-        const anon = accounts.get(anonKey);
-        if (anon) {
-          // první přihlášení: postup z tohoto zařízení se převede na Google účet
-          accounts.delete(anonKey);
-          anon.key = gkey;
-          acc = anon;
-        } else {
-          acc = makeAccount(gkey, { name: cleanName(msg.name) });
-          isNew = true;
-        }
-        accounts.set(gkey, acc);
-      }
-    } else {
-      const key = keyOf(msg.token);
-      acc = accounts.get(key);
-      if (!acc) {
-        acc = makeAccount(key, { name: cleanName(msg.name) });
-        accounts.set(key, acc);
-        isNew = true;
-      }
-    }
+    const { acc, isNew, linked } = resolveAccount(msg);
     if (acc.ws && acc.ws !== ws) {
       const old = acc.ws;
       old.account = null;
@@ -1159,46 +1255,21 @@ function handleMessage(ws, msg) {
 
   switch (msg.t) {
     case 'setName': {
-      const name = cleanName(msg.name);
-      if (!name) return err(ws, 'Přezdívka musí mít 2–16 znaků (písmena, čísla, mezera, _ . -).');
-      acc.name = name;
-      markDirty();
-      send(ws, { t: 'profile', ...publicProfile(acc), saved: 'name' });
-      if (acc.table) acc.table.broadcast();
+      const e = setAccountName(acc, msg.name);
+      if (e) return err(ws, e);
+      notifyProfile(acc, 'name');
       break;
     }
     case 'setAvatar': {
-      const id = msg.avatar;
-      if (typeof id !== 'string' || !(AVATAR_PRESET_RE.test(id) || (acc.custom && id === 'u:' + acc.custom))) {
-        return err(ws, 'Neplatná profilovka.');
-      }
-      acc.avatar = id;
-      markDirty();
-      send(ws, { t: 'profile', ...publicProfile(acc), saved: 'avatar' });
-      if (acc.table) acc.table.broadcast();
+      const e = chooseAvatar(acc, msg.avatar);
+      if (e) return err(ws, e);
+      notifyProfile(acc, 'avatar');
       break;
     }
     case 'uploadAvatar': {
-      const now = Date.now();
-      if (now - acc.lastUpload < 3000) return err(ws, 'Počkej chvilku před další změnou obrázku.');
-      acc.lastUpload = now;
-      const r = decodeAvatar(msg.data);
-      if (r.error) return err(ws, r.error);
-      const hash = crypto.createHash('sha256').update(r.buf).digest('hex').slice(0, 16);
-      if (!customAvatars.has(hash)) {
-        if (avatarBytes + r.buf.length > MAX_AVATAR_TOTAL) return err(ws, 'Server už nemá místo na další obrázky.');
-        customAvatars.set(hash, r.buf);
-        avatarBytes += r.buf.length;
-        try { fs.mkdirSync(AVATAR_DIR, { recursive: true }); } catch (e) { /* ignore */ }
-        fs.writeFile(avatarFile(hash), r.buf, (e) => { if (e) console.error('Uložení obrázku selhalo:', e.message); });
-      }
-      const old = acc.custom;
-      acc.custom = hash;
-      acc.avatar = 'u:' + hash;
-      if (old && old !== hash) releaseCustom(old);
-      markDirty();
-      send(ws, { t: 'profile', ...publicProfile(acc), saved: 'avatar' });
-      if (acc.table) acc.table.broadcast();
+      const e = uploadAccountAvatar(acc, msg.data);
+      if (e) return err(ws, e);
+      notifyProfile(acc, 'avatar');
       break;
     }
     case 'lobby':
@@ -1294,7 +1365,7 @@ wss.on('connection', (ws) => {
 });
 
 const heartbeat = setInterval(() => {
-  for (const ws of wss.clients) {
+  for (const ws of [...wss.clients, ...hwss.clients]) {
     if (!ws.isAlive) { ws.terminate(); continue; }
     ws.isAlive = false;
     try { ws.ping(); } catch (e) { /* ignore */ }
