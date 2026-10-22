@@ -1005,6 +1005,15 @@ function deleteGoogleAccount(u) {
   saveNow();
 }
 
+/** Žebříček nejbohatších hráčů (společný zůstatek), jen ti, kdo odehráli aspoň kolo blackjacku. */
+function topPlayers() {
+  return [...accounts.values()]
+    .filter((a) => a.stats && a.stats.rounds > 0)
+    .sort((a, b) => b.balance - a.balance)
+    .slice(0, 10)
+    .map((a) => ({ name: a.name, avatar: a.avatar, balance: a.balance, rounds: a.stats.rounds }));
+}
+
 async function handleApi(req, res, p) {
   const origin = req.headers.origin;
   const cors = { Vary: 'Origin' };
@@ -1035,6 +1044,10 @@ async function handleApi(req, res, p) {
       const session = newSession(u);
       saveNow();
       return apiJson(res, 200, { session, profile: googleProfile(u) }, cors);
+    }
+
+    if (p === '/api/leaderboard' && req.method === 'GET') {
+      return apiJson(res, 200, { rows: topPlayers() }, cors);
     }
 
     const m = /^Bearer ([A-Za-z0-9_-]{30,64})$/.exec(req.headers.authorization || '');
@@ -1275,15 +1288,6 @@ function handleMessage(ws, msg) {
     case 'lobby':
       send(ws, { t: 'lobby', tables: lobbyInfo() });
       break;
-    case 'leaderboard': {
-      const rows = [...accounts.values()]
-        .filter((a) => a.stats.rounds > 0)
-        .sort((a, b) => b.balance - a.balance)
-        .slice(0, 10)
-        .map((a) => ({ name: a.name, avatar: a.avatar, balance: a.balance, rounds: a.stats.rounds }));
-      send(ws, { t: 'leaderboard', rows });
-      break;
-    }
     case 'create': {
       if (acc.table) return err(ws, busyMsg(acc));
       const name = cleanTableName(msg.name);

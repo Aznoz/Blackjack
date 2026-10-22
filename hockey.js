@@ -11,6 +11,9 @@ const tt = (ms) => Math.max(5, Math.round(ms * SC));
 const HCFG = Object.freeze({
   WIN_SCORE: Math.max(1, parseInt(process.env.HOCKEY_WIN_SCORE, 10) || 7),
   COUNTDOWN: tt(3000),
+  VOTE_TIME: tt(9000),       // hlasování o rychlosti před každým zápasem
+  VOTE_REVEAL: tt(1500),     // když hlasují oba, počkáme chvilku a rozhodneme
+  SPEEDS: { slow: 0.7, normal: 1, fast: 1.35 }, // násobek rychlosti puku
   GOAL_PAUSE: tt(1800),
   OVER_PAUSE: tt(7000),
   EMPTY_TTL: tt(60000),
@@ -34,7 +37,7 @@ module.exports = function createHockey(ctx) {
       this.name = name;
       this.permanent = permanent;
       this.seats = [null, null]; // { acc, streak, score }
-      this.phase = 'waiting';    // waiting | countdown | playing | goal | over
+      this.phase = 'waiting';    // waiting | vote | reveal | countdown | playing | goal | over
       this.phaseEnd = 0;
       this.rink = new Rink();
       this.serve = 0;
@@ -46,6 +49,8 @@ module.exports = function createHockey(ctx) {
       this.tickNo = 0;
       this.pending = 0; // události od posledního snímku
       this.stillSince = 0;
+      this.speedKey = 'normal';
+      this.voteHow = null; // same | coin | default
     }
 
     count() { return this.seats.filter(Boolean).length; }
@@ -53,7 +58,7 @@ module.exports = function createHockey(ctx) {
 
     add(acc) {
       const i = this.seats[0] ? 1 : 0;
-      this.seats[i] = { acc, streak: 0, score: 0 };
+      this.seats[i] = { acc, streak: 0, score: 0, vote: null };
       acc.htable = this;
       this.emptySince = 0;
       lobbyListeners.delete(acc.hws);
@@ -89,8 +94,32 @@ module.exports = function createHockey(ctx) {
       this.serve = Math.random() < 0.5 ? 0 : 1;
       this.rink.reset(this.serve);
       this.stillSince = 0;
-      this.phase = 'countdown';
-      this.phaseEnd = Date.now() + HCFG.COUNTDOWN;
+      for (const s of this.seats) if (s) s.vote = null;
+      this.voteHow = null;
+      this.phase = 'vote';
+      this.phaseEnd = Date.now() + HCFG.VOTE_TIME;
+    }
+
+    vote(acc, key) {
+      const i = this.idx(acc);
+      if (i < 0 || this.phase !== 'vote' || !(key in HCFG.SPEEDS)) return;
+      this.seats[i].vote = key;
+      if (this.seats.every((s) => s && s.vote)) this.resolveVote(Date.now());
+      else this.meta();
+    }
+
+    /** Oba hlasovali (nebo vypršel čas): stejný hlas platí, jinak 50/50 mezi dvěma hlasy. */
+    resolveVote(now) {
+      const vs = this.seats.map((s) => (s && s.vote) || null);
+      const given = vs.filter(Boolean);
+      if (given.length === 0) { this.speedKey = 'normal'; this.voteHow = 'default'; }
+      else if (given.length === 1) { this.speedKey = given[0]; this.voteHow = 'same'; } // hlasoval jen jeden
+      else if (given[0] === given[1]) { this.speedKey = given[0]; this.voteHow = 'same'; }
+      else { this.speedKey = given[Math.random() < 0.5 ? 0 : 1]; this.voteHow = 'coin'; }
+      this.rink.speed = HCFG.SPEEDS[this.speedKey];
+      this.phase = 'reveal';
+      this.phaseEnd = now + HCFG.VOTE_REVEAL;
+      this.meta();
     }
 
     view(forIdx) {
@@ -99,6 +128,10 @@ module.exports = function createHockey(ctx) {
         win: HCFG.WIN_SCORE, rewards: HCFG.REWARDS,
         left: Math.max(0, this.phaseEnd - Date.now()),
         winner: this.winner, reward: this.lastReward,
+        speeds: Object.keys(HCFG.SPEEDS), speed: this.speedKey, how: this.voteHow,
+        myVote: forIdx >= 0 && this.seats[forIdx] ? this.seats[forIdx].vote : null,
+        votes: this.phase === 'reveal' || this.phase === 'countdown' ? this.seats.map((s) => s && s.vote) : null,
+        voted: this.seats.map((s) => !!(s && s.vote)),
         seats: this.seats.map((s) => s && {
           name: s.acc.name, avatar: s.acc.avatar, score: s.score, streak: s.streak,
           next: reward(s.streak + 1),
@@ -124,7 +157,13 @@ module.exports = function createHockey(ctx) {
     /** Jeden fixní tick (1/60 s). */
     tick(now) {
       if (this.phase === 'waiting') return;
-      if (this.phase === 'countdown') {
+      if (this.phase === 'vote') {
+        this.rink.step(false);
+        if (now >= this.phaseEnd) this.resolveVote(now);
+      } else if (this.phase === 'reveal') {
+        this.rink.step(false);
+        if (now >= this.phaseEnd) { this.phase = 'countdown'; this.phaseEnd = now + HCFG.COUNTDOWN; this.meta(); }
+      } else if (this.phase === 'countdown') {
         this.rink.step(false);
         if (now >= this.phaseEnd) { this.phase = 'playing'; this.meta(); }
       } else if (this.phase === 'playing') {
@@ -326,6 +365,9 @@ module.exports = function createHockey(ctx) {
           tb.add(acc);
           break;
         }
+        case 'vote':
+          if (acc.htable && typeof msg.v === 'string') acc.htable.vote(acc, msg.v);
+          break;
         case 'leave':
           leaveAll(acc);
           break;

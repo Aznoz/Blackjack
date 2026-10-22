@@ -35,6 +35,7 @@ class Rink {
       { x: W - 110, y: H / 2, vx: 0, vy: 0, tx: W - 110, ty: H / 2 },
     ];
     this.goal = null; // index hráče, který právě dal gól
+    this.speed = 1;   // rychlost hry (hlasuje se před zápasem): násobek rychlosti puku po odpalu pálkou
   }
 
   /** Nové podání: puk stojí na straně hráče `side` (ten podává), pálky na výchozích místech. */
@@ -115,7 +116,8 @@ class Rink {
       p.vx *= damp;
       p.vy *= damp;
       const sp = Math.hypot(p.vx, p.vy);
-      if (sp > MAX_PUCK_SPEED) { p.vx *= MAX_PUCK_SPEED / sp; p.vy *= MAX_PUCK_SPEED / sp; }
+      const cap = MAX_PUCK_SPEED * Math.max(1, this.speed);
+      if (sp > cap) { p.vx *= cap / sp; p.vy *= cap / sp; }
       // gól: puk celý přejel čáru
       if (p.x < -PUCK_R) { this.goal = 1; ev |= EV_GOAL; break; }
       if (p.x > W + PUCK_R) { this.goal = 0; ev |= EV_GOAL; break; }
@@ -182,6 +184,8 @@ class Rink {
     if (vn < 0) {
       p.vx -= (1 + MALLET_E) * vn * nx;
       p.vy -= (1 + MALLET_E) * vn * ny;
+      p.vx *= this.speed;
+      p.vy *= this.speed;
       return true;
     }
     return false;
