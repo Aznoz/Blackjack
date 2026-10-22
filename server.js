@@ -14,6 +14,7 @@ const R = require('./rules');
 const { verifyIdToken } = require('./google');
 const persist = require('./persist');
 const createHockey = require('./hockey');
+const createClaw = require('./claw');
 const { CFG } = R;
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -114,6 +115,7 @@ function makeAccount(key, d = {}) {
     key,
     name: cleanName(d.name) || randomName(),
     balance: Number.isFinite(d.balance) ? Math.max(CFG.FLOOR, Math.floor(d.balance)) : CFG.START_BALANCE,
+    clawPlays: Number.isFinite(d.clawPlays) ? Math.max(0, Math.min(60, Math.floor(d.clawPlays))) : 0, // zakoupené hry v automatu na plyšáky
     stats: Object.assign({ rounds: 0, wins: 0, losses: 0, pushes: 0, blackjacks: 0, biggestWin: 0 }, d.stats || {}),
     avatar: typeof d.avatar === 'string' && (AVATAR_PRESET_RE.test(d.avatar) || AVATAR_CUSTOM_RE.test(d.avatar)) ? d.avatar : randomPreset(),
     custom: typeof d.custom === 'string' && /^[0-9a-f]{16}$/.test(d.custom) ? d.custom : null, // nahraný vlastní obrázek (hash)
@@ -242,7 +244,7 @@ function saveNow() {
   try {
     const out = {};
     for (const [k, a] of accounts) {
-      out[k] = { name: a.name, balance: a.balance, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
+      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
     }
     store.write('players', JSON.stringify(out));
     const g = {};
@@ -1046,6 +1048,11 @@ async function handleApi(req, res, p) {
       return apiJson(res, 200, { session, profile: googleProfile(u) }, cors);
     }
 
+    if (p.startsWith('/api/claw/') && req.method === 'POST') {
+      const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
+
     if (p === '/api/leaderboard' && req.method === 'GET') {
       return apiJson(res, 200, { rows: topPlayers() }, cors);
     }
@@ -1196,6 +1203,8 @@ hockey = createHockey({
   notifyBalance: (acc) => notifyProfile(acc), // výhra v air hockeyi změní společný zůstatek
 });
 hwss.on('connection', (ws) => hockey.handleConnection(ws));
+
+const claw = createClaw({ resolveAccount, markDirty, TOKEN_RE, notifyBalance: (acc) => notifyProfile(acc) }); // automat na plyšáky (HTTP API /api/claw/*)
 
 function err(ws, msg) {
   send(ws, { t: 'error', msg });
