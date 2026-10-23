@@ -11,8 +11,8 @@ const SC = Number(process.env.TIME_SCALE) > 0 ? Number(process.env.TIME_SCALE) :
 const STACKER = Object.freeze({
   PRICE: 200,
   COLS: 9,
-  ROWS: 15,
-  LEVELS: { 1: 5, 2: 9, 3: 15 },     // úroveň -> kolik řad musí být položeno
+  ROWS: 16,
+  LEVELS: { 1: 6, 2: 10, 3: 16 },     // úroveň -> kolik řad musí být položeno
   // coinové odměny za 1. úroveň; w = váha (šance) v tabulce, losuje se úměrně vahám
   COIN_PRIZES: [
     { amount: 100, w: 50 }, { amount: 200, w: 40 }, { amount: 500, w: 30 },
