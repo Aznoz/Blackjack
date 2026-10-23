@@ -12,6 +12,9 @@ const CLAW = Object.freeze({
   PACKS: { 1: 200, 6: 1000 },
   BOMB_PRICE: 500,                  // power-up bomba (zamíchá plyšáky)        // počet her -> cena
   MAX_PLAYS: 60,
+  MIN_BOMB_MS: Math.max(50, Math.round(2500 * SC)), // nejdřív po výbuchu se dá nárokovat výhra
+  MAX_BOMB_MS: 60 * 1000,
+  MAX_BOMB_CLAIMS: 6,
   MIN_PLAY_MS: Math.max(50, Math.round(7000 * SC)), // rychleji se hra odehrát nedá
   MAX_PLAY_MS: 10 * 60 * 1000,
   PRIZES: [
@@ -27,6 +30,7 @@ const CLAW = Object.freeze({
 
 module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance, TOKEN_RE, FLOOR = 200 }) {
   const active = new Map(); // acc.key -> { id, at }
+  const bombs = new Map();  // acc.key -> { id, at, claims } (zakoupená bomba čeká na výbuch)
   let seq = 0;
 
   const state = (acc, extra) => ({ balance: acc.balance, plays: acc.clawPlays | 0, prizes: CLAW.PRIZES, packs: CLAW.PACKS, bombPrice: CLAW.BOMB_PRICE, floor: FLOOR, ...extra });
@@ -68,9 +72,24 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
       if (active.has(acc.key)) return bad(409, 'Nejdřív dokonči rozehranou hru.');
       if (acc.balance < CLAW.BOMB_PRICE) return bad(402, 'Nemáš dost žetonů.');
       acc.balance -= CLAW.BOMB_PRICE;
+      const bomb = { id: ++seq, at: Date.now(), claims: 0 }; bombs.set(acc.key, bomb);
       markDirty();
       notifyBalance(acc);
-      return { status: 200, json: state(acc, { bomb: true }) };
+      return { status: 200, json: state(acc, { bomb: true, bombId: bomb.id }) };
+    }
+
+    if (action === 'bombclaim') { // plyšák spadl do otvoru při výbuchu bomby
+      const bomb = bombs.get(acc.key);
+      if (!bomb || bomb.id !== Number(body.bombId)) return bad(409, 'Tahle bomba už vybuchla.');
+      const prize = CLAW.PRIZES.find((p) => p.id === body.prize);
+      if (!prize) return bad(400, 'Neznámý plyšák.');
+      const age = Date.now() - bomb.at;
+      if (age < CLAW.MIN_BOMB_MS || age > CLAW.MAX_BOMB_MS) return bad(409, 'Bomba neproběhla v pořádku.');
+      if (++bomb.claims > CLAW.MAX_BOMB_CLAIMS) { bombs.delete(acc.key); return bad(409, 'Moc výher z jedné bomby.'); }
+      acc.balance += prize.value;
+      markDirty();
+      notifyBalance(acc);
+      return { status: 200, json: state(acc, { won: prize }) };
     }
 
     if (action === 'play') {
@@ -107,6 +126,6 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
     return bad(404, 'Neznámá akce.');
   }
 
-  return { handle, CLAW, removeAccount: (acc) => active.delete(acc.key) };
+  return { handle, CLAW, removeAccount: (acc) => { active.delete(acc.key); bombs.delete(acc.key); } };
 };
 module.exports.CLAW = CLAW;
