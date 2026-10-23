@@ -69,7 +69,6 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
     }
 
     if (action === 'bomb') { // koupě bomby: spotřebuje se hned (hráč ji spustí v automatu)
-      if (active.has(acc.key)) return bad(409, 'Nejdřív dokonči rozehranou hru.');
       if (acc.balance < CLAW.BOMB_PRICE) return bad(402, 'Nemáš dost žetonů.');
       acc.balance -= CLAW.BOMB_PRICE;
       const bomb = { id: ++seq, at: Date.now(), claims: 0 }; bombs.set(acc.key, bomb);
