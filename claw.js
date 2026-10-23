@@ -55,7 +55,7 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
     acc.lastSeen = Date.now();
     acc.clawPlays = acc.clawPlays | 0;
 
-    if (action === 'state') { const r = topUp(acc); return { status: 200, json: state(acc, { refilled: r }) }; }
+    if (action === 'state') { if (body.fresh) active.delete(acc.key); /* načtení stránky: opuštěná hra nesmí blokovat obnovu kreditu */ const r = topUp(acc); return { status: 200, json: state(acc, { refilled: r }) }; }
 
     if (action === 'buy') {
       const n = Number(body.pack);

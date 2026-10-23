@@ -52,7 +52,7 @@ module.exports = function createStacker({ resolveAccount, markDirty, notifyBalan
     const { acc } = resolveAccount({ token: body.token, session: typeof body.session === 'string' ? body.session : undefined });
     acc.lastSeen = Date.now();
 
-    if (action === 'state') { const r = topUp(acc); return { status: 200, json: state(acc, { refilled: r }) }; }
+    if (action === 'state') { if (body.fresh) active.delete(acc.key); /* stránka se načetla znovu: rozehraný pokus je opuštěný a nesmí blokovat obnovu kreditu */ const r = topUp(acc); return { status: 200, json: state(acc, { refilled: r }) }; }
 
     if (action === 'start') {
       if (acc.balance < STACKER.PRICE) return bad(402, 'Nemáš dost žetonů.');
