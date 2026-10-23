@@ -9,12 +9,12 @@
 const SC = Number(process.env.TIME_SCALE) > 0 ? Number(process.env.TIME_SCALE) : 1;
 
 const CLAW = Object.freeze({
-  PACKS: { 1: 200, 6: 1000 },
-  BOMB_PRICE: 500,                  // power-up bomba (zamíchá plyšáky)        // počet her -> cena
+  PACKS: { 1: 200, 6: 1000 },       // počet her -> cena
+  BOMB_PRICE: 750,                  // power-up bomba (zamíchá plyšáky)
   MAX_PLAYS: 60,
   MIN_BOMB_MS: Math.max(50, Math.round(2500 * SC)), // nejdřív po výbuchu se dá nárokovat výhra
   MAX_BOMB_MS: 60 * 1000,
-  MAX_BOMB_CLAIMS: 6,
+  MAX_BOMB_CLAIMS: 2,
   MIN_PLAY_MS: Math.max(50, Math.round(7000 * SC)), // rychleji se hra odehrát nedá
   MAX_PLAY_MS: 10 * 60 * 1000,
   PRIZES: [
@@ -69,8 +69,11 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
     }
 
     if (action === 'bomb') { // koupě bomby: spotřebuje se hned (hráč ji spustí v automatu)
+      const bplay = active.get(acc.key);
+      if (!bplay) return bad(409, 'Bombu lze použít jen při hře.');
+      if (bplay.bombed) return bad(409, 'Bombu už jsi v téhle hře použil.');
       if (acc.balance < CLAW.BOMB_PRICE) return bad(402, 'Nemáš dost žetonů.');
-      acc.balance -= CLAW.BOMB_PRICE;
+      acc.balance -= CLAW.BOMB_PRICE; bplay.bombed = true;
       const bomb = { id: ++seq, at: Date.now(), claims: 0 }; bombs.set(acc.key, bomb);
       markDirty();
       notifyBalance(acc);
