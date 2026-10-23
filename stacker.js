@@ -88,6 +88,27 @@ module.exports = function createStacker({ resolveAccount, markDirty, notifyBalan
   }
   const itemInfo = () => ITEMS.map((it) => ({ name: it.name, emoji: it.emoji, price: it.price, need: it.need, pool: it.pool, rare: !!it.rare }));
 
+  /** Připíše odměnu za úroveň (coiny hned, věcná odměna jako díl) a vrátí popis výhry. */
+  function grant(acc, level) {
+    if (level === 1) {
+      const index = pickCoin(); const amount = STACKER.COIN_PRIZES[index].amount;
+      acc.balance += amount; markDirty(); notifyBalance(acc);
+      return { type: 'coin', index, amount, level };
+    }
+    const item = pickItem(level);
+    if (!Array.isArray(acc.items)) acc.items = [];
+    acc.items[item] = (acc.items[item] | 0) + 1; markDirty();
+    const type = level === 2 ? 'small' : 'big';
+    return { type, index: POOL[type].indexOf(item), item, parts: acc.items[item], need: ITEMS[item].need, level };
+  }
+  /** Power-up po neúspěšném zastavení: konec 45 %, srdíčko 20 %, +1 30 %, pád 5 %. */
+  const POWERS = Object.freeze([['end', 45], ['heart', 20], ['plus', 30], ['fall', 5]]);
+  function pickPower() {
+    let r = rand() * POWERS.reduce((a, p) => a + p[1], 0);
+    for (const [name, w] of POWERS) { r -= w; if (r < 0) return name; }
+    return 'end';
+  }
+
   function handle(action, body) {
     if (!body || typeof body.token !== 'string' || !TOKEN_RE.test(body.token)) return bad(400, 'Neplatný token.');
     const { acc } = resolveAccount({ token: body.token, session: typeof body.session === 'string' ? body.session : undefined });
@@ -126,20 +147,27 @@ module.exports = function createStacker({ resolveAccount, markDirty, notifyBalan
       const age = Date.now() - play.at;
       if (age < STACKER.MIN_ROW_MS * rows || age > STACKER.MAX_PLAY_MS) return bad(409, 'Hra neproběhla v pořádku.');
       active.delete(acc.key); // jeden pokus = nejvýš jedna odměna
-      let won;
-      if (level === 1) {
-        const index = pickCoin(); const amount = STACKER.COIN_PRIZES[index].amount;
-        acc.balance += amount; markDirty(); notifyBalance(acc);
-        won = { type: 'coin', index, amount, level };
-      } else {
-        const item = pickItem(level);
-        if (!Array.isArray(acc.items)) acc.items = [];
-        acc.items[item] = (acc.items[item] | 0) + 1; markDirty();
-        const type = level === 2 ? 'small' : 'big';
-        won = { type, index: POOL[type].indexOf(item), item, parts: acc.items[item], need: ITEMS[item].need, level };
-      }
+      const won = grant(acc, level);
       const refilled = topUp(acc);
       return { status: 200, json: state(acc, { won, refilled }) };
+    }
+
+    if (action === 'power') { // hráč se netrefil: server vylosuje power-up (rows = kolik řad měl položeno)
+      const play = active.get(acc.key);
+      if (!play || play.id !== Number(body.playId)) return bad(409, 'Tahle hra už skončila.');
+      const rows = Math.floor(Number(body.rows));
+      if (!(rows >= 0 && rows < STACKER.ROWS)) return bad(400, 'Neplatná výška věže.');
+      if (Date.now() - play.at < STACKER.MIN_ROW_MS * rows || Date.now() - play.at > STACKER.MAX_PLAY_MS) return bad(409, 'Hra neproběhla v pořádku.');
+      const power = pickPower();
+      if (power === 'heart') return { status: 200, json: state(acc, { power }) }; // hra pokračuje
+      active.delete(acc.key);
+      let won = null, level = 0, row = rows;
+      const levelAt = (n) => [1, 2, 3].find((l) => STACKER.LEVELS[l] === n) || 0;
+      if (power === 'plus') { row = rows + 1; level = levelAt(row); }
+      else if (power === 'fall') { for (const l of [1, 2, 3]) if (STACKER.LEVELS[l] <= rows) level = l; if (level) row = STACKER.LEVELS[level]; }
+      if (level) won = grant(acc, level);
+      const refilled = topUp(acc);
+      return { status: 200, json: state(acc, { power, level, row, won, refilled }) };
     }
 
     if (action === 'end') { // pokus skončil bez výhry
