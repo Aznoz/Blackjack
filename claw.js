@@ -9,7 +9,8 @@
 const SC = Number(process.env.TIME_SCALE) > 0 ? Number(process.env.TIME_SCALE) : 1;
 
 const CLAW = Object.freeze({
-  PACKS: { 1: 200, 6: 1000 },        // počet her -> cena
+  PACKS: { 1: 200, 6: 1000 },
+  BOMB_PRICE: 500,                  // power-up bomba (zamíchá plyšáky)        // počet her -> cena
   MAX_PLAYS: 60,
   MIN_PLAY_MS: Math.max(50, Math.round(7000 * SC)), // rychleji se hra odehrát nedá
   MAX_PLAY_MS: 10 * 60 * 1000,
@@ -28,7 +29,7 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
   const active = new Map(); // acc.key -> { id, at }
   let seq = 0;
 
-  const state = (acc, extra) => ({ balance: acc.balance, plays: acc.clawPlays | 0, prizes: CLAW.PRIZES, packs: CLAW.PACKS, floor: FLOOR, ...extra });
+  const state = (acc, extra) => ({ balance: acc.balance, plays: acc.clawPlays | 0, prizes: CLAW.PRIZES, packs: CLAW.PACKS, bombPrice: CLAW.BOMB_PRICE, floor: FLOOR, ...extra });
 
   /** Obnova kreditu: když hráč dohraje všechny hry a zůstatek je pod minimem, doplní se na minimum (jako v blackjacku). */
   function topUp(acc) {
@@ -61,6 +62,15 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
       markDirty();
       notifyBalance(acc);
       return { status: 200, json: state(acc) };
+    }
+
+    if (action === 'bomb') { // koupě bomby: spotřebuje se hned (hráč ji spustí v automatu)
+      if (active.has(acc.key)) return bad(409, 'Nejdřív dokonči rozehranou hru.');
+      if (acc.balance < CLAW.BOMB_PRICE) return bad(402, 'Nemáš dost žetonů.');
+      acc.balance -= CLAW.BOMB_PRICE;
+      markDirty();
+      notifyBalance(acc);
+      return { status: 200, json: state(acc, { bomb: true }) };
     }
 
     if (action === 'play') {
