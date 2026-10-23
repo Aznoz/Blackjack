@@ -9,7 +9,7 @@
 const SC = Number(process.env.TIME_SCALE) > 0 ? Number(process.env.TIME_SCALE) : 1;
 
 const CLAW = Object.freeze({
-  PACKS: { 1: 200, 6: 1000 },       // počet her -> cena
+  PACKS: { 1: 300, 6: 1500 },       // počet her -> cena
   BOMB_PRICE: 1000,                  // power-up bomba (zamíchá plyšáky)
   MAX_PLAYS: 60,
   MIN_BOMB_MS: Math.max(50, Math.round(2500 * SC)), // nejdřív po výbuchu se dá nárokovat výhra
