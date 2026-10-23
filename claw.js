@@ -19,13 +19,13 @@ const CLAW = Object.freeze({
   MIN_PLAY_MS: Math.max(50, Math.round(7000 * SC)), // rychleji se hra odehrát nedá
   MAX_PLAY_MS: 10 * 60 * 1000,
   PRIZES: [
-    { id: 'chick', name: 'Kuřátko', value: 450 },
-    { id: 'frog', name: 'Žabka', value: 650 },
-    { id: 'bear', name: 'Medvídek', value: 750 },
-    { id: 'bunny', name: 'Králíček', value: 1000 },
-    { id: 'panda', name: 'Panda', value: 1350 },
-    { id: 'unicorn', name: 'Jednorožec', value: 1600 },
-    { id: 'phone', name: 'Telefon', value: 2500 },
+    { id: 'chick', name: 'Kuřátko', value: 600 },
+    { id: 'frog', name: 'Žabka', value: 750 },
+    { id: 'bear', name: 'Medvídek', value: 900 },
+    { id: 'bunny', name: 'Králíček', value: 1200 },
+    { id: 'panda', name: 'Panda', value: 1500 },
+    { id: 'unicorn', name: 'Jednorožec', value: 2200 },
+    { id: 'phone', name: 'Telefon', value: 3500 },
   ],
 });
 
