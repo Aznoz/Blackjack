@@ -13,6 +13,7 @@ const CLAW = Object.freeze({
   BOMB_PRICE: 1000,                  // power-up bomba (zamíchá plyšáky)
   MAX_PLAYS: 60,
   MIN_BOMB_MS: Math.max(50, Math.round(2500 * SC)), // nejdřív po výbuchu se dá nárokovat výhra
+  BOMB_COOLDOWN_MS: Math.max(50, Math.round(5 * 60 * 1000 * SC)), // pauza mezi bombami (platí i po restartu stránky)
   MAX_BOMB_MS: 60 * 1000,
   MAX_BOMB_CLAIMS: 2,
   MIN_PLAY_MS: Math.max(50, Math.round(7000 * SC)), // rychleji se hra odehrát nedá
@@ -33,7 +34,8 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
   const bombs = new Map();  // acc.key -> { id, at, claims } (zakoupená bomba čeká na výbuch)
   let seq = 0;
 
-  const state = (acc, extra) => ({ balance: acc.balance, plays: acc.clawPlays | 0, prizes: CLAW.PRIZES, packs: CLAW.PACKS, bombPrice: CLAW.BOMB_PRICE, floor: FLOOR, ...extra });
+  const bombWait = (acc) => Math.max(0, (acc.bombAt || 0) + CLAW.BOMB_COOLDOWN_MS - Date.now()); // zbývá ms do další bomby
+  const state = (acc, extra) => ({ balance: acc.balance, plays: acc.clawPlays | 0, prizes: CLAW.PRIZES, packs: CLAW.PACKS, bombPrice: CLAW.BOMB_PRICE, bombIn: bombWait(acc), floor: FLOOR, ...extra });
 
   /** Obnova kreditu: když hráč dohraje všechny hry a zůstatek je pod minimem, doplní se na minimum (jako v blackjacku). */
   function topUp(acc) {
@@ -72,8 +74,9 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
       const bplay = active.get(acc.key);
       if (!bplay) return bad(409, 'Bombu lze použít jen při hře.');
       if (bplay.bombed) return bad(409, 'Bombu už jsi v téhle hře použil.');
+      if (bombWait(acc) > 0) return { status: 429, json: { error: 'Bomba se ještě dobíjí.', bombIn: bombWait(acc) } };
       if (acc.balance < CLAW.BOMB_PRICE) return bad(402, 'Nemáš dost žetonů.');
-      acc.balance -= CLAW.BOMB_PRICE; bplay.bombed = true;
+      acc.balance -= CLAW.BOMB_PRICE; bplay.bombed = true; acc.bombAt = Date.now();
       const bomb = { id: ++seq, at: Date.now(), claims: 0 }; bombs.set(acc.key, bomb);
       markDirty();
       notifyBalance(acc);

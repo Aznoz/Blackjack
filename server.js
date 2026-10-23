@@ -116,6 +116,7 @@ function makeAccount(key, d = {}) {
     name: cleanName(d.name) || randomName(),
     balance: Number.isFinite(d.balance) ? Math.max(CFG.FLOOR, Math.floor(d.balance)) : CFG.START_BALANCE,
     clawPlays: Number.isFinite(d.clawPlays) ? Math.max(0, Math.min(60, Math.floor(d.clawPlays))) : 0, // zakoupené hry v automatu na plyšáky
+    bombAt: Number.isFinite(d.bombAt) ? d.bombAt : 0, // kdy hráč naposledy použil bombu (cooldown přežije restart)
     stats: Object.assign({ rounds: 0, wins: 0, losses: 0, pushes: 0, blackjacks: 0, biggestWin: 0 }, d.stats || {}),
     avatar: typeof d.avatar === 'string' && (AVATAR_PRESET_RE.test(d.avatar) || AVATAR_CUSTOM_RE.test(d.avatar)) ? d.avatar : randomPreset(),
     custom: typeof d.custom === 'string' && /^[0-9a-f]{16}$/.test(d.custom) ? d.custom : null, // nahraný vlastní obrázek (hash)
@@ -244,7 +245,7 @@ function saveNow() {
   try {
     const out = {};
     for (const [k, a] of accounts) {
-      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
+      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
     }
     store.write('players', JSON.stringify(out));
     const g = {};
