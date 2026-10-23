@@ -15,6 +15,7 @@ const { verifyIdToken } = require('./google');
 const persist = require('./persist');
 const createHockey = require('./hockey');
 const createClaw = require('./claw');
+const createStacker = require('./stacker');
 const { CFG } = R;
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -1049,6 +1050,10 @@ async function handleApi(req, res, p) {
       return apiJson(res, 200, { session, profile: googleProfile(u) }, cors);
     }
 
+    if (p.startsWith('/api/stacker/') && req.method === 'POST') {
+      const r = stacker.handle(p.slice('/api/stacker/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1205,6 +1210,7 @@ hockey = createHockey({
 });
 hwss.on('connection', (ws) => hockey.handleConnection(ws));
 
+const stacker = createStacker({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Stacker (HTTP API /api/stacker/*)
 const claw = createClaw({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // automat na plyšáky (HTTP API /api/claw/*)
 
 function err(ws, msg) {
