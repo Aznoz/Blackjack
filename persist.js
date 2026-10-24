@@ -70,9 +70,10 @@ function create(dataDir) {
     }
   }
 
-  /** Uloží hned lokálně a na pozadí do vzdáleného úložiště (sloučí rychlé po sobě jdoucí zápisy). */
-  function write(name, str) {
-    writeLocal(name, str);
+  /** Uloží hned lokálně a na pozadí do vzdáleného úložiště (sloučí rychlé po sobě jdoucí zápisy).
+   *  S { local: false } se zapíše jen do Upstash (profilovky už leží jako soubory .jpg). */
+  function write(name, str, opts) {
+    if (!opts || opts.local !== false) writeLocal(name, str);
     if (!remoteOn) return;
     pending.set(name, str);
     if (!inflight.has(name)) {
@@ -81,13 +82,30 @@ function create(dataDir) {
     }
   }
 
+  /** Načte hodnotu jen z Upstash (bez lokálního souboru). Bez Upstash nebo při chybě vrací null. */
+  async function readRemote(name) {
+    if (!remoteOn) return null;
+    try { return await remoteGet(name); } catch (e) { console.error(`Načtení "${name}" z Upstash selhalo:`, e.message); return null; }
+  }
+
+  /** Smaže klíč z Upstash (profilovka, kterou už nikdo nepoužívá). */
+  async function remove(name) {
+    if (!remoteOn) return;
+    pending.delete(name);
+    try {
+      await (inflight.get(name) || Promise.resolve());
+      const res = await fetch(`${REMOTE_URL}/del/${encodeURIComponent(PREFIX + name)}`, { method: 'POST', headers: { Authorization: 'Bearer ' + REMOTE_TOKEN }, signal: AbortSignal.timeout(10000) });
+      if (!res.ok) throw new Error('Upstash DEL ' + res.status);
+    } catch (e) { console.error(`Smazání "${name}" z Upstash selhalo:`, e.message); }
+  }
+
   /** Počká na odeslání do vzdáleného úložiště (při vypínání serveru). */
   async function flush(timeoutMs = 4000) {
     if (!remoteOn) return;
     await Promise.race([Promise.all([...inflight.values()]), new Promise((r) => setTimeout(r, timeoutMs))]);
   }
 
-  return { read, write, flush, remoteOn };
+  return { read, write, readRemote, remove, flush, remoteOn };
 }
 
 module.exports = { create, remoteOn };

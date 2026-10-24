@@ -215,16 +215,32 @@ function sessionUser(token) {
   return u;
 }
 
-function loadAvatars() {
-  for (const a of accounts.values()) {
-    if (a.custom && !customAvatars.has(a.custom)) {
-      try {
-        const buf = fs.readFileSync(avatarFile(a.custom));
-        if (jpegSize(buf)) { customAvatars.set(a.custom, buf); avatarBytes += buf.length; } else a.custom = null;
-      } catch (e) { a.custom = null; }
+/** Profilovky: soubor na disku; kopie je i v Upstash (klíč avatar-<hash>), aby přežily restart/nové nasazení Renderu. */
+async function loadAvatars() {
+  const hashes = [...new Set([...accounts.values()].map((a) => a.custom).filter(Boolean))];
+  const restore = async (hash) => {
+    let buf = null;
+    try { const b = fs.readFileSync(avatarFile(hash)); if (jpegSize(b)) buf = b; } catch (e) { /* na disku není */ }
+    if (buf) { // je na disku: když chybí v Upstash, nahrát tam (jednorázové dohnání starších obrázků)
+      if (store.remoteOn && (await store.readRemote('avatar-' + hash)) === null) store.write('avatar-' + hash, buf.toString('base64'), { local: false });
+    } else {
+      const b64 = await store.readRemote('avatar-' + hash);
+      if (b64) {
+        const r = decodeAvatar(b64);
+        if (!r.error) {
+          buf = r.buf;
+          try { fs.mkdirSync(AVATAR_DIR, { recursive: true }); fs.writeFileSync(avatarFile(hash), buf); } catch (e) { /* ignore */ }
+        }
+      }
     }
+    if (buf) { customAvatars.set(hash, buf); avatarBytes += buf.length; }
+  };
+  for (let i = 0; i < hashes.length; i += 8) await Promise.all(hashes.slice(i, i + 8).map(restore));
+  for (const a of accounts.values()) {
+    if (a.custom && !customAvatars.has(a.custom)) a.custom = null;
     if (a.avatar.startsWith('u:') && !(a.custom && a.avatar === 'u:' + a.custom)) a.avatar = randomPreset();
   }
+  console.log(`Načteno ${customAvatars.size} vlastních profilovek.`);
 }
 
 /** Smaže vlastní obrázek ze serveru, pokud ho už nikdo nepoužívá. */
@@ -235,6 +251,7 @@ function releaseCustom(hash) {
   avatarBytes -= buf.length;
   customAvatars.delete(hash);
   fs.unlink(avatarFile(hash), () => {});
+  store.remove('avatar-' + hash);
 }
 
 let saveTimer = null;
@@ -980,6 +997,7 @@ function uploadAccountAvatar(acc, b64) {
     avatarBytes += r.buf.length;
     try { fs.mkdirSync(AVATAR_DIR, { recursive: true }); } catch (e) { /* ignore */ }
     fs.writeFile(avatarFile(hash), r.buf, (e) => { if (e) console.error('Uložení obrázku selhalo:', e.message); });
+    store.write('avatar-' + hash, r.buf.toString('base64'), { local: false }); // kopie do Upstash
   }
   const old = acc.custom;
   acc.custom = hash;
@@ -1433,7 +1451,7 @@ async function shutdown() {
 if (require.main === module) (async () => {
   await loadAccounts();
   await loadGoogle();
-  loadAvatars();
+  await loadAvatars();
   ['Stůl 1', 'Stůl 2', 'Stůl 3'].forEach((n) => createTable(n, true));
   tableSeq = Math.max(tableSeq, 3);
   server.listen(PORT, HOST, () => {
