@@ -23,6 +23,10 @@ export const CARD_DEFS = {
   curse:    { weight: 4,  target: 'other' },
   holy:     { weight: 5 },
   pendulum: { weight: 4 },
+  roulette: { weight: 5 },
+  rest:     { weight: 5 },
+  bond:     { weight: 4,  target: 'other' },
+  whisper:  { weight: 8 },
 };
 
 export const CARD_TYPES = Object.keys(CARD_DEFS);
@@ -38,6 +42,7 @@ export function targetsFor(type, ctx) {
     case 'voodoo': return others.filter((p) => !p.skip);
     case 'thief':  return others.filter((p) => p.hand.length > 0);
     case 'curse':  return others.filter((p) => !p.cursed);
+    case 'bond':   return others;
     default:       return [];
   }
 }
@@ -78,6 +83,15 @@ export function canUse(type, ctx) {
       return remaining < CAP ? null : 'Válec je plný.';
     case 'pendulum':
       return alive >= 3 ? null : 'Kyvadlo má smysl od tří hráčů.';
+    case 'roulette':
+    case 'whisper':
+      return remaining >= 1 ? null : 'Válec je prázdný.';
+    case 'rest':
+      if (me.acted) return 'Spánek jde zahrát jen na začátku tahu, než cokoliv uděláš.';
+      return me.hp < me.maxHp ? null : 'Máš plný počet životů.';
+    case 'bond':
+      if (me.hp < 2) return 'Při posledním životě je to příliš nebezpečné.';
+      return targetsFor(type, ctx).length ? null : 'Nemáš koho zasáhnout.';
     default:
       return 'Neznámá karta.';
   }

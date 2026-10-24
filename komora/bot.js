@@ -38,9 +38,11 @@ export function decide(view, rng = Math.random) {
   let c;
   if ((c = have('herb')) && me.hp < me.maxHp) return useCard(c);
   if ((c = have('amulet'))) return useCard(c);
+  if ((c = have('rest')) && me.hp <= me.maxHp - 2 && rng() < 0.9) return useCard(c);
   if ((c = have('amanita')) && me.hp >= 3 && me.hp <= me.maxHp - 2 && rng() < 0.7) return useCard(c);
 
   // --- informace ---
+  if ((c = have('whisper')) && cyl.remaining >= 2 && rng() < 0.6) return useCard(c);
   if (known0 == null && cyl.remaining >= 1) {
     if ((c = have('skull'))) return useCard(c);
     if ((c = have('eye'))) return useCard(c);
@@ -83,6 +85,12 @@ export function decide(view, rng = Math.random) {
       if (richest) return useCard(c, richest.id);
     }
   }
+  if ((c = have('bond')) && me.hp >= 3) {
+    const ids = view.use[c.id].targets;
+    const weak = ids.map((id) => opp.find((o) => o.id === id)).filter(Boolean).sort((a, z) => a.hp - z.hp)[0];
+    if (weak && ((weak.hp === 1 && !weak.amulet) || rng() < 0.2)) return useCard(c, weak.id);
+  }
+  if ((c = have('roulette')) && me.hp >= 3 && opp.length >= 2 && rng() < 0.3) return useCard(c);
   if ((c = have('pact')) && me.hp >= 3 && me.hand.length <= 4 && rng() < 0.45) return useCard(c);
   if ((c = have('pendulum')) && opp.length >= 2 && rng() < 0.3) return useCard(c);
   if (known0 == null) {

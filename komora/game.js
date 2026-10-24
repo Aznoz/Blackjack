@@ -77,7 +77,7 @@ export class Game {
     this.players = defs.map((d, i) => ({
       id: d.id, name: d.name, bot: !!d.bot, color: i % 4,
       hp: lives, maxHp: lives, alive: true, hand: [],
-      skip: false, cursed: false, amulet: false, saw: false, dbl: false,
+      skip: false, cursed: false, amulet: false, saw: false, dbl: false, acted: false,
     }));
     this.chambers = [];           // zbývající náboje; [0] je v komoře, která se vystřelí jako další
     this.history = [];            // co už ve válci padlo (true = ostrý)
@@ -135,7 +135,7 @@ export class Game {
       players: this.players.map((p) => ({
         id: p.id, name: p.name, bot: p.bot, color: p.color,
         hp: p.hp, maxHp: p.maxHp, alive: p.alive,
-        skip: p.skip, cursed: p.cursed, amulet: p.amulet, saw: p.saw, dbl: p.dbl,
+        skip: p.skip, cursed: p.cursed, amulet: p.amulet, saw: p.saw, dbl: p.dbl, acted: p.acted,
         hand: p.hand.map((c) => ({ id: c.id, type: c.type })),
       })),
       chambers: this.chambers.map((c) => ({ live: c.live, seen: [...c.seen] })),
@@ -220,6 +220,7 @@ export class Game {
     }
 
     this.out = [];
+    p.acted = true;
     p.hand.splice(idx, 1);
     this.ev({ e: 'use', p: p.id, card: { id: card.id, type: card.type }, target: target ? target.id : null, dur: this.D(1300) });
     this.apply(card.type, p, target);
@@ -329,6 +330,48 @@ export class Game {
         this.dir = -this.dir;
         this.ev({ e: 'dir', p: p.id, dir: this.dir, dur: this.D(1600) });
         break;
+      case 'roulette': { // výstřel na náhodného živého hráče (i na tebe), tah tím nekončí
+        const alive = this.aliveList();
+        const t = alive[Math.floor(this.rng() * alive.length)];
+        const ch = this.chambers.shift();
+        this.reveal(ch.live);
+        let dmg = ch.live ? 1 : 0;
+        let blocked = false;
+        if (dmg > 0 && t.amulet) { t.amulet = false; blocked = true; dmg = 0; }
+        if (dmg > 0) t.hp = Math.max(0, t.hp - dmg);
+        const killed = t.hp === 0;
+        this.ev({ e: 'rshot', p: p.id, t: t.id, live: ch.live, dmg, blocked, killed, dur: this.D(ch.live ? 4000 : 3000) });
+        if (killed && this.killPlayer(t)) break;
+        if (killed && t.id === p.id) { // zastřelil jsi sám sebe: tvůj tah končí
+          if (this.chambers.length === 0) this.load();
+          this.advance();
+        }
+        break;
+      }
+      case 'rest': { // +2 životy, tah okamžitě končí
+        const before = p.hp;
+        p.hp = Math.min(p.maxHp, p.hp + 2);
+        this.ev({ e: 'rest', p: p.id, amount: p.hp - before, dur: this.D(2000) });
+        if (this.chambers.length === 0) this.load();
+        this.advance();
+        break;
+      }
+      case 'bond': { // cíl přijde o život a ty taky
+        p.hp = Math.max(1, p.hp - 1);
+        let blocked = false;
+        if (target.amulet) { target.amulet = false; blocked = true; } else target.hp = Math.max(0, target.hp - 1);
+        const killed = target.hp === 0;
+        this.ev({ e: 'bond', p: p.id, t: target.id, blocked, killed, dur: this.D(2300) });
+        if (killed) this.killPlayer(target);
+        break;
+      }
+      case 'whisper': { // tajně uvidíš náhodný náboj v zásobníku
+        const i = Math.floor(this.rng() * this.chambers.length);
+        const ch = this.chambers[i];
+        ch.seen.set(p.id, ch.live);
+        this.ev({ e: 'peekAt', p: p.id, idx: i, total: this.chambers.length, dur: this.D(1900), priv: { val: ch.live }, privTo: p.id });
+        break;
+      }
       default:
         break;
     }
@@ -371,25 +414,30 @@ export class Game {
       dur: this.D(lives > 0 ? 4300 : 3000),
     });
 
-    if (killed) {
-      t.alive = false;
-      t.hand = [];
-      t.skip = false; t.cursed = false; t.amulet = false; t.saw = false; t.dbl = false;
-      this.ev({ e: 'death', p: t.id, dur: this.D(2600) });
-      const alive = this.aliveList();
-      if (alive.length <= 1) {
-        this.phase = 'over';
-        this.winner = alive.length ? alive[0].id : null;
-        this.ev({ e: 'over', winner: this.winner, dur: this.D(3500) });
-        return { ok: true, events: this.out };
-      }
-    }
+    p.acted = true;
+    if (killed && this.killPlayer(t)) return { ok: true, events: this.out };
 
     if (this.chambers.length === 0) this.load();
 
     if (extra) this.ev({ e: 'turn', p: p.id, extra: true, dur: this.D(700) });
     else this.advance();
     return { ok: true, events: this.out };
+  }
+
+  /** Smrt hráče; vrací true, když tím hra skončila. */
+  killPlayer(t) {
+    t.alive = false;
+    t.hand = [];
+    t.skip = false; t.cursed = false; t.amulet = false; t.saw = false; t.dbl = false;
+    this.ev({ e: 'death', p: t.id, dur: this.D(2600) });
+    const alive = this.aliveList();
+    if (alive.length <= 1) {
+      this.phase = 'over';
+      this.winner = alive.length ? alive[0].id : null;
+      this.ev({ e: 'over', winner: this.winner, dur: this.D(3500) });
+      return true;
+    }
+    return false;
   }
 
   advance() {
@@ -405,6 +453,7 @@ export class Game {
       }
       break;
     }
+    this.cur().acted = false;
     this.ev({ e: 'turn', p: this.cur().id, dur: this.D(700) });
   }
 }
