@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>BOMBA! – Tik Tak Bum online</title>
+<meta name="theme-color" content="#140a08">
+<link rel="stylesheet" href="bomba.css?v=4">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <a class="back" id="back" href="../">← Herna</a>
+    <h1>BOMBA!</h1>
+    <button class="icon" id="mute" type="button" aria-label="Zvuk">🔊</button>
+  </header>
+
+  <!-- menu -->
+  <main id="menu" class="screen">
+    <div class="hero">
+      <svg class="hero-bomb" viewBox="0 0 120 130" aria-hidden="true"><use href="#bomb-svg"/></svg>
+      <p class="lead">Slovní bomba pro 2–6 hráčů. Na kartě je slabika – řekni slovo, které ji obsahuje, a podej bombu dál. Kdo ji drží, když bouchne, bere kartu. Vyhrává ten, kdo jich má nejméně.</p>
+    </div>
+    <div class="acct" id="acct" hidden></div>
+    <label class="field" id="nameField">Tvoje jméno
+      <input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza">
+    </label>
+    <p class="muted small" id="acctHint"></p>
+    <button class="btn big" id="create" type="button">Vytvořit hru</button>
+    <div class="or">nebo se připoj ke kamarádům</div>
+    <form class="join" id="joinForm">
+      <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti">
+      <button class="btn" type="submit">Připojit se</button>
+    </form>
+    <p class="status" id="menuStatus"></p>
+    <details class="rules">
+      <summary>Pravidla</summary>
+      <ol>
+        <li>Na stole je karta se slabikou, např. <b>ZA</b>. Bombu má jeden hráč.</li>
+        <li>Kdo ji drží, napíše slovo, které slabiku obsahuje (třeba „za<b>há</b>da“ nebo „tra<b>za</b>“), a bomba přeskočí na dalšího hráče po směru hodin.</li>
+        <li>Slovo se nesmí v kole opakovat. Háčky a čárky se hlídají: ke slabice PR nesedí „příklad“ (to je PŘ), ke ZÁ nesedí „zaba“.</li>
+        <li>Bomba vybuchne v náhodnou chvíli. Kdo ji zrovna drží, bere si kartu a začíná další kolo.</li>
+        <li>Po posledním kole vyhrává hráč s nejméně kartami. Výhra = +500 coinů, prohra = −250 coinů (hry s účtem na Herně).</li>
+        <li>Týmy (jen při 4 hráčích 2v2 nebo 6 hráčích 3v3): bombu musí slovem „odbavit“ každý člen týmu, teprve pak přeskočí k soupeřům. Karty se sčítají za tým. Při 2, 3 a 5 hráčích se hraje každý sám za sebe.</li>
+        <li>Pochybné slovo můžou ostatní zpochybnit – když to udělá většina, slovo padá a bomba se vrací zpět.</li>
+      </ol>
+    </details>
+  </main>
+
+  <!-- lobby -->
+  <main id="lobby" class="screen" hidden>
+    <div class="codebox">
+      <span>Kód místnosti</span>
+      <b id="roomCode">----</b>
+      <button class="btn small" id="copyLink" type="button">Zkopírovat odkaz</button>
+    </div>
+    <ul id="lobbyPlayers" class="lobby-players"></ul>
+    <div id="hostCfg" class="cfg">
+      <label>Počet kol
+        <select id="cfgRounds">
+          <option value="5">5 (krátká)</option><option value="8">8</option><option value="10">10</option>
+          <option value="15">15</option><option value="20">20 (dlouhá)</option>
+        </select>
+      </label>
+      <div class="fuse">Čas do výbuchu (sekundy)
+        <div class="fuse-row"><input id="cfgFuseMin" type="number" inputmode="numeric" min="6" max="45" step="1" aria-label="Nejkratší čas"><span>až</span><input id="cfgFuseMax" type="number" inputmode="numeric" min="6" max="45" step="1" aria-label="Nejdelší čas"></div>
+        <small>Bomba vybuchne náhodně v tomhle rozmezí (6–45 s).</small>
+      </div>
+      <label id="modeLbl">Režim hry
+        <select id="cfgMode"><option value="ffa">Každý sám za sebe</option><option value="teams">Týmy</option></select>
+      </label>
+      <label>Obtížnost slabik
+        <select id="cfgLevel">
+          <option value="lehka">Lehká (2 písmena)</option>
+          <option value="normalni">Normální (mix)</option>
+          <option value="tezka">Těžká (3 písmena)</option>
+        </select>
+      </label>
+    </div>
+    <div id="teamsBox" class="teams" hidden></div>
+    <p id="cfgView" class="muted"></p>
+    <button class="btn big" id="startBtn" type="button">Začít hru</button>
+    <p class="muted" id="lobbyHint"></p>
+    <button class="link" id="leaveLobby" type="button">Opustit místnost</button>
+  </main>
+
+  <!-- hra -->
+  <main id="game" class="screen" hidden>
+    <div class="hud"><span id="roundInfo"></span><span id="teamHud"></span><span id="roomInfo"></span></div>
+    <div class="stage" id="stage">
+      <div class="felt"></div>
+      <div class="combo" id="combo"><small>slabika</small><b id="comboText">--</b></div>
+      <div class="bomb" id="bomb"><svg viewBox="0 0 120 130" aria-hidden="true"><use href="#bomb-svg"/></svg></div>
+      <div id="seats"></div>
+      <div class="boomfx" id="boomfx" hidden></div>
+    </div>
+    <div class="feed" id="feed"></div>
+    <div class="panel" id="panel">
+      <div class="turn" id="turn"></div>
+      <form id="wordForm" class="wordform" autocomplete="off">
+        <input id="word" maxlength="28" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="send" placeholder="Napiš slovo…">
+        <button class="btn" type="submit" id="sendWord">Odeslat</button>
+      </form>
+      <div class="msg" id="msg" role="status"></div>
+      <button class="btn danger" id="challenge" type="button" hidden></button>
+    </div>
+  </main>
+
+  <!-- konec -->
+  <main id="over" class="screen" hidden>
+    <h2 id="overTitle">Konec hry</h2>
+    <ol id="board" class="board"></ol>
+    <p class="coinline" id="coinLine"></p>
+    <button class="btn big" id="again" type="button">Hrát znovu</button>
+    <p class="muted" id="overHint"></p>
+    <button class="link" id="leaveOver" type="button">Odejít do menu</button>
+  </main>
+  <div class="toast" id="toast" role="alert" hidden></div>
+</div>
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <radialGradient id="bg1" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#5b5f6b"/><stop offset=".45" stop-color="#22242c"/><stop offset="1" stop-color="#08090c"/></radialGradient>
+    <radialGradient id="sp1"><stop offset="0" stop-color="#fff7c2"/><stop offset=".4" stop-color="#ffb52e"/><stop offset="1" stop-color="#ff4a1c" stop-opacity="0"/></radialGradient>
+    <symbol id="bomb-svg" viewBox="0 0 120 130">
+      <path d="M72 26 C80 12 92 14 98 6" fill="none" stroke="#b79a6a" stroke-width="4" stroke-linecap="round"/>
+      <circle cx="60" cy="78" r="44" fill="url(#bg1)"/>
+      <rect x="48" y="26" width="26" height="14" rx="4" fill="#3a3d47"/>
+      <ellipse cx="44" cy="58" rx="12" ry="7" fill="#fff" opacity=".13" transform="rotate(-35 44 58)"/>
+      <g class="spark"><circle cx="99" cy="8" r="13" fill="url(#sp1)"/><path d="M99 -2 L101 6 L109 8 L101 10 L99 18 L97 10 L89 8 L97 6Z" fill="#fff6c8"/></g>
+    </symbol>
+  </defs>
+</svg>
+<script src="config.js?v=1"></script>
+<script src="bomba.js?v=4"></script>
+</body>
+</html>

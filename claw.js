@@ -16,8 +16,8 @@ const CLAW = Object.freeze({
   BOMB_COOLDOWN_MS: Math.max(50, Math.round(5 * 60 * 1000 * SC)), // pauza mezi bombami (platí i po restartu stránky)
   MAX_BOMB_MS: 60 * 1000,
   MAX_BOMB_CLAIMS: 2,
-  MIN_PLAY_MS: Math.max(50, Math.round(7000 * SC)), // rychleji se hra odehrát nedá
-  MAX_PLAY_MS: 10 * 60 * 1000,
+  MIN_PLAY_MS: Math.max(50, Math.round(2500 * SC)), // rychleji se hra odehrát nedá
+  MAX_PLAY_MS: 60 * 60 * 1000,
   PRIZES: [
     { id: 'chick', name: 'Kuřátko', value: 600 },
     { id: 'frog', name: 'Žabka', value: 750 },
@@ -109,11 +109,11 @@ module.exports = function createClaw({ resolveAccount, markDirty, notifyBalance,
     if (action === 'claim') {
       const play = active.get(acc.key);
       if (!play || play.id !== Number(body.playId)) return bad(409, 'Tahle hra už skončila.');
-      active.delete(acc.key); // jedna hra = nejvýš jedna odměna
       const prize = CLAW.PRIZES.find((p) => p.id === body.prize);
       if (!prize) return bad(400, 'Neznámý plyšák.');
       const age = Date.now() - play.at;
       if (age < CLAW.MIN_PLAY_MS || age > CLAW.MAX_PLAY_MS) return bad(409, 'Hra neproběhla v pořádku.');
+      active.delete(acc.key); // jedna hra = nejvýš jedna odměna (smazá se až po úspěšné kontrole, ať hráč o výhru nepřijde)
       acc.balance += prize.value;
       markDirty();
       notifyBalance(acc);

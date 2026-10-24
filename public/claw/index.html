@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#0c0620">
+  <title>Automat na plyšáky</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%235b1a9a'/%3E%3Ctext x='32' y='46' font-size='36' text-anchor='middle'%3E%F0%9F%A7%B8%3C/text%3E%3C/svg%3E">
+  <link rel="stylesheet" href="claw.css?v=23">
+</head>
+<body>
+  <div id="errbar" hidden></div>
+  <div id="app">
+    <header class="bar">
+      <a class="btn small" href="../" id="back">← Hry</a>
+      <div class="title">Plyšáky</div>
+      <div class="stats"><span class="coin"></span><b id="bal">0</b><span class="sep">·</span><span class="tk" title="Zakoupené hry">🎟 <b id="plays">0</b></span></div>
+      <button class="btn small ico" id="btn-info" aria-label="Plyšáci a pravidla">ℹ</button>
+      <button class="btn small ico" id="btn-snd" aria-label="Zvuk">🔊</button>
+    </header>
+
+    <div id="stage">
+      <canvas id="gl" aria-label="3D automat na plyšáky"></canvas>
+      <button class="rot l" id="rot-l" aria-label="Otočit automat doleva">⟲</button>
+      <button class="rot r" id="rot-r" aria-label="Otočit automat doprava">⟳</button>
+      <div id="hint" class="hint">Přetažením prstem / myší otáčíš automat</div>
+      <div id="toast" class="toast" hidden></div>
+      <div id="result" class="result" hidden></div>
+      <div id="fatal" class="fatal" hidden></div>
+    </div>
+
+    <div id="ctrl">
+      <div id="panel-idle" class="idle">
+        <button class="btn primary big" id="btn-play" disabled>Hrát</button>
+        <div class="buy-row">
+          <button class="btn" id="btn-buy1" disabled>1 hra <span class="price"><span class="coin"></span> 300</span></button>
+          <button class="btn" id="btn-buy6" disabled>6 her <span class="price"><span class="coin"></span> 1 500</span></button>
+        </div>
+      </div>
+      <div id="panel-play" class="play" hidden>
+        <div id="joy" class="joy" aria-label="Joystick"><div class="joy-ring"></div><div id="knob" class="knob"></div></div>
+        <div class="mid">
+          <div class="timer"><div id="timer-fill"></div></div>
+          <div class="tip">Naveď drápek nad plyšáka a stiskni tlačítko</div>
+          <button class="btn bomb" id="btn-bomb" disabled>💣 Bomba <span class="price" id="bomb-price"><span class="coin"></span> 1 000</span><span class="price" id="bomb-cd" hidden></span></button>
+        </div>
+        <button id="btn-drop" class="dropbtn" aria-label="Spustit drápek">⬇<span>SPUSTIT</span></button>
+      </div>
+    </div>
+
+    <div id="modal" class="modal" hidden>
+      <div class="sheet">
+        <h2>Plyšáci</h2>
+        <p class="muted">Hra stojí <b>300</b>, šest her <b>1 500</b>. Dostaneš zpět žetony podle hodnoty plyšáka, kterého se ti podaří dopravit do výdejního otvoru. Čím cennější plyšák, tím hůř drží v drápku.</p>
+        <p class="muted">💣 <b>Bomba</b> (1 000, jednou za hru a nejdřív po 5 minutách od minulé) spadne do automatu přesně pod drápek, vybuchne a všechny plyšáky rozházení. Plyšák, který při výbuchu spadne do otvoru, se počítá jako výhra (nejvýš 2 plyšáci).</p>
+        <div id="prize-list" class="prizes"></div>
+        <p class="muted small">Ovládání: joystick (myš nebo prst), mezerník / Enter = spustit, šipky nebo WASD = pohyb. Automat otočíš přetažením nebo tlačítky po stranách.</p>
+        <button class="btn primary" id="modal-close">Zavřít</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="header.js?v=23"></script>
+  <script src="../portal-config.js"></script>
+  <script src="../blackjack/config.js"></script>
+  <script src="../airhockey/config.js"></script>
+  <script src="config.js?v=23"></script>
+  <script src="gl.js?v=23"></script>
+  <script src="claw.js?v=23"></script>
+</body>
+</html>

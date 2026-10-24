@@ -42,7 +42,7 @@ function startServer() {
 }
 
 const ALLOWED = new Set(['betting>betting', 'betting>dealing', 'dealing>dealing', 'dealing>insurance', 'dealing>playing',
-  'dealing>settle', 'insurance>insurance', 'insurance>playing', 'insurance>settle', 'playing>playing',
+  'dealing>settle', 'insurance>insurance', 'insurance>playing', 'insurance>settle', 'playing>playing', 'dealing>dealer', 'insurance>dealer',
   'playing>dealer', 'dealer>dealer', 'dealer>settle', 'settle>settle', 'settle>betting']);
 
 class Bot {
@@ -93,7 +93,7 @@ class Bot {
   onMsg(m) {
     for (const tk of tokens) if (JSON.stringify(m).includes(tk)) problem('únik tokenu ve zprávě ' + m.t);
     switch (m.t) {
-      case 'welcome': this.welcome = m; this.lastProfile = m; break;
+      case 'welcome': this.welcome = m; this.lastProfile = m; this.lastPhase = null; this.state = null; break;
       case 'profile': this.lastProfile = m; break;
       case 'error': this.errors.push(m.msg); break;
       case 'toast': this.toasts.push(m.msg); break;
@@ -292,6 +292,29 @@ async function main() {
   // --- akce mimo tah musí být ignorovány ---
   for (let i = 0; i < 5; i++) A.send({ t: 'act', a: 'hit' });
 
+  // --- vlastní stůl: musí normálně rozjet kolo a po odchodu všech zmizet z lobby (běží souběžně s hrou) ---
+  const ownTableTest = (async () => {
+    const Z1 = new Bot('Z1-owner', 'sleeper');
+    const Z2 = new Bot('Z2-guest', 'sleeper');
+    await Z1.connect();
+    await Z2.connect();
+    Z1.send({ t: 'create', name: 'Testovací stůl' });
+    await Z1.until(() => Z1.state, 3000, 'vytvoření vlastního stolu');
+    const ownId = Z1.state.id;
+    Z2.send({ t: 'join', id: ownId });
+    await Z2.until(() => Z2.state && Z2.state.id === ownId, 3000, 'připojení ke vlastnímu stolu');
+    await Z1.until(() => Z1.state.round >= 1 && Z1.state.phase !== 'betting', 6000, 'rozjetí kola u vlastního stolu');
+    for (const z of [Z1, Z2]) { z.stop = true; z.send({ t: 'leave' }); }
+    await Z1.until(() => Z1.lefts.length && Z2.lefts.length, 10000, 'odchod od vlastního stolu');
+    let lobby = null;
+    X.ws.on('message', (d) => { const m = JSON.parse(d.toString()); if (m.t === 'lobby') lobby = m; });
+    const askLobby = async () => { lobby = null; X.send({ t: 'lobby' }); await X.until(() => lobby, 3000, 'lobby'); return lobby.tables.some((tb) => tb.id === ownId); };
+    if (!(await askLobby())) problem('prázdný vlastní stůl zmizel dřív než po TTL');
+    await sleep(R.CFG.EMPTY_TABLE_TTL + 1500);
+    if (await askLobby()) problem('prázdný vlastní stůl nezmizel po TTL');
+    for (const z of [Z1, Z2]) z.ws.terminate();
+  })();
+
   // --- hlavní smyčka hry ---
   let bDone = false;
   let cDone = false;
@@ -304,11 +327,16 @@ async function main() {
     if (!bDone && B.rounds >= 4 && B.state && B.state.phase === 'playing' && B.state.you.balance >= 0) {
       bDone = true;
       B.ws.terminate();
+      B.state = null;
       await sleep(250);
       const w = await B.connect();
-      console.log(`  reconnect B: inTable=${w.inTable}`);
-      if (w.inTable) await B.until(() => B.state && B.state.seats.some((s) => s.you), 3000, 'stav po reconnectu');
-      else B.send({ t: 'quick' });
+      if (w.inTable) problem('po zavření karty se hráč vrátil ke stolu (má začínat v menu)');
+      await sleep(500);
+      if (B.state) problem('odpojenému hráči po návratu chodí stav stolu');
+      console.log(`  reconnect B: inTable=${w.inTable}, stav stolu po návratu: ${B.state ? 'ANO (chyba)' : 'ne'}`);
+      // znovu se posadí (pokud ještě dohrává kolo, chvíli to odmítne)
+      for (let i = 0; i < 60 && !B.state; i++) { B.send({ t: 'quick' }); await sleep(200); }
+      if (!B.state) problem('B se po návratu nemohl znovu posadit');
     }
 
     // C: odchod uprostřed kola -> vyřídí se až po kole
@@ -327,6 +355,7 @@ async function main() {
     }
   }
 
+  await ownTableTest;
   if (!bDone) problem('reconnect test neproběhl');
   if (!cDone) problem('leave test neproběhl');
   if (!S.lefts.includes('afk')) problem('sleeper nebyl vyhozen pro nečinnost');
@@ -342,14 +371,71 @@ async function main() {
   console.log('  zůstatky:', [...expected].map(([b, v]) => `${b.label}=${v}`).join(' '));
   for (const [b, v] of expected) if (v < 200) problem(b.label + ' pod minimem 200: ' + v);
 
+  // --- profilovky ---
+  {
+    const V = new Bot('V');
+    const vw = await V.connect();
+    if (!/^(a(10|[1-9])|u:[0-9a-f]{16})$/.test(vw.avatar || '')) problem('nový účet nemá platnou profilovku: ' + vw.avatar);
+    const jpeg = (w, h, pad = 40) => {
+      const sof = Buffer.alloc(19); sof[0] = 0xff; sof[1] = 0xc0; sof.writeUInt16BE(17, 2); sof[4] = 8;
+      sof.writeUInt16BE(h, 5); sof.writeUInt16BE(w, 7); sof[9] = 3;
+      return Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 4, 0, 0]), sof, Buffer.alloc(pad, 1), Buffer.from([0xff, 0xd9])]);
+    };
+    const tryMsg = async (msg) => {
+      const n = V.errors.length; const before = V.lastProfile;
+      V.send(msg); await sleep(120);
+      return { err: V.errors.length > n ? V.errors[V.errors.length - 1] : null, prof: V.lastProfile !== before ? V.lastProfile : null };
+    };
+    for (const bad of ['a0', 'a11', 'u:0123456789abcdef', '../x', 5, null, 'a1; DROP']) {
+      const r = await tryMsg({ t: 'setAvatar', avatar: bad });
+      if (!r.err) problem('setAvatar přijal neplatné id ' + JSON.stringify(bad));
+    }
+    const ok = await tryMsg({ t: 'setAvatar', avatar: 'a7' });
+    if (ok.err || !ok.prof || ok.prof.avatar !== 'a7' || ok.prof.saved !== 'avatar') problem('setAvatar a7 selhal');
+    // neplatné nahrávky (první nastaví cooldown, proto mezi nimi čekáme)
+    const bads = [
+      ['nonbase64', '!!!not base64!!!!!!!!!!!!!'],
+      ['PNG', Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47]), Buffer.alloc(60, 1)]).toString('base64')],
+      ['velký', jpeg(256, 256, 81000).toString('base64')],
+      ['rozměry', jpeg(4000, 4000).toString('base64')],
+      ['malé', jpeg(4, 4).toString('base64')],
+    ];
+    for (const [name, data] of bads) {
+      V.errors.length = 0;
+      V.send({ t: 'uploadAvatar', data }); await sleep(120);
+      if (!V.errors.length) problem('uploadAvatar přijal neplatný obrázek: ' + name);
+      V.errors.length = 0;
+      await sleep(3100);
+    }
+    const good = jpeg(256, 256);
+    const up = await tryMsg({ t: 'uploadAvatar', data: good.toString('base64') });
+    if (up.err || !up.prof || !/^u:[0-9a-f]{16}$/.test(up.prof.avatar) || up.prof.custom !== up.prof.avatar.slice(2)) problem('platný upload selhal: ' + JSON.stringify(up));
+    const again = await tryMsg({ t: 'uploadAvatar', data: good.toString('base64') });
+    if (!again.err) problem('chybí cooldown nahrávání');
+    if (up.prof) {
+      const res = await fetch(`http://127.0.0.1:${PORT}/avatar/${up.prof.custom}.jpg`);
+      const body = Buffer.from(await res.arrayBuffer());
+      if (res.status !== 200 || res.headers.get('content-type') !== 'image/jpeg' || res.headers.get('x-content-type-options') !== 'nosniff' || !body.equals(good)) problem('/avatar nevrací nahraný obrázek správně');
+      const r404 = await fetch(`http://127.0.0.1:${PORT}/avatar/0123456789abcdef.jpg`);
+      if (r404.status !== 404) problem('/avatar neexistujícího obrázku nevrací 404');
+      const rBad = await fetch(`http://127.0.0.1:${PORT}/avatar/..%2fserver.js`);
+      if (rBad.status === 200) problem('/avatar dovoluje path traversal');
+      // zpět na předvolbu: vlastní obrázek zůstane vybratelný
+      const back = await tryMsg({ t: 'setAvatar', avatar: 'a2' });
+      const again2 = await tryMsg({ t: 'setAvatar', avatar: 'u:' + up.prof.custom });
+      if (back.err || again2.err || !again2.prof || again2.prof.avatar !== 'u:' + up.prof.custom) problem('přepínání předvolba/vlastní obrázek selhalo');
+      const alien = await tryMsg({ t: 'setAvatar', avatar: 'u:ffffffffffffffff' });
+      if (!alien.err) problem('setAvatar přijal cizí vlastní obrázek');
+      // viditelnost u stolu: A i V jsou u stolu, avatar V vidí ostatní
+      V.avatarSaved = 'u:' + up.prof.custom;
+    }
+    global.__V = V;
+  }
+
   // --- statistiky/žebříček ---
-  const lbBot = A;
-  let lb = null;
-  lbBot.ws.on('message', (d) => { const m = JSON.parse(d.toString()); if (m.t === 'leaderboard') lb = m; });
-  lbBot.send({ t: 'leaderboard' });
-  await lbBot.until(() => lb, 3000, 'žebříček');
+  const lb = await (await fetch(`http://127.0.0.1:${PORT}/api/leaderboard`)).json();
   if (!lb.rows.length || lb.rows.some((r, i) => i && lb.rows[i - 1].balance < r.balance)) problem('žebříček není seřazený');
-  if (lb.rows.some((r) => Object.keys(r).sort().join() !== 'balance,name,rounds')) problem('žebříček prozrazuje navíc něco jiného');
+  if (lb.rows.some((r) => Object.keys(r).sort().join() !== 'avatar,balance,name,rounds')) problem('žebříček prozrazuje navíc něco jiného');
 
   // --- vypnutí serveru uloží data, po startu se zůstatky vrátí ---
   for (const b of all) b.ws.terminate();
@@ -372,6 +458,15 @@ async function main() {
     if (w.isNew) problem(b.label + ': po restartu je účet znovu nový');
   }
   console.log('  perzistence po restartu OK');
+  if (global.__V && global.__V.avatarSaved) {
+    global.__V.ws.terminate();
+    const vw2 = await global.__V.connect();
+    if (vw2.avatar !== global.__V.avatarSaved) problem('profilovka se po restartu serveru neuložila: ' + vw2.avatar);
+    const r = await fetch(`http://127.0.0.1:${PORT}/avatar/${vw2.avatar.slice(2)}.jpg`);
+    if (r.status !== 200) problem('obrázek profilovky po restartu serveru chybí');
+    else console.log('  profilovky OK (včetně restartu)');
+    global.__V.ws.terminate();
+  }
 
   // --- druhé přihlášení stejným tokenem vykopne první ---
   const A2 = new Bot('A2');

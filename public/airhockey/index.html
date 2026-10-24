@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#07120d">
+  <title>Air Hockey</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%230b2a3f'/%3E%3Ccircle cx='32' cy='32' r='15' fill='%23e5484d'/%3E%3Ccircle cx='32' cy='32' r='6' fill='%23111'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="hockey.css?v=3">
+</head>
+<body>
+  <div id="conn" class="conn" hidden>Připojování k serveru…</div>
+  <div id="toasts" aria-live="polite"></div>
+
+  <!-- MENU -->
+  <section id="screen-menu" class="screen active">
+    <div class="panel">
+      <div class="logo">
+        <div class="puckmark" aria-hidden="true"></div>
+        <h1>AIR HOCKEY</h1>
+        <p>1 na 1 · první na 7 gólů · odměny za série výher</p>
+      </div>
+      <div class="profile">
+        <div class="menu-avatar" id="menu-avatar"></div>
+        <div class="profile-name" id="menu-name">…</div>
+        <div class="profile-balance"><span class="coin"></span><span id="menu-balance">0</span></div>
+        <div class="profile-link" id="menu-link" hidden></div>
+      </div>
+      <div class="menu-buttons">
+        <button class="btn primary big" data-go="quick">Rychlá hra</button>
+        <button class="btn big" data-go="lobby">Stoly</button>
+        <button class="btn big" data-go="rules">Pravidla a odměny</button>
+        <a class="btn big back-link" href="../">← Všechny hry</a>
+      </div>
+      <p class="hint" id="menu-hint">Jméno a profilovku změníš na hlavní stránce v Nastavení účtu.</p>
+    </div>
+  </section>
+
+  <!-- STOLY -->
+  <section id="screen-lobby" class="screen">
+    <div class="panel wide">
+      <h2>Stoly</h2>
+      <ul class="tables" id="tables"></ul>
+      <form id="create-form" class="create">
+        <input id="table-name" type="text" maxlength="24" autocomplete="off" spellcheck="false" placeholder="Název vlastního stolu (2–24 znaků)">
+        <button class="btn" type="submit">Vytvořit stůl</button>
+      </form>
+      <p class="hint">Prázdný vlastní stůl se po minutě sám zruší.</p>
+      <div class="panel-actions"><button class="btn" data-go="menu">Zpět</button></div>
+    </div>
+  </section>
+
+  <!-- PRAVIDLA -->
+  <section id="screen-rules" class="screen">
+    <div class="panel wide">
+      <h2>Pravidla a odměny</h2>
+      <ul class="rules">
+        <li>Hraješ pálkou, kterou ovládáš <b>myší</b> (na telefonu prstem). Pálka se pohybuje jen na tvé polovině stolu.</li>
+        <li>Vyhrává ten, kdo první dá <b>7 gólů</b>. Po gólu podává ten, kdo inkasoval.</li>
+        <li>Stoly jsou pro <b>dva hráče</b>. Po zápase se u stolu automaticky hraje odveta.</li>
+      </ul>
+      <h3>Odměny za výhry v řadě u jednoho stolu</h3>
+      <table class="rewards">
+        <tr><td>1. výhra</td><td><span class="coin"></span> 200</td></tr>
+        <tr><td>2. výhra v řadě</td><td><span class="coin"></span> 400</td></tr>
+        <tr><td>3. výhra v řadě</td><td><span class="coin"></span> 650</td></tr>
+        <tr><td>4. a každá další v řadě</td><td><span class="coin"></span> 1 000</td></tr>
+      </table>
+      <p class="hint">Prohra nebo odchod od stolu sérii vynuluje. Žetony se připisují do společného zůstatku pro všechny hry. Odchod uprostřed zápasu zápas zruší bez odměny.</p>
+      <div class="panel-actions"><button class="btn" data-go="menu">Zpět</button></div>
+    </div>
+  </section>
+
+  <!-- HRA -->
+  <section id="screen-game" class="screen">
+    <header class="gbar">
+      <button class="btn small" id="btn-leave">← Opustit stůl</button>
+      <div class="gtitle" id="g-title">Stůl</div>
+      <div class="gright"><span class="coin"></span><b id="g-balance">0</b>
+        <button class="btn small" id="btn-sound" aria-label="Zvuk" title="Zvuk">🔊</button></div>
+    </header>
+    <div class="scoreboard" id="scoreboard"></div>
+    <div class="rink-wrap" id="rink-wrap">
+      <canvas id="rink" aria-label="Hrací stůl air hockey"></canvas>
+      <div class="overlay" id="overlay" hidden></div>
+    </div>
+    <p class="gtip" id="g-tip">Pohybuj myší, pálka tě následuje.</p>
+  </section>
+
+  <script src="config.js?v=1"></script>
+  <script src="hockey.js?v=3"></script>
+</body>
+</html>
