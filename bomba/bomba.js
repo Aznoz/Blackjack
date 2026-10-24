@@ -8,8 +8,16 @@ const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVXYZ';
 const EMPTY_ROOM_MS = 90_000;
 const LOBBY_GRACE_MS = 30_000;
 const BOOM_MS = Number(process.env.BOMBA_BOOM_MS) || 4500;
-const FUSE_MIN = Number(process.env.BOMBA_FUSE_MIN_MS) || 9_000;
-const FUSE_MAX = Number(process.env.BOMBA_FUSE_MAX_MS) || 28_000;
+const FUSE_MIN = Number(process.env.BOMBA_FUSE_MIN_MS) || 0;
+const FUSE_MAX = Number(process.env.BOMBA_FUSE_MAX_MS) || 0;
+// Doba do výbuchu: hodně proměnlivá – čtvrtina kol bouchne rychle, polovina středně, čtvrtina se hodně natáhne.
+function fuseMs() {
+  if (FUSE_MIN && FUSE_MAX) return rndInt(FUSE_MIN, FUSE_MAX);
+  const r = Math.random();
+  if (r < 0.25) return rndInt(3_000, 8_000);
+  if (r < 0.75) return rndInt(8_000, 22_000);
+  return rndInt(22_000, 45_000);
+}
 const ALONE_MS = Number(process.env.BOMBA_ALONE_MS) || 25_000;
 const MAX_CHALLENGES = 2; // zpochybnění slova na hráče a kolo
 
@@ -116,7 +124,7 @@ function startRound(room) {
   if (!start || start.left || !start.connected) start = shuffle(live(room).slice())[0];
   room.holder = start.id;
   room.starter = start.id;
-  room.fuse = setTimeout(() => explode(room), rndInt(FUSE_MIN, FUSE_MAX));
+  room.fuse = setTimeout(() => explode(room), fuseMs());
   publish(room, { type: 'round', round: room.round });
 }
 
