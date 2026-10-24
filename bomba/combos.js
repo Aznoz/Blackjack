@@ -1,8 +1,10 @@
 // Slabiky / skupiny písmen pro hru BOMBA (bez diakritiky – porovnává se bez háčků a čárek).
 export const EASY = ('BA BE BI BO BU BY CE CI DA DE DI DO DU HA HO HU JA JE KA KE KO KU LA LE LI LO LU MA ME MI MO MU ' +
   'NA NE NI NO NU PA PE PI PO PR PU RA RE RI RO RU SA SE SI SK SO SP ST SU TA TE TI TO TR TU VA VE VI VO VY ZA ZE ZI ZO ZU ' +
-  'CH KL KR PL BR DR').split(' ');
+  'CH KL KR PL BR DR ' +
+  'PŘ TŘ KŘ ČA ČE ČI ČÍ ŠA ŠE ŠI ŠT ŠK ŽA ŽE ŽI ŘE ŘÍ ZÁ NÁ PÁ VÝ ZÍ NĚ TĚ DĚ MĚ BĚ VĚ HÁ LÁ MÍ SÍ KÝ').split(' ');
 
 export const HARD = ('ENI OVA ANI ELA ACE OST STI NEC KOL VAN ROD LOV ZAK PIS TAL MIN DEN HOD LES SVE BRA KRA TRA DRA PLA SLA ' +
   'STE SMA SKO ZDA STA STO STR PRO POD NAD ROZ OBE ATE ICE KOV LAV MAS NIC OKO ORA PAL RUB SLO TEK VOD ZAL ' +
+  'PŘI PŘE PŘÍ ŠTĚ ČEN ŽEN VÝS ZÁK POČ ODČ NÝM ÁNÍ ENÍ OVÁ ÝCH ŠEK ŘEK TŘE STŘ ŽIV ČKA ' +
   'CKY NIK TEL ROV VAL DLO CHA CHO SKA SKY TVA LNI PRA PRI PRE SPO SPR ZVO ZNA ZNE NOS NOV OKA ONI ODE').split(' ');

@@ -18,7 +18,8 @@ const rooms = new Map();
 const now = () => Date.now();
 const rndInt = (a, b) => Math.floor(a + Math.random() * (b - a + 1));
 
-export const norm = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+// Háčky a čárky se berou vážně (PR ≠ PŘ): neignoruje se diakritika, jen velikost písmen.
+export const norm = (s) => String(s).normalize('NFC').toLowerCase();
 
 function cleanName(s) {
   const t = String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
@@ -53,7 +54,7 @@ export function checkWord(raw, combo, used) {
   const w = norm(String(raw ?? '').trim());
   if (w.length < 3) return { ok: false, err: 'Slovo je moc krátké (aspoň 3 písmena).' };
   if (w.length > 28) return { ok: false, err: 'Slovo je moc dlouhé.' };
-  if (!/^[a-z]+$/.test(w)) return { ok: false, err: 'Jen písmena, jedno slovo.' };
+  if (!/^[a-záčďéěíňóřšťúůýž]+$/.test(w)) return { ok: false, err: 'Jen písmena, jedno slovo.' };
   if (!w.includes(norm(combo))) return { ok: false, err: `Slovo musí obsahovat „${combo}“.` };
   if (w === norm(combo)) return { ok: false, err: 'To je jen ta slabika, ne slovo.' };
   if (/(.)\1\1\1/.test(w) || /(.{1,3})\1\1/.test(w)) return { ok: false, err: 'Tohle nevypadá jako slovo.' };

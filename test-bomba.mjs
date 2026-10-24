@@ -5,14 +5,21 @@ import { WebSocketServer, WebSocket } from 'ws';
 const B = await import('./bomba/bomba.js');
 
 // --- validace slov
-const used = new Set(['zamek']);
-assert.equal(B.checkWord('Zámek', 'ZA', new Set()).ok, true);
-assert.equal(B.checkWord('zamek', 'ZA', used).ok, false, 'opakování');
-assert.equal(B.checkWord('ZÁMEK', 'ZA', used).ok, false, 'opakování bez diakritiky');
+const used = new Set(['zámek']);
+assert.equal(B.checkWord('Zámek', 'ZA', new Set()).ok, false, 'ZÁ ≠ ZA');
+assert.equal(B.checkWord('zaba', 'ZA', new Set()).ok, true);
+assert.equal(B.checkWord('příklad', 'PR', new Set()).ok, false, 'PŘ ≠ PR');
+assert.equal(B.checkWord('příklad', 'PŘ', new Set()).ok, true);
+assert.equal(B.checkWord('prak', 'PŘ', new Set()).ok, false);
+assert.equal(B.checkWord('prak', 'PR', new Set()).ok, true);
+assert.equal(B.checkWord('žízeň', 'ŽI', new Set()).ok, false);
+assert.equal(B.checkWord('žirafa', 'ŽI', new Set()).ok, true);
+assert.equal(B.checkWord('zámek', 'ZÁ', used).ok, false, 'opakování');
+assert.equal(B.checkWord('ZÁMEK', 'ZÁ', used).ok, false, 'opakování velkými');
 assert.equal(B.checkWord('kolo', 'ZA', new Set()).ok, false, 'bez slabiky');
 assert.equal(B.checkWord('za', 'ZA', new Set()).ok, false, 'jen slabika');
 assert.equal(B.checkWord('zazaza', 'ZA', new Set()).ok, false, 'opakující se');
-assert.equal(B.checkWord('stůl', 'ST', new Set()).ok, true, 'diakritika se ignoruje');
+assert.equal(B.checkWord('stůl', 'ST', new Set()).ok, true);
 assert.equal(B.checkWord('a b c', 'AB', new Set()).ok, false);
 
 // --- server
