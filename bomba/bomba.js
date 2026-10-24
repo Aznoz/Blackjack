@@ -29,10 +29,11 @@ export function init(d) { deps = d; }
 // Háčky a čárky se berou vážně (PR ≠ PŘ): neignoruje se diakritika, jen velikost písmen.
 export const norm = (s) => String(s).normalize('NFC').toLowerCase();
 
-// Doba do výbuchu: náhodně 8–30 sekund (rovnoměrně).
-function fuseMs() {
-  if (FUSE_MIN && FUSE_MAX) return rndInt(FUSE_MIN, FUSE_MAX);
-  return rndInt(8_000, 30_000);
+// Doba do výbuchu: náhodně v rozsahu, který si zvolí host (6–45 s, výchozí 8–30 s).
+export const FUSE_LIMITS = { min: 6, max: 45 };
+function fuseMs(room) {
+  if (FUSE_MIN && FUSE_MAX) return rndInt(FUSE_MIN, FUSE_MAX); // jen pro testy
+  return rndInt(room.fuseMin * 1000, room.fuseMax * 1000);
 }
 
 function cleanName(s) {
@@ -107,7 +108,7 @@ function view(room, pid) {
   const mine = byId(room, pid);
   return {
     t: 'state', code: room.code, phase: room.phase, you: pid, hostId: room.hostId,
-    round: room.round, rounds: room.rounds, level: room.level,
+    round: room.round, rounds: room.rounds, level: room.level, fuseMin: room.fuseMin, fuseMax: room.fuseMax,
     mode: teams ? 'teams' : 'ffa', wantTeams: room.wantTeams, canTeams: canTeams(room),
     combo: room.phase === 'lobby' || room.phase === 'over' ? null : room.combo,
     holder: room.holder, starter: room.starter,
@@ -176,7 +177,7 @@ function startRound(room) {
   room.holder = start.id;
   room.starter = start.id;
   room.turn = room.teamMode ? { team: start.team, done: new Set() } : null;
-  room.fuse = setTimeout(() => explode(room), fuseMs());
+  room.fuse = setTimeout(() => explode(room), fuseMs(room));
   publish(room, { type: 'round', round: room.round });
 }
 
@@ -295,7 +296,7 @@ function newRoom() {
   if (!code) return null;
   const room = {
     code, players: [], nextId: 1, hostId: null, phase: 'lobby', round: 0, rounds: 10, level: 'normalni',
-    wantTeams: false, teamMode: false, ptr: { A: -1, B: -1 }, turn: null, booms: 0,
+    wantTeams: false, teamMode: false, fuseMin: 8, fuseMax: 30, ptr: { A: -1, B: -1 }, turn: null, booms: 0,
     deck: [], combo: null, used: new Set(), words: [], last: null, holder: null, starter: null,
     ev: null, evId: 0, result: null, emptySince: now(), fuse: null, next: null, alone: null,
   };
@@ -396,6 +397,12 @@ function handle(ws, msg) {
       if (room.phase !== 'lobby' || room.hostId !== pl.id) return;
       if (msg.rounds != null) room.rounds = Math.max(3, Math.min(30, Math.round(Number(msg.rounds)) || 10));
       if (LEVELS.includes(msg.level)) { room.level = msg.level; room.deck = []; }
+      if (msg.fuseMin != null || msg.fuseMax != null) {
+        const clamp = (v, d) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(FUSE_LIMITS.min, Math.min(FUSE_LIMITS.max, n)) : d; };
+        let lo = clamp(msg.fuseMin ?? room.fuseMin, room.fuseMin); let hi = clamp(msg.fuseMax ?? room.fuseMax, room.fuseMax);
+        if (lo > hi) { if (msg.fuseMin != null && msg.fuseMax == null) hi = lo; else lo = hi; }
+        room.fuseMin = lo; room.fuseMax = hi;
+      }
       if (typeof msg.teams === 'boolean') {
         if (msg.teams && !canTeams(room)) return send(ws, { t: 'err', msg: 'Týmy jdou jen pro 4 nebo 6 hráčů.' });
         room.wantTeams = msg.teams;

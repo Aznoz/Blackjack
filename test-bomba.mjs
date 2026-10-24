@@ -235,6 +235,17 @@ S[0].send({ t: 'config', teams: true });
 ls = await S[0].until((s) => s.mode === 'teams');
 assert.equal(ls.players.filter((p) => p.team === 'A').length, 3);
 S.forEach((x) => x.ws.close());
+// nastavení času výbuchu hostem (6–45 s)
+{
+  const [h1, h2] = await mkRoom(2);
+  assert.equal(h1.state.fuseMin, 8); assert.equal(h1.state.fuseMax, 30);
+  h1.send({ t: 'config', fuseMin: 10, fuseMax: 20 }); await h1.until((s) => s.fuseMin === 10 && s.fuseMax === 20);
+  h1.send({ t: 'config', fuseMin: 1, fuseMax: 99 }); await h1.until((s) => s.fuseMin === 6 && s.fuseMax === 45);
+  h1.send({ t: 'config', fuseMin: 40, fuseMax: 12 }); await h1.until((s) => s.fuseMin === 12 && s.fuseMax === 12);
+  h2.send({ t: 'config', fuseMin: 7, fuseMax: 8 }); await new Promise((r) => setTimeout(r, 80));
+  assert.equal(h1.state.fuseMin, 12, 'jen host mění čas');
+  h1.ws.close(); h2.ws.close();
+}
 }
 console.log('BOMBA: všechny testy prošly');
 process.exit(0);
