@@ -1134,6 +1134,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ ok: true, ...(komora ? komora.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
+  if (p === '/bomba/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ ok: true, ...(bomba ? bomba.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
   if (p === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     return res.end('ok');
@@ -1191,6 +1195,12 @@ let komora = null;
 import('./komora/komora.js').then((m) => { komora = m; console.log('Prokletá komora: načteno (WebSocket /komora).'); }).catch((e) => console.error('Prokletá komora se nenačetla:', e.message));
 kwss.on('connection', (ws) => { if (!komora) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } komora.handleConnection(ws); });
 
+// čtvrtá cesta: /bomba = hra BOMBA! (Tik Tak Bum, složka bomba/)
+const bwss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
+let bomba = null;
+import('./bomba/bomba.js').then((m) => { bomba = m; console.log('BOMBA: načteno (WebSocket /bomba).'); }).catch((e) => console.error('BOMBA se nenačetla:', e.message));
+bwss.on('connection', (ws) => { if (!bomba) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } bomba.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1198,7 +1208,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });
