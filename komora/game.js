@@ -1,7 +1,7 @@
 // Herní logika "Prokletá komora" – čistá logika bez sítě (kvůli testům).
 //
 // Pravidla ve zkratce:
-//  * Revolver má 6 komor. Při každém nabití jsou v něm 1–4 ostré náboje, zbytek slepé.
+//  * Revolver má 6 komor. Při každém nabití jsou v něm 2–5 ostrých nábojů (nejčastěji 3–4), zbytek slepé.
 //    Počty jsou veřejné, pořadí tajné.
 //  * Hráč na tahu může zahrát libovolně karet a potom MUSÍ vystřelit – na sebe nebo na jiného.
 //  * Slepý náboj do sebe = hraješ znovu. Ostrý náboj do sebe = ztráta života a tah končí.
@@ -119,10 +119,10 @@ export class Game {
 
   pickLiveCount() {
     const r = this.rng();
-    if (r < 0.15) return 1;
-    if (r < 0.50) return 2;
-    if (r < 0.85) return 3;
-    return 4;
+    if (r < 0.10) return 2;
+    if (r < 0.40) return 3;
+    if (r < 0.75) return 4;
+    return 5;
   }
 
   snapshot() {
