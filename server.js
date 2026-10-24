@@ -1130,6 +1130,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(400);
     return res.end('Bad request');
   }
+  if (p === '/komora/health') { // probuzení serveru z hry Prokletá komora (volá se z jiné domény)
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ ok: true, ...(komora ? komora.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
   if (p === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     return res.end('ok');
@@ -1181,6 +1185,11 @@ const wss = new WebSocketServer({
   maxPayload: 131072, // větší zprávy smí jen uploadAvatar (viz níže), ostatní max 2 KB
 });
 const hwss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
+// třetí cesta: /komora = hra Prokletá komora (vlastní herní logika ve složce komora/, běží ve stejném procesu)
+const kwss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
+let komora = null;
+import('./komora/komora.js').then((m) => { komora = m; console.log('Prokletá komora: načteno (WebSocket /komora).'); }).catch((e) => console.error('Prokletá komora se nenačetla:', e.message));
+kwss.on('connection', (ws) => { if (!komora) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } komora.handleConnection(ws); });
 
 server.on('upgrade', (req, socket, head) => {
   let p;
@@ -1189,7 +1198,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });

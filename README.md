@@ -15,17 +15,44 @@ Potřebuješ Node.js 18 nebo novější. Jediná závislost je `ws`.
 
 ## Co hra umí
 
-- Hlavní menu: Rychlá hra, Stoly (lobby + vytvoření vlastního stolu), Žebříček, Nastavení, Pravidla
-- **Nastavení → přezdívka** (2–16 znaků), zapnutí/vypnutí zvuků
+- Hlavní menu: Rychlá hra, Stoly (lobby + vytvoření vlastního stolu), Nastavení (zvuky), Pravidla
+- **Jméno** (2–16 znaků) a **profilovka** se nastavují na hlavní stránce v Nastavení účtu (platí pro všechny hry)
+- **Profilovka**: 10 předvoleb (eso a karty 2–10, každá v jiné barvě) nebo vlastní obrázek. Vlastní obrázek se v prohlížeči
+  ořízne na čtverec, zmenší na 256×256 JPEG (do ~75 kB) a nahraje na server, který ho zkontroluje (JPEG, velikost, rozměry),
+  uloží pod hash a servíruje na `/avatar/<hash>.jpg`. Profilovku vidí ostatní u stolu, v menu i v žebříčku.
+- **Obchod** a **Žebříčky** jsou na hlavní stránce portálu (odkazy uprostřed hlavičky). Žebříček čte veřejné `GET /api/leaderboard`.
+- **Air hockey**: před každým zápasem se hlasuje o rychlosti (pomalá 0,7× / normální / rychlá 1,35× rychlost puku); při různých hlasech rozhodne los mezi nimi, bez hlasu platí normální.
 - Stoly pro 5 hráčů, 3 stálé stoly + libovolné vlastní (prázdný vlastní stůl se sám zruší)
 - Hráč začíná s **5 000 chipy**, zůstatek **nikdy nespadne pod 200** (po prohře se doplní na 200)
 - Sázka **min 100, max 80 % aktuálního zůstatku**, zaokrouhleno dolů (vždy násobek 10;
   krok zaokrouhlení: <1 000 → 10, <10 000 → 50, <100 000 → 100, výš 1 000)
 - Plná pravidla: 6 balíčků, blackjack 3:2, dealer stojí na měkké 17, dealer koukne na skrytou kartu,
   pojištění 2:1, double (i po splitu), split až na 4 ruce, k splitnutým esům jen jedna karta
-- Odpojení / refresh stránky: hráč se vrátí na své místo, účet i zůstatek zůstanou
+- Zavření karty / refresh / ztráta spojení = odchod od stolu; po návratu hráč začíná v hlavním menu (účet i zůstatek zůstanou). Rozehrané kolo se dohraje automaticky (stand)
+- Prázdný vlastní stůl se po 1 minutě zruší
 - Časovače: 15 s na sázku (po první sázce), 20 s na tah, nečinný hráč se po 3 kolech odpojí
 - Ovládání z klávesnice: `H` hit, `S` stand, `D` double, `P` split, `Enter` potvrdí sázku
+
+## Air hockey
+
+Druhá hra na stejném serveru (WebSocket `/hockey`, klient v `public/airhockey/`). Zápas 1 na 1, první na 7 gólů, myší se ovládá pálka.
+Fyzika běží na serveru (`hockey-physics.js`), klient jen posílá polohu kurzoru a vykresluje. 3 stálé stoly + vlastní stoly (prázdný
+se po minutě zruší). Odměny za výhry v řadě u jednoho stolu: 200 / 400 / 650 / 1000 (a dál 1000); prohra nebo odchod od stolu sérii
+nuluje, odchod uprostřed zápasu zápas zruší bez odměny. Odměna jde do **společného zůstatku**. Testy: `node test-hockey-physics.js`,
+`node test-hockey.js`.
+
+## Společný účet
+
+Jméno, profilovka a zůstatek jsou společné pro všechny hry. Účet je buď propojený s Google (nastavuje se na hlavní stránce v Nastavení
+účtu přes HTTP API `/api/profile`, `/api/avatar`), nebo anonymní (tajný token v prohlížeči, jméno a profilovka náhodné). Při prvním
+přihlášení přes Google se anonymní postup z prohlížeče převede na Google účet.
+
+## Google účty a hlavní stránka
+
+Server obsahuje HTTP API pro hlavní stránku (`/api/login`, `/api/me`, `/api/favorites`, `/api/logout`, `/api/account`).
+Přihlášení přes Google ověřuje server (podpis, aud, platnost) a vydá vlastní relaci. Oblíbené hry a zůstatek v blackjacku
+jsou pak spojené s Google účtem na všech zařízeních. Proměnné: `GOOGLE_CLIENT_ID`, volitelně `UPSTASH_REDIS_REST_URL` +
+`UPSTASH_REDIS_REST_TOKEN` (trvalé ukládání na Renderu free). Postup viz `README-portal.md`. Testy: `node test-google.js`.
 
 ## Nasazení na reálný web
 
@@ -64,7 +91,7 @@ Proměnné prostředí:
 |---|---|---|
 | `PORT` | `3000` | port serveru |
 | `HOST` | `0.0.0.0` | na jakém rozhraní poslouchat (za proxy dej `127.0.0.1`) |
-| `DATA_DIR` | `./data` | kde se ukládá `players.json` |
+| `DATA_DIR` | `./data` | kde se ukládá `players.json` a složka `avatars/` s nahranými profilovkami |
 | `ALLOWED_ORIGINS` | (vše) | čárkami oddělený seznam povolených původů WebSocketu, např. `https://hra.example.cz` |
 
 Poznámky k provozu:
@@ -73,6 +100,9 @@ Poznámky k provozu:
   Server ukládá jen SHA-256 hash tokenu. Registrace ani hesla v téhle verzi nejsou.
 - Zůstatky a statistiky jsou v `data/players.json` – **zálohuj ho**. Při řádném vypnutí (SIGTERM/SIGINT)
   se rozehrané sázky vrátí a data se uloží.
+- **Nahrané profilovky** jsou v `DATA_DIR/avatars/` (celkem max 60 MB, max 80 kB na obrázek, nahrát lze jednou za 3 s).
+  Na Renderu (free plan) je disk dočasný – po restartu/nasazení zmizí zůstatky i profilovky (hráči se vrátí na předvolbu).
+  Trvale pomůže placený plán s Diskem a `DATA_DIR=/var/data`. Obrázky nejsou moderované.
 - Server je jeden proces v paměti, jedna instance zvládne desítky až stovky hráčů. Pro víc instancí by
   stoly a účty musely být ve sdíleném úložišti.
 - Stránku lze vložit do jiného webu přes `<iframe>` ze stejné domény; ze cizí domény ji blokuje
@@ -83,7 +113,12 @@ Poznámky k provozu:
 ```
 server.js        HTTP + WebSocket server, stoly, kola, účty
 rules.js         čistá logika: hodnota ruky, bota, limity sázek, výplaty, konfigurace (CFG)
-public/          klient: index.html, style.css, game.js
+public/          klient blackjacku: index.html, style.css, game.js, config.js
+public/airhockey/ klient air hockeye
+hockey.js        server air hockeye (stoly, zápasy, odměny)
+hockey-physics.js fyzika air hockeye
+google.js        ověření Google ID tokenu
+persist.js       ukládání dat (soubor + volitelně Upstash)
 test-rules.js    jednotkové testy pravidel
 test-bots.js     integrační test s boty přes WebSocket
 ```
@@ -101,3 +136,23 @@ npm test
 (včetně „maniaka“ sázejícího maximum a „spáče“, který nikdy netáhne). Kontroluje účetnictví zůstatku
 po každém kole, odmítnutí špatných sázek, skrytou kartu dealera, tah dealera, odpojení a návrat,
 odchod uprostřed kola, vyhození nečinných, plný stůl a uložení dat po restartu serveru.
+
+## Automat na plyšáky (`public/claw/`)
+Hra pro jednoho hráče, 3D přes vlastní WebGL engine (`gl.js`, žádná knihovna). Ovládání: joystick (myš / dotyk), mezerník = spustit,
+automat jde otáčet přetažením nebo tlačítky. 1 hra = 300, 6 her = 1500. Server (`claw.js`, `/api/claw/*`) hlídá nákup, spotřebu her
+a odměnu (jedna odměna na hru, nejdřív po minimální době hry). Hodnoty plyšáků jsou v `claw.js` (`PRIZES`).
+Adresu serveru si stránka bere z `../portal-config.js` (`apiUrl`). Test: `node test-claw.js`.
+
+## Stacker (věžička z kostek)
+
+Hra pro jednoho hráče na `/stacker/`. Jeden pokus stojí 200. Kostky se pohybují, hráč je zastavuje klepnutím / mezerníkem / klikem
+(řada má max. 4 → 3 → 2 → 1 kostku, co přečuhuje, odpadne, rychlost roste). Úrovně: 5 řad = coiny (ruleta 100/200/500/750/1000/2000
+s vahami 50/40/30/20/10/5), 10 řad = díl věcné odměny (sbírá se, hotovou věc prodáš v Obchodu na portálu, záložka Prodat; 19 věcí vč. 6 vzácných).
+Server (`stacker.js`, `/api/stacker/*`) strhává cenu, hlídá minimální dobu hry, losuje odměnu a připisuje coiny.
+
+## Prokletá komora (stejný server)
+
+Hororová ruská ruleta (složka `komora/`, frontend `public/../prokleta-komora/` na webu) běží ve stejném procesu jako ostatní hry:
+WebSocket cesta `/komora`, probuzení `/komora/health`. Ve `prokleta-komora/config.js` na webu je
+`SERVER_URL: "wss://TVUJ-SERVER.onrender.com/komora"`. Samostatný Render pro komoru už není potřeba.
+Test: `node test-komora.mjs`.
