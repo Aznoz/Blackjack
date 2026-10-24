@@ -1055,6 +1055,11 @@ async function handleApi(req, res, p) {
       const r = stacker.handle(p.slice('/api/stacker/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p === '/api/bomba/me' && req.method === 'POST') { // BOMBA: kdo se hlásí (jméno z Google účtu, profilovka, zůstatek)
+      if (!bomba) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = bomba.me(await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1198,7 +1203,7 @@ kwss.on('connection', (ws) => { if (!komora) { ws.close(1013, 'Server se spoušt
 // čtvrtá cesta: /bomba = hra BOMBA! (Tik Tak Bum, složka bomba/)
 const bwss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
 let bomba = null;
-import('./bomba/bomba.js').then((m) => { bomba = m; console.log('BOMBA: načteno (WebSocket /bomba).'); }).catch((e) => console.error('BOMBA se nenačetla:', e.message));
+import('./bomba/bomba.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); bomba = m; console.log('BOMBA: načteno (WebSocket /bomba).'); }).catch((e) => console.error('BOMBA se nenačetla:', e.message));
 bwss.on('connection', (ws) => { if (!bomba) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } bomba.handleConnection(ws); });
 
 server.on('upgrade', (req, socket, head) => {
