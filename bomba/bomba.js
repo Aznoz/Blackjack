@@ -29,13 +29,10 @@ export function init(d) { deps = d; }
 // Háčky a čárky se berou vážně (PR ≠ PŘ): neignoruje se diakritika, jen velikost písmen.
 export const norm = (s) => String(s).normalize('NFC').toLowerCase();
 
-// Doba do výbuchu: hodně proměnlivá – čtvrtina kol bouchne rychle, polovina středně, čtvrtina se hodně natáhne.
+// Doba do výbuchu: náhodně 8–30 sekund (rovnoměrně).
 function fuseMs() {
   if (FUSE_MIN && FUSE_MAX) return rndInt(FUSE_MIN, FUSE_MAX);
-  const r = Math.random();
-  if (r < 0.25) return rndInt(3_000, 8_000);
-  if (r < 0.75) return rndInt(8_000, 22_000);
-  return rndInt(22_000, 45_000);
+  return rndInt(8_000, 30_000);
 }
 
 function cleanName(s) {
