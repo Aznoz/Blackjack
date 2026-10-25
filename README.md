@@ -167,3 +167,12 @@ Server rozhoduje o všem (`game.js`), boti (`bot.js`) doplňují prázdná míst
 Testy: `test-stvanice.mjs` (náhodné hry), `test-stvanice-rules.mjs` (pravidla), `test-stvanice-bots.mjs` (boti), `test-stvanice-room.mjs` (místnosti).
 
 Úvod hry (`pick: true` v `Game`): na stole leží tolik rubů rolí, kolik je hráčů (vždy Kapitán, bandita, Zabiják a Sebevrah/Šílenec náhodně; pak pravá ruka, 2. bandita, 2. pravá ruka, druhá z rolí Sebevrah/Šílenec). Vybírá náhodný hráč a po směru hodin, roli vidí jen ten, kdo si ji vzal. Potom stejně z odkrytých postav (N náhodných z 19).
+
+## Šachy (stejný server)
+
+Klasické šachy 1v1 přes čtyřpísmenný kód místnosti. Klient je ve složce `public/sachy/` (nahrává se na web jako ostatní hry), server v `sachy/` (běží ve stejném procesu na cestě `/sachy`, zdravotní kontrola `/sachy/health`, profil `POST /api/sachy/me`).
+
+- `sachy/engine.js` – plná pravidla (rošáda, braní mimochodem, proměna, šach/mat/pat, trojí opakování, 50 tahů, nedostatek materiálu). Ověřeno perft testy (`test-sachy-engine.mjs`). Kopie enginu je v `public/sachy/engine.js` (klient podle ní přehrává historii) – po změně ji zkopíruj: `cp sachy/engine.js public/sachy/engine.js`.
+- `sachy/sachy.js` – místnosti, hodiny (bez limitu nebo 1–30 min + přídavek), nabídka remízy, vzdání, odveta s prohozením barev, odpojení (90 s na návrat, pak prohra).
+- Coiny: výhra **+1 500**, prohra **−500** (nikdy pod minimum serveru), remíza nic. Účtuje se jen když mají účet oba hráči a partie má aspoň 4 půltahy; kratší partie (a zrušené před 2. půltahem) bez coinů.
+- Testovací proměnné: `SACHY_MS_PER_MIN`, `SACHY_DROP_MS`, `SACHY_FIRST_MS`, `SACHY_START_FEN`.
