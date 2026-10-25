@@ -23,7 +23,7 @@ body.ingame #app { max-width:none; padding:0; height:100dvh; }
 .spacer { min-width:80px; }
 #menu .top .icon, .top .spacer { min-width:80px; text-align:right; }
 .screen { padding-top:8px; }
-#game.screen { padding-top:0; }
+#game.screen, #pick.screen { padding-top:0; }
 .hero { text-align:center; margin:6px 0 14px; }
 .hero-art { display:flex; justify-content:center; gap:4px; flex-wrap:wrap; margin-bottom:6px; }
 .roleico.hero { width:54px; height:54px; filter:drop-shadow(0 6px 10px #000a); }
@@ -67,17 +67,17 @@ input:focus, select:focus { border-color:var(--cyan); box-shadow:0 0 0 3px #38e1
 .cfg { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; color:var(--muted); font-size:14px; }
 
 /* ---------- hra: rozložení ---------- */
-#game { display:flex; flex-direction:column; height:100dvh; position:relative; overflow:hidden; }
-#gtop { display:flex; align-items:center; gap:2px; padding:calc(2px + env(safe-area-inset-top)) 6px 0; flex:none; min-height:40px; }
-#gtop .icon { min-width:38px; min-height:38px; font-size:18px; padding:2px; }
+#game, #pick { display:flex; flex-direction:column; height:100dvh; position:relative; overflow:hidden; }
+#gtop, #ptop { display:flex; align-items:center; gap:2px; padding:calc(2px + env(safe-area-inset-top)) 6px 0; flex:none; min-height:40px; }
+#gtop .icon, #ptop .icon { min-width:38px; min-height:38px; font-size:18px; padding:2px; }
 .ginfo { display:flex; flex-direction:column; line-height:1.15; font-size:12px; color:var(--muted); min-width:0; }
 .ginfo b { color:var(--text); font-size:13px; }
 .gturn { flex:1; text-align:center; font-weight:800; font-size:14px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .gturn.mine { color:var(--amber); text-shadow:0 0 12px #ffd23e88; }
-#timer { height:4px; background:#0a1030; flex:none; }
-#timerFill { display:block; height:100%; width:0; background:var(--cyan); transition:width .15s linear; }
-#timerFill.mine { background:var(--amber); }
-#timerFill.low { background:var(--red); }
+#timer, #ptimer { height:4px; background:#0a1030; flex:none; }
+#timerFill, #pTimerFill { display:block; height:100%; width:0; background:var(--cyan); transition:width .15s linear; }
+#timerFill.mine, #pTimerFill.mine { background:var(--amber); }
+#timerFill.low, #pTimerFill.low { background:var(--red); }
 #stage { position:relative; flex:1; min-height:0; }
 #table { position:absolute; inset:0; }
 #ring { position:absolute; left:6%; right:6%; top:6%; bottom:3%; border-radius:50%; background:radial-gradient(closest-side, #12306a 0%, #0b1c47 60%, #070f2c 100%); border:2px solid #2a4f9a; box-shadow:inset 0 0 50px #000b, 0 0 40px #1e50ff22; }
@@ -273,7 +273,7 @@ body:not(.ingame) #toast { bottom:30px; }
 }
 @media (max-height:520px) and (orientation:landscape) {
   :root { --cw:clamp(40px, 11vh, 54px); --cw-fly:42px; }
-  #gtop { min-height:30px; } #gtop .icon { min-height:30px; font-size:16px; }
+  #gtop { min-height:30px; } #gtop .icon, #ptop .icon { min-height:30px; font-size:16px; }
   .ginfo { font-size:10px; } .ginfo b { font-size:11px; }
   #bar { position:absolute; left:50%; transform:translateX(-50%); bottom:calc(var(--cw)*1.4 + 14px + env(safe-area-inset-bottom)); max-width:84%; min-height:0; padding:3px 8px; gap:6px; border:1px solid var(--line); border-radius:12px; background:#0a1030ee; z-index:12; }
   #barText { font-size:11px; line-height:1.2; }
@@ -299,3 +299,52 @@ body:not(.ingame) #toast { bottom:30px; }
 @media (prefers-reduced-motion:reduce) { * { animation-duration:.01ms !important; } }
 
 #lobbyHint { margin:6px 0 14px; }
+
+/* ---------- úvod: výběr rolí a postav ---------- */
+#pick { height:100dvh; }
+#pickBody { flex:1; min-height:0; overflow:auto; padding:10px 14px calc(16px + env(safe-area-inset-bottom)); touch-action:pan-y; text-align:center; max-width:980px; width:100%; margin:0 auto; }
+#pickTitle { margin:6px 0 2px; font-size:22px; letter-spacing:.04em; background:linear-gradient(#9af0ff,#ff4fd8); -webkit-background-clip:text; background-clip:text; color:transparent; }
+#pickMsg { color:var(--muted); font-size:14px; margin:0 0 10px; line-height:1.4; }
+#pickChips { display:flex; flex-wrap:wrap; gap:4px 2px; justify-content:center; align-items:center; margin-bottom:14px; }
+#pickChips s { color:#38508f; text-decoration:none; font-size:14px; }
+.chip { display:inline-flex; align-items:center; gap:5px; background:var(--panel); border:1px solid var(--line); border-radius:20px; padding:3px 9px 3px 4px; font-size:12px; }
+.chip b { max-width:84px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.chip.cur { border-color:var(--amber); box-shadow:0 0 12px #ffd23e66; background:#2a2410; }
+.chip.done { opacity:.6; } .chip.me b { color:var(--cyan); }
+.chip u { text-decoration:none; color:var(--green); font-weight:900; } .chip em { font-style:normal; }
+.chip .first { font-style:normal; color:var(--amber); font-weight:900; font-size:11px; }
+.av.xs { width:22px; height:22px; font-size:11px; }
+#pickGrid.roles { display:grid; grid-template-columns:repeat(auto-fit, minmax(96px, 128px)); gap:14px; justify-content:center; padding:6px; }
+.rolecard { position:relative; aspect-ratio:5/7; border-radius:12px; border:3px solid #38e1ff; background:radial-gradient(circle at 50% 40%, #1b2a66, #0a1030 75%); color:var(--text); cursor:default; padding:0; font-family:inherit; display:flex; flex-direction:column; align-items:center; justify-content:center; box-shadow:0 6px 16px #000a; overflow:visible; }
+.rolecard .rc-back span { font-size:clamp(40px, 9vw, 60px); font-weight:900; color:#38e1ff; text-shadow:0 0 18px #38e1ffaa; }
+.rolecard.pickable { cursor:pointer; animation:glow 1.2s ease-in-out infinite alternate; }
+.rolecard.pickable:hover, .rolecard.pickable:focus-visible { transform:translateY(-6px) scale(1.04); border-color:var(--amber); box-shadow:0 0 22px #ffd23e88; animation:none; }
+.rolecard.taken:not(.own) { opacity:.4; filter:grayscale(.7); border-color:#34508f; }
+.rolecard.own { border-color:var(--amber); background:linear-gradient(#f7f9ff,#dfe6fb); color:#10163a; padding:8px 6px; }
+.rolecard.own.flip { animation:flip .6s ease; }
+.rolecard .rc-front { display:flex; flex-direction:column; align-items:center; gap:4px; }
+.rolecard .rc-front .roleico { width:48px; height:48px; }
+.rolecard .rc-front b { font-size:14px; } .rolecard .rc-front small { font-size:10px; line-height:1.2; color:#34406a; }
+.rolecard .rc-front .r-bandita { color:#c7243b; } .rolecard .rc-front .r-kapitan { color:#a8741a; } .rolecard .rc-front .r-ruka { color:#0a7a9a; } .rolecard .rc-front .r-zabijak { color:#55556a; } .rolecard .rc-front .r-sebevrah { color:#b0208f; } .rolecard .rc-front .r-silenec { color:#6b3fb0; }
+.who { position:absolute; left:50%; bottom:-14px; transform:translateX(-50%); display:flex; align-items:center; gap:4px; background:#050813; border:1px solid var(--line); border-radius:14px; padding:2px 8px 2px 3px; font-size:11px; font-weight:800; color:var(--text); white-space:nowrap; max-width:130%; filter:none; }
+.rolecard.taken { margin-bottom:12px; } .charcard.taken { padding-bottom:30px; }
+#pickGrid.chars { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 190px)); justify-content:center; gap:12px; padding:4px 2px; }
+.charcard { position:relative; background:linear-gradient(#f7f9ff,#dfe6fb); color:#10163a; border:3px solid #8fa3c8; border-radius:14px; padding:10px 8px; font-family:inherit; text-align:center; cursor:default; display:flex; flex-direction:column; align-items:center; gap:3px; box-shadow:0 6px 14px #000a; }
+.charcard .cc-art .portrait { width:64px; height:64px; border-radius:50%; border:3px solid #34508f; background:#0a1030; }
+.charcard b { font-size:14px; } .charcard p { margin:0; font-size:11.5px; line-height:1.3; color:#2a3566; }
+.cc-life { color:#d1224f; font-size:12px; letter-spacing:1px; } .cc-life small { margin-left:6px; letter-spacing:0; color:#4a5a88; font-size:11px; }
+.charcard.pickable { cursor:pointer; border-color:#e5a91a; }
+.charcard.pickable:hover { transform:translateY(-3px); }
+.charcard.sel { border-color:var(--green); box-shadow:0 0 0 3px #5df0a088, 0 0 22px #5df0a088; transform:translateY(-4px); }
+.charcard.taken { opacity:.5; filter:grayscale(.6); }
+.charcard:disabled { color:#10163a; }
+#pickAct { margin:16px auto 0; max-width:420px; }
+@keyframes glow { from { box-shadow:0 6px 16px #000a, 0 0 6px #38e1ff66; } to { box-shadow:0 6px 16px #000a, 0 0 22px #38e1ffcc; } }
+@keyframes flip { from { transform:rotateY(90deg); } to { transform:none; } }
+@media (max-width:520px) { #pickGrid.roles { grid-template-columns:repeat(4, 1fr); gap:10px 8px; } .rolecard.own { grid-column:span 1; } .rolecard .rc-front small { display:none; } .rolecard .rc-front b { font-size:11px; } .rolecard .rc-front .roleico { width:34px; height:34px; } #pickGrid.chars { grid-template-columns:1fr 1fr; } .charcard p { font-size:10.5px; } }
+@media (max-height:520px) and (orientation:landscape) { #pickTitle { font-size:16px; margin:0; } #pickMsg { margin-bottom:4px; font-size:12px; } #pickChips { margin-bottom:6px; } #pickGrid.chars { grid-template-columns:repeat(4, 1fr); } .charcard { padding:6px; } .charcard .cc-art .portrait { width:44px; height:44px; } .charcard p { font-size:10px; } #pickGrid.roles { grid-template-columns:repeat(8, 1fr); } }
+
+.mybox { display:flex; gap:12px; align-items:center; text-align:left; background:var(--panel); border:1px solid var(--amber); border-radius:14px; padding:10px 14px; }
+.mybox .roleico { width:52px; height:52px; flex:none; } .mybox p { margin:3px 0 0; font-size:13px; color:#c8d6f5; line-height:1.35; } .mybox p.muted { text-align:left; font-size:12px; margin-top:6px; }
+
+#pickAct:has(.btn) { position:sticky; bottom:0; padding:10px 0 4px; background:linear-gradient(transparent, #050813 35%); z-index:5; }

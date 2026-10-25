@@ -70,13 +70,21 @@ export const ROLES = {
 };
 export const SILENEC_GOAL = 10;
 
-export function roleSet(n) {
-  const base = ['kapitan', 'bandita', 'bandita', 'zabijak'];
+/** Sestava rolí pro n hráčů. Vždy: Kapitán, bandita, Zabiják a jedna z rolí Sebevrah / Šílenec (náhodně). Další hráči přidávají zbytek. */
+export function roleSet(n, rng = Math.random) {
+  const x = rng() < 0.5 ? 'sebevrah' : 'silenec';
+  const y = x === 'sebevrah' ? 'silenec' : 'sebevrah';
+  const base = ['kapitan', 'bandita', 'zabijak', x];
   if (n >= 5) base.push('ruka');
-  if (n >= 6) base.push('silenec');
+  if (n >= 6) base.push('bandita');
   if (n >= 7) base.push('ruka');
-  if (n >= 8) base.push('sebevrah');
+  if (n >= 8) base.push(y);
   return base;
+}
+/** Co se o sestavě ví předem (bot / hráč): pro dané n počty jistých rolí; Sebevrah a Šílenec jsou 0,5 (do 7 hráčů je přítomen jen jeden z nich). */
+export function roleOdds(n) {
+  const o = { kapitan: 1, bandita: n >= 6 ? 2 : 1, zabijak: 1, ruka: n >= 7 ? 2 : n >= 5 ? 1 : 0, sebevrah: n >= 8 ? 1 : 0.5, silenec: n >= 8 ? 1 : 0.5 };
+  return o;
 }
 export const MIN_PLAYERS = 4;
 export const MAX_PLAYERS = 8;

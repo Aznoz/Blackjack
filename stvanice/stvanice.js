@@ -85,7 +85,7 @@ function schedule(room) {
   const pd = g.pending;
   const h = byId(room, pd.pid);
   if (isBotTurn(room, pd.pid)) {
-    const quick = pd.type === 'respond' || pd.type === 'discard' || pd.type === 'pick' || pd.type === 'rescue';
+    const quick = ['respond', 'discard', 'pick', 'rescue', 'rolepick', 'charpick'].includes(pd.type);
     room.timer = setTimeout(() => botAct(room), rnd(quick ? BOT_MIN * 0.7 : BOT_MIN, quick ? BOT_MAX * 0.7 : BOT_MAX));
     return;
   }
@@ -205,7 +205,7 @@ function leave(ws, voluntary) {
   if (live(room).length === 0) room.emptySince = now();
 }
 
-const SAFE_KEYS = ['act', 'cardId', 'target', 'tzone', 'tcard', 'replaceId', 'pass', 'escape', 'pick', 'src', 'pid'];
+const SAFE_KEYS = ['act', 'cardId', 'target', 'tzone', 'tcard', 'replaceId', 'pass', 'escape', 'pick', 'src', 'pid', 'slot', 'char'];
 function cleanAction(a) {
   if (!a || typeof a !== 'object' || Array.isArray(a)) return null;
   const out = {};
@@ -235,7 +235,7 @@ function startGame(room) {
   for (let i = 0; list.length < total; i++) list.push({ id: 'b' + (i + 1), name: names[i % names.length], bot: true, avatar: null });
   for (const p of hs) { p.afk = false; p.strikes = 0; }
   room.bots = new Map();
-  room.game = new Game({ players: list });
+  room.game = new Game({ players: list, pick: true });
   for (const p of room.game.players) room.bots.set(p.id, new Bot(room.game, p.id)); // každý bot sleduje hru od začátku (i za hráče, který odejde)
   room.phase = 'game';
   afterStep(room);

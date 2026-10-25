@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Vesmírná štvanice</title>
 <meta name="theme-color" content="#050813">
-<link rel="stylesheet" href="stvanice.css?v=1">
+<link rel="stylesheet" href="stvanice.css?v=2">
 </head>
 <body>
 <div id="app">
@@ -63,6 +63,25 @@
     <button class="btn ghost wide" id="helpLobby" type="button">📖 Pravidla a karty</button>
   </section>
 
+  <!-- VÝBĚR ROLÍ A POSTAV -->
+  <section id="pick" class="screen" hidden>
+    <header id="ptop">
+      <button class="icon" id="leavePick" type="button" aria-label="Opustit hru">✕</button>
+      <div class="ginfo"><b id="pRoom"></b><span id="pPhase"></span></div>
+      <div class="gturn" id="pTurn"></div>
+      <button class="icon" id="helpPick" type="button" aria-label="Pravidla">?</button>
+      <button class="icon" id="mutePick" type="button" aria-label="Zvuk">🔊</button>
+    </header>
+    <div id="ptimer"><i id="pTimerFill"></i></div>
+    <div id="pickBody">
+      <h2 id="pickTitle"></h2>
+      <p id="pickMsg"></p>
+      <div id="pickChips"></div>
+      <div id="pickGrid"></div>
+      <div id="pickAct"></div>
+    </div>
+  </section>
+
   <!-- HRA -->
   <section id="game" class="screen" hidden>
     <header id="gtop">
@@ -109,6 +128,6 @@
   <div id="flash" hidden></div>
 </div>
 <script src="config.js"></script>
-<script type="module" src="main.js?v=1"></script>
+<script type="module" src="main.js?v=2"></script>
 </body>
 </html>

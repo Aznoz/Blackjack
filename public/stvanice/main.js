@@ -1,5 +1,5 @@
 // Vesmírná štvanice – klient (stůl, karty, přetahování, animace, napojení na server).
-import { TYPES, CHARS, ROLES, SUITS, rankLabel, charById, isWeapon, MIN_PLAYERS, MAX_PLAYERS } from './data.js?v=1';
+import { TYPES, CHARS, ROLES, SUITS, rankLabel, charById, isWeapon, MIN_PLAYERS, MAX_PLAYERS } from './data.js?v=2';
 import { suitSvg, iconSvg, roleSvg, portraitSvg, botSvg, BACK_SVG } from './art.js?v=1';
 
 const CFG = window.STVANICE_CONFIG || {};
@@ -69,7 +69,7 @@ const sfx = {
   boom() { noise(0.7, 0.4, 500); tone(80, 0.6, 'sawtooth', 0.12, -50); },
   err() { tone(180, 0.15, 'sawtooth', 0.05, -60); },
 };
-function setMute(m) { muted = m; LS.set('stvanice_mute', m ? '1' : '0'); for (const id of ['muteMenu', 'muteGame']) $(id).textContent = m ? '🔇' : '🔊'; }
+function setMute(m) { muted = m; LS.set('stvanice_mute', m ? '1' : '0'); for (const id of ['muteMenu', 'muteGame', 'mutePick']) $(id).textContent = m ? '🔇' : '🔊'; }
 
 // ------------------------------------------------------------------ spojení
 let ws = null; let st = null; let G = null; let me = null; let session = null;
@@ -117,7 +117,7 @@ function onMsg(m) {
 }
 
 // ------------------------------------------------------------------ obrazovky
-function show(id) { for (const s of ['menu', 'lobby', 'game']) $(s).hidden = s !== id; if (id !== 'game') window.scrollTo(0, 0); document.body.classList.toggle('ingame', id === 'game'); }
+function show(id) { for (const s of ['menu', 'lobby', 'pick', 'game']) $(s).hidden = s !== id; if (id !== 'game' && id !== 'pick') window.scrollTo(0, 0); document.body.classList.toggle('ingame', id === 'game' || id === 'pick'); }
 function leaveLocal(keepStatus) {
   st = null; G = null; me = null; session = null; lastSeq = null; selected = null; fxQ.length = 0;
   LS.del('stvanice_session'); clearInterval(timerT);
@@ -185,6 +185,61 @@ async function loadMe() {
   } catch (e) { /* server se probouzí */ }
 }
 
+// ------------------------------------------------------------------ úvod: výběr rolí a postav
+let pickSel = null;
+function renderPick(prev) {
+  const pk = G.pick; const pr = G.prompt; const mineTurn = !!pr && pr.pid === me;
+  const role = pk.kind === 'rolepick';
+  if (!prev || prev.pick.kind !== pk.kind) pickSel = null;
+  const mine = meP();
+  $('pRoom').textContent = `Místnost ${st.code}`;
+  $('pPhase').textContent = role ? 'Výběr rolí' : 'Výběr postav';
+  $('pTurn').textContent = mineTurn ? '🎯 Vybíráš ty' : (pr ? `Vybírá: ${nameOf(pr.pid)}` : '');
+  $('pTurn').classList.toggle('mine', mineTurn);
+  $('pickTitle').textContent = role ? 'Vyber si svou roli' : 'Vyber si svou postavu';
+  $('pickMsg').textContent = role
+    ? (mineTurn ? 'Klepni na jednu z karet rubem nahoru. Svou roli uvidíš jen ty.' : 'Role jsou rubem nahoru. Každý si vezme jednu, uvidí ji jen on sám.')
+    : (mineTurn ? 'Klepni na postavu a potvrď výběr. Postavy jsou odkryté všem.' : 'Postavy jsou odkryté všem – vybírá se po směru hodinových ručiček.');
+  // pořadí vybírání (po směru hodin od prvního)
+  const n = G.players.length;
+  const f = Math.max(0, G.players.findIndex((p) => p.id === pk.first));
+  const chips = [];
+  for (let k = 0; k < n; k++) {
+    const p = G.players[(f + k) % n];
+    const done = role ? pk.slots.some((s) => s.by === p.id) : pk.chars.some((s) => s.by === p.id);
+    const cur = pr && pr.pid === p.id;
+    const cap = p.role === 'kapitan' && p.revealed;
+    chips.push(`<span class="chip${cur ? ' cur' : ''}${done ? ' done' : ''}${p.id === me ? ' me' : ''}">${k === 0 ? '<i class="first">1.</i>' : ''}${avatarHtml(p, 'av xs')}<b>${esc(p.name)}</b>${cap ? '<em title="Lodní kapitán">⭐</em>' : ''}${done ? '<u>✓</u>' : ''}</span>`);
+  }
+  $('pickChips').innerHTML = chips.join('<s>›</s>');
+  const grid = $('pickGrid'); const act = $('pickAct');
+  grid.className = role ? 'roles' : 'chars';
+  if (role) {
+    act.innerHTML = mine && mine.role ? `<div class="mybox">${roleSvg(mine.role, 'roleico')}<div><b class="rolename r-${mine.role}">${esc(ROLES[mine.role].name)}</b><p>${esc(ROLES[mine.role].text)}</p><p class="muted">Nikomu ji neukazuj. Ostatní si ještě vybírají.</p></div></div>` : '';
+    grid.innerHTML = pk.slots.map((s, i) => {
+      const taker = s.by ? P(s.by) : null;
+      const own = s.by === me;
+      const face = own && mine.role ? `<div class="rc-front">${roleSvg(mine.role, 'roleico')}<b class="r-${mine.role}">${esc(ROLES[mine.role].short)}</b></div>` : '<div class="rc-back"><span>?</span></div>';
+      return `<button type="button" class="rolecard${s.by ? ' taken' : ''}${own ? ' own flip' : ''}${mineTurn && !s.by ? ' pickable' : ''}" data-slot="${i}" ${mineTurn && !s.by ? '' : 'disabled'} aria-label="Karta role ${i + 1}">${face}${taker ? `<span class="who">${avatarHtml(taker, 'av xs')}${esc(taker.name)}</span>` : ''}</button>`;
+    }).join('');
+    grid.querySelectorAll('.pickable').forEach((b) => { b.onclick = () => { sfx.card(); send({ t: 'act', a: { slot: Number(b.dataset.slot) } }); }; });
+  } else {
+    if (mine && mine.role) {
+      $('pickMsg').innerHTML += ` Tvoje role: <b class="rolename r-${mine.role}">${esc(ROLES[mine.role].name)}</b>.`;
+    }
+    grid.innerHTML = pk.chars.map((s) => {
+      const ch = charById(s.id); const taker = s.by ? P(s.by) : null;
+      const can = mineTurn && !s.by;
+      return `<button type="button" class="charcard${s.by ? ' taken' : ''}${can ? ' pickable' : ''}${pickSel === s.id ? ' sel' : ''}" data-char="${s.id}" ${can ? '' : 'disabled'}>
+        <div class="cc-art">${portraitSvg(s.id, 'portrait')}</div><b>${esc(ch.name)}</b><span class="cc-life">${'♥'.repeat(ch.lives)}<small>${ch.lives} ${ch.lives === 1 ? 'život' : ch.lives < 5 ? 'životy' : 'životů'}</small></span>
+        <p>${esc(ch.text)}</p>${taker ? `<span class="who">${avatarHtml(taker, 'av xs')}${esc(taker.name)}</span>` : ''}</button>`;
+    }).join('');
+    grid.querySelectorAll('.pickable').forEach((b) => { b.onclick = () => { pickSel = b.dataset.char; sfx.tick(); renderPick(G.pick ? { pick: pk } : null); }; });
+    act.innerHTML = mineTurn ? `<button class="btn big" id="pickOkChar" type="button" ${pickSel && pk.chars.some((c) => c.id === pickSel && !c.by) ? '' : 'disabled'}>${pickSel ? 'Vybrat: ' + esc(charById(pickSel).name) : 'Vyber postavu'}</button>` : '';
+    const ok = $('pickOkChar'); if (ok) ok.onclick = () => { if (pickSel) { send({ t: 'act', a: { char: pickSel } }); pickSel = null; } };
+  }
+}
+
 // ------------------------------------------------------------------ jádro vykreslení hry
 let selected = null;      // vybraná karta v ruce (klepnutím)
 let wildMode = false; let wildPick = [];
@@ -204,6 +259,18 @@ function onState(s) {
 function applyState(s, first) {
   const prevG = G;
   G = s.game;
+  if (G.pick) { // úvod: výběr rolí / postav
+    show('pick');
+    const evs0 = s.events || [];
+    if (lastSeq === null) lastSeq = evs0.length ? evs0[evs0.length - 1].seq : 0;
+    const fresh0 = evs0.filter((e) => e.seq > lastSeq);
+    if (fresh0.length) lastSeq = fresh0[fresh0.length - 1].seq;
+    deadlineLocal = s.ttl != null ? Date.now() + s.ttl : 0; ttlMax = s.ttlMax || 0;
+    for (const e of fresh0) fxQ.push(e);
+    renderPick(prevG && prevG.pick ? prevG : null);
+    runFx(); startTimerLoop();
+    return;
+  }
   show('game');
   // události (animace)
   const evs = s.events || [];
@@ -381,6 +448,8 @@ function describePrompt(pr) {
     case 'rescue': return mineP ? 'Umíráš! Zahraj Pilulku nebo Foukačku a zůstaneš ve hře.' : `${who} se zachraňuje před smrtí…`;
     case 'cell': return mineP ? `Jsi ve vesmírné cele (zbývá ${pr.turnsLeft} ${pr.turnsLeft === 1 ? 'tah' : 'tahy'}). Odhoď Vesmírnou střelu a utečeš, jinak tah vynecháš.` : `${who} sedí v cele…`;
     case 'discard': return mineP ? `Máš moc karet – odhoď ještě ${pr.count}. (Klepni na kartu.)` : `${who} odhazuje karty…`;
+    case 'rolepick': return mineP ? 'Vyber si kartu role.' : `${who} si vybírá roli…`;
+    case 'charpick': return mineP ? 'Vyber si postavu.' : `${who} si vybírá postavu…`;
     case 'pick': return mineP ? 'Vyber si kartu.' : `${who} vybírá kartu…`;
     case 'drawsrc': return mineP ? 'Odkud si vezmeš první kartu?' : `${who} vybírá, odkud líznout…`;
     default: return '';
@@ -421,7 +490,7 @@ function startTimerLoop() {
   clearInterval(timerT);
   const tick = () => {
     const left = deadlineLocal ? Math.max(0, deadlineLocal - Date.now()) : 0;
-    const f = $('timerFill');
+    const f = $(G.pick ? 'pTimerFill' : 'timerFill');
     if (!deadlineLocal || !ttlMax || G.over) { f.style.width = '0'; return; }
     f.style.width = `${(left / ttlMax) * 100}%`;
     const mineT = isMine();
@@ -830,6 +899,9 @@ async function playEvent(e) {
       await sleep(700); break;
     }
     case 'station': sfx.card(); break;
+    case 'rolepick': case 'charpick': sfx.card(); break;
+    case 'captain': sfx.turn(); break;
+    case 'deal': sfx.card(); break;
     default:
   }
 }
@@ -868,7 +940,7 @@ function showHelp(tab = 'rules') {
       <li>Ovládání: karty <b>přetahuj</b> na cíl (hráče), doprostřed stolu, nebo – u vykládacích karet – do siluet nad rukou. Klepnutí na kartu ji vybere a ukáže cíle.</li>
     </ol>`,
     roles: Object.entries(ROLES).map(([k, r]) => `<div class="hrow">${roleSvg(k, 'roleico lg')}<div><b>${esc(r.name)}</b><p>${esc(r.text)}</p></div></div>`).join('') +
-      `<p class="muted">Podle počtu hráčů: 4 = Kapitán, 2 bandité, Zabiják · 5 = + pravá ruka · 6 = + šílenec · 7 = + 2. pravá ruka · 8 = + sebevrah.</p>`,
+      `<p class="muted">Na začátku hry leží na stole tolik karet rolí rubem nahoru, kolik je hráčů. Každý si jednu vezme (začíná náhodný hráč, pak po směru hodin) a uvidí ji jen on. Vždy je mezi nimi Kapitán, bandita, Zabiják a jedna z rolí Sebevrah / Šílenec (náhodně). Další hráči přidávají: 5 = pravá ruka · 6 = druhý bandita · 7 = druhá pravá ruka · 8 = druhá z rolí Sebevrah / Šílenec. Pak se z odkrytých postav vybírá stejným způsobem.</p>`,
     chars: CHARS.map((c) => `<div class="hrow">${portraitSvg(c.id, 'portrait sm')}<div><b>${esc(c.name)}</b> <small>${c.lives} ${c.lives === 1 ? 'život' : c.lives < 5 ? 'životy' : 'životů'}</small><p>${esc(c.text)}</p></div></div>`).join(''),
     cards: Object.entries(TYPES).map(([k, t]) => `<div class="hrow">${iconSvg(k, 'icon sm')}<div><b>${esc(t.name)}</b> <small>${t.kind === 'instant' ? 'zahraje se' : t.kind === 'equip' ? 'vykládací' : 'stavová'} · ${t.count}×</small><p>${esc(t.text)}</p></div></div>`).join('') +
       `<div class="suits">${Object.entries(SUITS).map(([k, s]) => `<span>${suitSvg(k, 'suit big')}${s.name}</span>`).join('')}<p class="muted">Barvy mají význam u losování: <b>Nova</b> a <b>Kometa</b> jsou červené, <b>Pulsar</b> a <b>Asteroid</b> černé. Opasek a John Doe se zachrání Novou, Vynález zkázy exploduje při Pulsaru 2–9.</p></div>`,
@@ -885,7 +957,7 @@ function leave() { send({ t: 'leave' }); wantOpen = false; setTimeout(() => { if
 
 function init() {
   setMute(muted);
-  for (const id of ['muteMenu', 'muteGame']) $(id).onclick = () => { setMute(!muted); if (!muted) sfx.card(); };
+  for (const id of ['muteMenu', 'muteGame', 'mutePick']) $(id).onclick = () => { setMute(!muted); if (!muted) sfx.card(); };
   if (CFG.BACK_URL) $('back').href = CFG.BACK_URL;
   $('heroArt').innerHTML = ['kapitan', 'ruka', 'bandita', 'zabijak', 'sebevrah', 'silenec'].map((r) => roleSvg(r, 'roleico hero')).join('');
   $('name').value = LS.get('stvanice_name') || '';
@@ -908,7 +980,8 @@ function init() {
   $('startBtn').onclick = () => { audio(); send({ t: 'start' }); };
   $('leaveLobby').onclick = leave;
   $('leaveGame').onclick = () => { if (confirm('Opravdu odejít ze hry? Za tebe bude hrát bot.')) leave(); };
-  for (const id of ['helpMenu', 'helpLobby', 'helpGame']) $(id).onclick = () => showHelp();
+  $('leavePick').onclick = () => { if (confirm('Opravdu odejít ze hry? Za tebe bude hrát bot.')) leave(); };
+  for (const id of ['helpMenu', 'helpLobby', 'helpGame', 'helpPick']) $(id).onclick = () => showHelp();
   $('help').onclick = (e) => { if (e.target === $('help')) $('help').hidden = true; };
   const hand = $('hand');
   hand.addEventListener('pointerdown', onHandDown);
@@ -917,7 +990,7 @@ function init() {
   window.addEventListener('pointercancel', onCancel);
   $('mAv').addEventListener('click', tapMine);
   $('stage').addEventListener('click', (e) => { if (selected != null && !e.target.closest('.seat') && !e.target.closest('#mAv')) { const c = cardById(selected); if (c && playInfo(c).kind === 'center') { const id = selected; selected = null; send({ t: 'act', a: { act: 'play', cardId: id } }); } } });
-  window.addEventListener('resize', () => { if (G && !drag) renderGame(G); });
+  window.addEventListener('resize', () => { if (G && !G.pick && !drag) renderGame(G); });
   document.addEventListener('contextmenu', (e) => { if (e.target.closest('.card')) e.preventDefault(); });
   loadMe();
   try { const s = JSON.parse(LS.get('stvanice_session') || 'null'); if (s && s.code && s.token) { session = s; connect(); } else wake(); } catch (e) { wake(); }

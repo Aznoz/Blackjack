@@ -11,7 +11,7 @@ for (let i = 0; i < GAMES; i++) {
   const rng = mulberry(77 + i * 13);
   const n = MIN_PLAYERS + (i % (MAX_PLAYERS - MIN_PLAYERS + 1));
   const players = Array.from({ length: n }, (_, k) => ({ id: 'b' + k, name: 'B' + k, bot: true }));
-  const g = new Game({ players, rng });
+  const g = new Game({ players, rng, pick: true });
   const bots = new Map(g.players.map((p) => [p.id, new Bot(g, p.id, rng)]));
   let guard = 0;
   while (g.pending && !g.result) {

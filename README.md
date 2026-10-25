@@ -165,3 +165,5 @@ Ve `stvanice/config.js` na webu: `SERVER_URL: "wss://TVUJ-SERVER.onrender.com/st
 Server rozhoduje o všem (`game.js`), boti (`bot.js`) doplňují prázdná místa a přebírají odpojené/AFK hráče.
 `public/stvanice/data.js` je kopie `stvanice/data.js` – po změně dat ji znovu zkopíruj.
 Testy: `test-stvanice.mjs` (náhodné hry), `test-stvanice-rules.mjs` (pravidla), `test-stvanice-bots.mjs` (boti), `test-stvanice-room.mjs` (místnosti).
+
+Úvod hry (`pick: true` v `Game`): na stole leží tolik rubů rolí, kolik je hráčů (vždy Kapitán, bandita, Zabiják a Sebevrah/Šílenec náhodně; pak pravá ruka, 2. bandita, 2. pravá ruka, druhá z rolí Sebevrah/Šílenec). Vybírá náhodný hráč a po směru hodin, roli vidí jen ten, kdo si ji vzal. Potom stejně z odkrytých postav (N náhodných z 19).

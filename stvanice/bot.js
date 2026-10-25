@@ -2,10 +2,11 @@
 // Bot nikdy nepodvádí: o ostatních vidí jen to, co vidí člověk (počet karet, vyložené karty, životy, odhalené role mrtvých,
 // kdo na koho střílel). Z toho si vede pravděpodobnostní odhad rolí a podle vlastní role rozhoduje, na koho střílet,
 // koho léčit a koho nechat být.
-import { TYPES, isWeapon, roleSet } from './data.js';
+import { TYPES, isWeapon, roleOdds } from './data.js';
 import { enumeratePlays } from './actions.js';
 
 const ROLE_LIST = ['kapitan', 'ruka', 'bandita', 'zabijak', 'sebevrah', 'silenec'];
+const CHAR_RATE = { blackhole: 7.5, mjohnson: 6, mat: 7, jjohnson: 6, jjackson: 7, fwild: 6, underpost: 6.5, doe: 7, blackjack: 6, cassidy: 5, acecart: 6, trench: 6.5, lafayette: 6, kriko: 6.5, trash: 6.5, bench: 5.5, belt: 6, put: 6, jurassic: 4.5 };
 const clamp = (x, a, b) => Math.max(a, Math.min(b, x));
 
 export class Bot {
@@ -33,8 +34,13 @@ export class Bot {
     const g = this.g; const me = this.me();
     if (q.id === me.id) return { [me.role]: 1 };
     if (q.revealed) return { [q.role]: 1 };
-    const pool = {};
-    for (const r of roleSet(g.players.length)) pool[r] = (pool[r] || 0) + 1;
+    const n = g.players.length;
+    const pool = { ...roleOdds(n) };
+    // do 7 hráčů je ve hře jen jeden z rolí Sebevrah / Šílenec – pokud jsem ho viděl (já, nebo odhalený mrtvý), druhý ve hře není
+    if (n < 8) {
+      const seen = [me, ...g.players.filter((p) => p.revealed && p.id !== me.id)].map((p) => p.role);
+      if (seen.includes('sebevrah')) { pool.sebevrah = 1; pool.silenec = 0; } else if (seen.includes('silenec')) { pool.silenec = 1; pool.sebevrah = 0; }
+    }
     pool[me.role] -= 1;
     for (const p of g.players) if (p.revealed && p.id !== me.id) pool[p.role] -= 1;
     const w = {}; let sum = 0;
@@ -158,10 +164,26 @@ export class Bot {
       case 'rescue': return { cardId: pd.usable.find((id) => me.hand.find((c) => c.id === id).type === 'pilulka') ?? pd.usable[0] };
       case 'cell': return { escape: true, cardId: this.worstCards(me.hand.filter((c) => pd.usable.includes(c.id)), 1)[0].id };
       case 'discard': return { cardId: this.worstCards(me.hand, 1)[0].id };
+      case 'rolepick': return { slot: pd.free[Math.floor(this.rng() * pd.free.length)] };
+      case 'charpick': return this.decideChar(pd);
       case 'pick': return this.decidePick(pd);
       case 'drawsrc': return this.decideSource(pd);
       default: return g.autoAction();
     }
+  }
+
+  /** Výběr postavy: hrubé hodnocení postav + malé úpravy podle vlastní role (bot svou roli zná). */
+  decideChar(pd) {
+    const me = this.me();
+    const aggressive = ['bandita', 'zabijak', 'silenec', 'sebevrah'].includes(me.role);
+    const best = pd.free.map((id) => {
+      let s = (CHAR_RATE[id] ?? 5) + this.rng() * 1.6;
+      if (aggressive && (id === 'blackhole' || id === 'mat')) s += 1.5;
+      if ((me.role === 'kapitan' || me.role === 'ruka') && (id === 'bench' || id === 'put' || id === 'trash')) s += 1;
+      if (me.role === 'kapitan' && (id === 'put' || id === 'jurassic' || id === 'bench')) s += 0.5; // Kapitán má o život víc
+      return [s, id];
+    }).sort((a, b) => b[0] - a[0])[0];
+    return { char: best[1] };
   }
 
   decideRespond(pd) {

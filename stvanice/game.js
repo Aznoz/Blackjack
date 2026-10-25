@@ -10,7 +10,7 @@ const isRed = (c) => c.suit === 'nova' || c.suit === 'kometa';
 
 export class Game {
   /** players: [{ id, name, bot, avatar }] (4–8, boti už doplnění), rng: () => [0,1) */
-  constructor({ players, rng }) {
+  constructor({ players, rng, pick = false }) {
     this.rng = rng || Math.random;
     this.seq = 0;
     this.events = [];
@@ -20,6 +20,7 @@ export class Game {
     this.limbo = [];
     this.phase = 'setup';
     this.turnPid = null;
+    this.pickMode = !!pick;
     this.setup(players);
     this.gen = this.main();
     this.advance(undefined);
@@ -55,26 +56,81 @@ export class Game {
   // ------------------------------------------------------------------ příprava hry
   setup(list) {
     const n = list.length;
-    const roles = this.shuffle(roleSet(n));
-    const chars = this.shuffle(CHARS.slice()).slice(0, n);
     const seats = this.shuffle(list.slice());
-    this.players = seats.map((s, i) => {
-      const char = chars[i];
-      const role = roles[i];
-      const maxLife = char.lives + (role === 'kapitan' ? 1 : 0);
-      return {
-        id: s.id, name: s.name, bot: !!s.bot, avatar: s.avatar || null, seat: i,
-        char, role, maxLife, life: maxLife, hand: [], table: [], status: [],
-        alive: true, revealed: role === 'kapitan', lilyUsed: false, dmg: 0, turnOver: false,
-      };
-    });
+    this.players = seats.map((s, i) => ({
+      id: s.id, name: s.name, bot: !!s.bot, avatar: s.avatar || null, seat: i,
+      char: null, role: null, maxLife: 0, life: 0, hand: [], table: [], status: [],
+      alive: true, revealed: false, lilyUsed: false, dmg: 0, turnOver: false,
+    }));
     this.deck = this.shuffle(buildDeck(() => this.rng()));
     this.discard = [];
+    this.roleSlots = null; this.charPool = null;
+    if (!this.pickMode) { // rychlé přímé rozdání (testy): role i postavy přidělí náhoda
+      const roles = this.shuffle(roleSet(n, () => this.rng()));
+      const chars = this.shuffle(CHARS.slice()).slice(0, n);
+      this.players.forEach((p, i) => { p.role = roles[i]; p.char = chars[i]; });
+      this.startDeal();
+    }
+  }
+  /** Po výběru rolí a postav: životy, počáteční karty, Kapitán se odhalí. */
+  startDeal() {
+    for (const p of this.players) {
+      p.maxLife = p.char.lives + (p.role === 'kapitan' ? 1 : 0);
+      p.life = p.maxLife;
+      p.revealed = p.role === 'kapitan';
+    }
     for (const p of this.players) {
       const cnt = p.role === 'kapitan' ? p.char.lives : p.life;
       p.hand.push(...this.take(cnt));
     }
     this.captain = this.players.find((p) => p.role === 'kapitan');
+  }
+
+  /** Úvod: role (rubem nahoru, vidí je jen ten, kdo si ji vzal), pak postavy (odkryté). Každá fáze začíná náhodným hráčem a jde po směru hodin. */
+  *pickPhase() {
+    const n = this.players.length;
+    // --- role
+    this.roleSlots = this.shuffle(roleSet(n, () => this.rng())).map((role) => ({ role, by: null }));
+    this.phase = 'rolepick';
+    this.emit('rolepick-start', { n });
+    let first = this.rint(n);
+    this.pickFirst = this.players[first].id;
+    this.say(`Na stole leží ${n} karet rolí rubem nahoru. Začíná ${this.players[first].name}.`);
+    for (let k = 0; k < n; k++) {
+      const p = this.players[(first + k) % n];
+      const free = this.roleSlots.map((s, i) => (s.by ? -1 : i)).filter((i) => i >= 0);
+      const a = yield this.prompt(p.id, 'rolepick', { free },
+        (x) => (Number.isInteger(x.slot) && free.includes(x.slot) ? null : 'Vyber si volnou kartu role.'),
+        () => ({ slot: free[this.rint(free.length)] }));
+      this.roleSlots[a.slot].by = p.id;
+      p.role = this.roleSlots[a.slot].role;
+      this.emit('rolepick', { pid: p.id, slot: a.slot });
+      this.say(`${p.name} si vzal roli.`);
+    }
+    const cap = this.players.find((p) => p.role === 'kapitan');
+    cap.revealed = true;
+    this.emit('captain', { pid: cap.id });
+    this.say(`${cap.name} je Lodní kapitán!`);
+    // --- postavy
+    this.charPool = this.shuffle(CHARS.slice()).slice(0, n).map((char) => ({ char, by: null }));
+    this.phase = 'charpick';
+    this.emit('charpick-start', { n });
+    first = this.rint(n);
+    this.pickFirst = this.players[first].id;
+    this.say(`Na stole je ${n} postav. Vybírá se po směru hodin, začíná ${this.players[first].name}.`);
+    for (let k = 0; k < n; k++) {
+      const p = this.players[(first + k) % n];
+      const free = this.charPool.filter((s) => !s.by).map((s) => s.char.id);
+      const a = yield this.prompt(p.id, 'charpick', { free },
+        (x) => (free.includes(x.char) ? null : 'Vyber si volnou postavu.'),
+        () => ({ char: free[this.rint(free.length)] }));
+      const slot = this.charPool.find((s) => s.char.id === a.char);
+      slot.by = p.id; p.char = slot.char;
+      this.emit('charpick', { pid: p.id, char: a.char });
+      this.say(`${p.name} hraje za postavu ${slot.char.name}.`);
+    }
+    this.startDeal();
+    this.emit('deal', {});
   }
 
   // ------------------------------------------------------------------ balíček
@@ -152,6 +208,7 @@ export class Game {
   // ------------------------------------------------------------------ hlavní průběh
   *main() {
     try {
+      if (this.pickMode) yield* this.pickPhase();
       this.phase = 'play';
       let cur = this.captain;
       for (;;) {
@@ -742,7 +799,7 @@ export class Game {
     let prompt = null;
     if (pend) {
       prompt = { pid: pend.pid, type: pend.type };
-      for (const k of ['from', 'need', 'cause', 'count', 'reason', 'turnsLeft']) if (pend[k] !== undefined) prompt[k] = pend[k];
+      for (const k of ['from', 'need', 'cause', 'count', 'reason', 'turnsLeft', 'free']) if (pend[k] !== undefined) prompt[k] = pend[k];
       if (pend.pid === viewerId) {
         for (const k of ['usable', 'cards', 'options']) if (pend[k] !== undefined) prompt[k] = pend[k];
       } else if (pend.cards && !pend.priv) prompt.cards = pend.cards;
@@ -756,16 +813,17 @@ export class Game {
       seq: this.seq,
       players: this.players.map((p) => ({
         id: p.id, name: p.name, bot: p.bot, avatar: p.avatar, seat: p.seat,
-        char: p.char.id, maxLife: p.maxLife, life: p.life, alive: p.alive,
+        char: p.char ? p.char.id : null, maxLife: p.maxLife, life: p.life, alive: p.alive,
         handCount: p.hand.length, hand: p.id === viewerId || over ? p.hand.map(pub) : undefined,
         table: p.table.map(pub), status: p.status.map(pub),
         role: p.revealed || p.id === viewerId || over ? p.role : null,
         dist: me && me.alive && p.alive && p.id !== viewerId ? this.dist(me, p) : null,
-        lilyUsed: p.char.id === 'put' ? p.lilyUsed : undefined,
+        lilyUsed: p.char && p.char.id === 'put' ? p.lilyUsed : undefined,
         dmg: over || p.id === viewerId ? p.dmg : undefined,
       })),
-      me: me ? { range: this.range(me), unlimited: !!this.unlimited(me), handLimit: this.handLimit(me), slots: this.slotCap(me) } : null,
+      me: me && me.char ? { range: this.range(me), unlimited: !!this.unlimited(me), handLimit: this.handLimit(me), slots: this.slotCap(me) } : null,
       prompt,
+      pick: this.phase === 'rolepick' || this.phase === 'charpick' ? { kind: this.phase, first: this.pickFirst, slots: this.roleSlots.map((s) => ({ by: s.by })), chars: this.charPool ? this.charPool.map((s) => ({ id: s.char.id, by: s.by })) : null } : null,
       log: this.events.filter((e) => e.type === 'log').slice(-40).map((e) => ({ seq: e.seq, text: e.text })),
     };
   }

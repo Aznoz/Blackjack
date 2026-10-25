@@ -13,9 +13,29 @@ for (let i = 0; i < GAMES; i++) {
   const rng = mulberry(1000 + i);
   const n = MIN_PLAYERS + (i % (MAX_PLAYERS - MIN_PLAYERS + 1));
   const players = Array.from({ length: n }, (_, k) => ({ id: 'p' + k, name: 'H' + k, bot: true }));
-  const g = new Game({ players, rng });
+  const g = new Game({ players, rng, pick: true });
   let guard = 0;
+  const order = [];
   while (g.pending && !g.result) {
+    if (g.phase === 'rolepick' || g.phase === 'charpick') {
+      order.push(g.phase + ':' + g.players.findIndex((p) => p.id === g.pending.pid));
+      // nikdo mimo vybírajícího nesmí z pohledu vidět cizí roli
+      for (const q of g.players) { const v = g.view(q.id); assert.ok(v.players.every((p) => p.id === q.id || p.role === null || (g.phase === 'charpick' && p.role === 'kapitan')), 'role se v úvodu neukazují'); assert.ok(v.pick); }
+    }
+    if (g.phase === 'play' && order.length) {
+      // pořadí: obě fáze po směru hodin od náhodného hráče
+      for (const ph of ['rolepick', 'charpick']) {
+        const idx = order.filter((x) => x.startsWith(ph)).map((x) => Number(x.split(':')[1]));
+        assert.equal(idx.length, n);
+        idx.forEach((v, k) => assert.equal(v, (idx[0] + k) % n, 'po směru hodin'));
+      }
+      const roles = g.players.map((p) => p.role).sort();
+      for (const r of ['kapitan', 'bandita', 'zabijak']) assert.ok(roles.includes(r), 'chybí ' + r);
+      assert.equal(roles.filter((r) => r === 'sebevrah' || r === 'silenec').length, n >= 8 ? 2 : 1);
+      assert.equal(roles.length, n);
+      assert.equal(new Set(g.players.map((p) => p.char.id)).size, n, 'postavy se neopakují');
+      order.length = 0;
+    }
     assert.equal(cardCount(g), 82, `počet karet (hra ${i})`);
     const a = randomAction(g, rng);
     const r = g.act(g.pending.pid, a);
