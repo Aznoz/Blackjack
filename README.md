@@ -156,3 +156,12 @@ Hororová ruská ruleta (složka `komora/`, frontend `public/../prokleta-komora/
 WebSocket cesta `/komora`, probuzení `/komora/health`. Ve `prokleta-komora/config.js` na webu je
 `SERVER_URL: "wss://TVUJ-SERVER.onrender.com/komora"`. Samostatný Render pro komoru už není potřeba.
 Test: `node test-komora.mjs`.
+
+## Vesmírná štvanice (stejný server)
+
+Karetní hra pro 4–8 hráčů s tajnými rolemi (složka `stvanice/`, frontend `public/stvanice/` → na webu `stvanice/`).
+Běží ve stejném procesu: WebSocket cesta `/stvanice`, probuzení `/stvanice/health`, účet `/api/stvanice/me`.
+Ve `stvanice/config.js` na webu: `SERVER_URL: "wss://TVUJ-SERVER.onrender.com/stvanice"`.
+Server rozhoduje o všem (`game.js`), boti (`bot.js`) doplňují prázdná místa a přebírají odpojené/AFK hráče.
+`public/stvanice/data.js` je kopie `stvanice/data.js` – po změně dat ji znovu zkopíruj.
+Testy: `test-stvanice.mjs` (náhodné hry), `test-stvanice-rules.mjs` (pravidla), `test-stvanice-bots.mjs` (boti), `test-stvanice-room.mjs` (místnosti).

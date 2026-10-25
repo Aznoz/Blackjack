@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Vesmírná štvanice</title>
+<meta name="theme-color" content="#050813">
+<link rel="stylesheet" href="stvanice.css?v=1">
+</head>
+<body>
+<div id="app">
+
+  <!-- MENU -->
+  <section id="menu" class="screen">
+    <header class="top">
+      <a class="back" id="back" href="../">← Herna</a>
+      <h1>VESMÍRNÁ ŠTVANICE</h1>
+      <button class="icon" id="muteMenu" type="button" aria-label="Zvuk">🔊</button>
+    </header>
+    <div class="hero">
+      <div class="hero-art" id="heroArt" aria-hidden="true"></div>
+      <p class="lead">Karetní přestřelka ve vesmíru pro 4–8 hráčů. Každý má tajnou roli – Kapitán, jeho pravá ruka, bandita, nájemný zabiják, sebevrah, nebo pomatený šílenec. Boti doplní prázdná místa, takže můžete hrát i ve dvou.</p>
+    </div>
+    <div class="acct" id="acct" hidden></div>
+    <label class="field" id="nameField">Tvoje jméno
+      <input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza">
+    </label>
+    <p class="muted small" id="acctHint"></p>
+    <button class="btn big" id="create" type="button">Vytvořit hru</button>
+    <div class="or">nebo se připoj ke kamarádům</div>
+    <form class="join" id="joinForm">
+      <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti">
+      <button class="btn ghost" type="submit">Připojit se</button>
+    </form>
+    <p class="status" id="menuStatus"></p>
+    <button class="btn ghost wide" id="helpMenu" type="button">📖 Pravidla, role, postavy a karty</button>
+  </section>
+
+  <!-- LOBBY -->
+  <section id="lobby" class="screen" hidden>
+    <header class="top"><button class="back plain" id="leaveLobby" type="button">← Odejít</button><h1>LOBBY</h1><span class="spacer"></span></header>
+    <div class="codebox">
+      <span>Kód místnosti</span>
+      <b id="roomCode">----</b>
+      <button class="btn small" id="copyLink" type="button">Zkopírovat odkaz</button>
+    </div>
+    <ul id="lobbyPlayers" class="lobby-players"></ul>
+    <div id="hostCfg" class="cfg">
+      <label>Počet hráčů u stolu
+        <select id="cfgTotal"></select>
+      </label>
+      <label>Čas na rozhodnutí
+        <select id="cfgSpeed">
+          <option value="pomalu">Pomalu (2 min / 45 s)</option>
+          <option value="normalne">Normálně (75 s / 30 s)</option>
+          <option value="rychle">Rychle (40 s / 20 s)</option>
+        </select>
+      </label>
+    </div>
+    <p class="muted" id="cfgView" hidden></p>
+    <p class="muted" id="lobbyHint"></p>
+    <button class="btn big" id="startBtn" type="button">Spustit hru</button>
+    <button class="btn ghost wide" id="helpLobby" type="button">📖 Pravidla a karty</button>
+  </section>
+
+  <!-- HRA -->
+  <section id="game" class="screen" hidden>
+    <header id="gtop">
+      <button class="icon" id="leaveGame" type="button" aria-label="Opustit hru">✕</button>
+      <div class="ginfo"><b id="roomInfo"></b><span id="deckInfo"></span></div>
+      <div class="gturn" id="gturn"></div>
+      <button class="icon" id="helpGame" type="button" aria-label="Pravidla">?</button>
+      <button class="icon" id="muteGame" type="button" aria-label="Zvuk">🔊</button>
+    </header>
+    <div id="timer"><i id="timerFill"></i></div>
+    <div id="stage">
+      <div id="table">
+        <div id="ring"></div>
+        <div id="seats"></div>
+        <div id="center">
+          <div class="pile" id="deckPile"></div>
+          <div class="pile" id="discardPile"></div>
+          <div id="revealed"></div>
+          <div id="flipShow" hidden></div>
+          <div id="dropHint" hidden>Přetáhni sem</div>
+        </div>
+        <div id="logbox"></div>
+      </div>
+    </div>
+    <div id="bar">
+      <div id="barText"></div>
+      <div id="barBtns"></div>
+    </div>
+    <div id="mine">
+      <div class="m-top">
+        <div class="m-av" id="mAv"></div>
+        <div class="m-info" id="mInfo"></div>
+        <div class="m-slots" id="mSlots"></div>
+      </div>
+      <div id="handWrap"><div id="hand"></div></div>
+    </div>
+    <div id="fx"></div>
+  </section>
+
+  <!-- překryvy -->
+  <div id="overlay" hidden></div>
+  <div id="help" hidden></div>
+  <div id="toast" hidden></div>
+  <div id="flash" hidden></div>
+</div>
+<script src="config.js"></script>
+<script type="module" src="main.js?v=1"></script>
+</body>
+</html>

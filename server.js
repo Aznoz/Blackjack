@@ -1078,6 +1078,11 @@ async function handleApi(req, res, p) {
       const r = bomba.me(await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p === '/api/stvanice/me' && req.method === 'POST') { // Vesmírná štvanice: kdo se hlásí (jméno z Google účtu, profilovka)
+      if (!stvanice) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = stvanice.me(await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1161,6 +1166,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ ok: true, ...(bomba ? bomba.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
+  if (p === '/stvanice/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ ok: true, ...(stvanice ? stvanice.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
   if (p === '/healthz') {
     res.writeHead(200, { 'Content-Type': 'text/plain' });
     return res.end('ok');
@@ -1224,6 +1233,12 @@ let bomba = null;
 import('./bomba/bomba.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); bomba = m; console.log('BOMBA: načteno (WebSocket /bomba).'); }).catch((e) => console.error('BOMBA se nenačetla:', e.message));
 bwss.on('connection', (ws) => { if (!bomba) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } bomba.handleConnection(ws); });
 
+// pátá cesta: /stvanice = hra Vesmírná štvanice (BANG ve vesmíru s boty, složka stvanice/)
+const swss = new WebSocketServer({ noServer: true, maxPayload: 2048 });
+let stvanice = null;
+import('./stvanice/stvanice.js').then((m) => { m.init({ resolveAccount, TOKEN_RE }); stvanice = m; console.log('Vesmírná štvanice: načteno (WebSocket /stvanice).'); }).catch((e) => console.error('Vesmírná štvanice se nenačetla:', e.message));
+swss.on('connection', (ws) => { if (!stvanice) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } stvanice.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1231,7 +1246,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });
