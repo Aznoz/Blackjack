@@ -1,17 +1,22 @@
 // ŠACHY – online 1v1 přes kód místnosti. Pravidla řeší engine.js, tady jsou místnosti, hodiny, nabídky remízy a coiny.
 // WebSocket obsluhuje hlavní server na cestě /sachy. Účty a coiny dodává server přes init().
 import crypto from 'node:crypto';
+import { Worker } from 'node:worker_threads';
 import { Game, sqName, insufficient, pieceValue } from './engine.js';
+import { staticEval } from './ai.js';
 
 export const WIN_COINS = 1500;
 export const LOSE_COINS = 500;
-const MIN_PLIES_FOR_COINS = 4; // coiny jen u partie, ve které každý hráč odehrál aspoň 2 tahy (proti „farmení“ okamžitým vzdáním)
+const MIN_PLIES_FOR_COINS = Number(process.env.SACHY_MIN_PLIES) || 4; // coiny jen u partie, ve které každý hráč odehrál aspoň 2 tahy (proti „farmení“ okamžitým vzdáním)
 const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVXYZ';
 const EMPTY_ROOM_MS = 120_000;
 const LOBBY_GRACE_MS = 40_000;
 const DROP_GRACE_MS = Number(process.env.SACHY_DROP_MS) || 90_000; // po tolika ms bez spojení se hráč vzdává
 const FIRST_MOVE_MS = Number(process.env.SACHY_FIRST_MS) || 60_000; // na první tah každého hráče; jinak se partie zruší bez coinů
 const MS_MIN = Number(process.env.SACHY_MS_PER_MIN) || 60_000; // jen pro testy
+export const BOT_REWARDS = { 1: 200, 2: 500, 3: 750, 4: 1000, 5: 1500 }; // výhra nad botem dané úrovně (prohra se neúčtuje)
+export const BOT_NAMES = { 1: 'Bot Nováček', 2: 'Bot Začátečník', 3: 'Bot Pokročilý', 4: 'Bot Expert', 5: 'Bot Velmistr' };
+const BOT_MIN_MS = Number(process.env.SACHY_BOT_MIN_MS) || 500; // nejkratší „přemýšlení“ bota, ať tahy nepadají okamžitě
 export const TIMES = [0, 1, 3, 5, 10, 15, 30]; // minuty na hráče (0 = bez limitu)
 export const INCS = [0, 2, 5, 10]; // přídavek za tah v sekundách
 
@@ -36,7 +41,7 @@ function makeCode() {
 function send(ws, obj) { if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(obj)); } catch { /* spojení padlo */ } } }
 const byId = (room, id) => room.players.find((p) => p.id === id);
 const byColor = (room, c) => room.players.find((p) => p.color === c);
-const live = (room) => room.players.filter((p) => p.connected);
+const live = (room) => room.players.filter((p) => p.connected && !p.bot);
 
 // ---------------------------------------------------------------- stav pro klienty
 function clockView(room) {
@@ -69,9 +74,9 @@ function view(room, pid) {
   const last = g && g.moves.length ? g.moves[g.moves.length - 1] : null;
   return {
     t: 'state', code: room.code, phase: room.phase, you: pid, color: me ? me.color : null, hostId: room.hostId,
-    cfg: { time: room.time, inc: room.inc, pick: room.pick },
+    cfg: { time: room.time, inc: room.inc, pick: room.pick }, bot: room.bot || 0, botRewards: BOT_REWARDS,
     players: room.players.map((p) => ({
-      id: p.id, name: p.name, color: p.color, connected: p.connected, avatar: p.acc ? p.acc.avatar : null, account: !!p.acc,
+      id: p.id, name: p.name, color: p.color, connected: p.connected, avatar: p.acc ? p.acc.avatar : null, account: !!p.acc, bot: p.bot || 0,
       rematch: room.rematch.has(p.id),
     })),
     fen: g ? g.fens[g.fens.length - 1] : null, startFen: g ? g.fens[0] : null,
@@ -90,7 +95,7 @@ function view(room, pid) {
 function publish(room) { for (const p of room.players) if (p.ws) send(p.ws, view(room, p.id)); }
 
 // ---------------------------------------------------------------- průběh partie
-function clearTimers(room) { for (const k of ['flag', 'first']) { if (room[k]) clearTimeout(room[k]); room[k] = null; } }
+function clearTimers(room) { for (const k of ['flag', 'first', 'botT']) { if (room[k]) clearTimeout(room[k]); room[k] = null; } }
 
 function startGame(room, swap) {
   clearTimers(room);
@@ -99,6 +104,7 @@ function startGame(room, swap) {
   else a.color = room.pick === 'random' ? (Math.random() < 0.5 ? 'w' : 'b') : room.pick;
   b.color = other(a.color);
   room.game = new Game(process.env.SACHY_START_FEN || undefined); // proměnná jen pro testy
+  room.gameId = (room.gameId || 0) + 1; room.botBusy = false;
   room.timed = room.time > 0;
   room.clock = { w: room.time * MS_MIN, b: room.time * MS_MIN };
   room.clockOn = false; room.turnAt = now();
@@ -106,11 +112,13 @@ function startGame(room, swap) {
   room.phase = 'play';
   armFirst(room);
   publish(room);
+  scheduleBot(room);
 }
 
 function armFirst(room) {
   if (room.first) { clearTimeout(room.first); room.first = null; }
   if (room.game.moves.length >= 2) return;
+  const bp = room.bot && botPlayer(room); if (bp && room.game.state.turn === bp.color) return; // bota nehlídáme
   room.first = setTimeout(() => {
     room.first = null;
     if (room.phase === 'play' && room.game.moves.length < 2) finish(room, { type: 'abort', winner: null, reason: 'Hráč na tahu nezačal včas – partie zrušena' });
@@ -153,7 +161,7 @@ function finish(room, result) {
   const winnerP = result.winner ? byColor(room, result.winner) : null;
   const r = { type: result.type, winner: result.winner, winnerId: winnerP ? winnerP.id : null, reason: result.reason, coins: {} };
   if (result.winner && room.game.moves.length >= MIN_PLIES_FOR_COINS) r.coins = payout(room, winnerP);
-  else if (result.winner) r.noCoins = 'Partie byla moc krátká – coiny se neúčtují.';
+  else if (result.winner && !(winnerP && winnerP.bot)) r.noCoins = 'Partie byla moc krátká – coiny se neúčtují.';
   room.result = r;
   if (room.timed) room.clockOn = false;
   publish(room);
@@ -162,6 +170,13 @@ function finish(room, result) {
 /** Výhra +1500 coinů, prohra −500 (zůstatek nikdy neklesne pod minimum serveru). Jen když oba hráči mají účet. */
 function payout(room, winner) {
   const coins = {};
+  if (room.bot) { // výhra nad botem: odměna podle úrovně, prohra se neúčtuje
+    if (!deps || winner.bot || !winner.acc) return coins;
+    const before = winner.acc.balance; winner.acc.balance = before + BOT_REWARDS[room.bot];
+    coins[winner.id] = winner.acc.balance - before; winner.acc.lastSeen = now();
+    try { deps.notifyBalance(winner.acc); deps.markDirty(); } catch { /* nic */ }
+    return coins;
+  }
   if (!deps || !room.players.every((p) => p.acc)) return coins;
   const loser = room.players.find((p) => p !== winner);
   const w = winner.acc; const l = loser.acc;
@@ -194,7 +209,60 @@ function doMove(room, pl, msg) {
   if (g.result) { finish(room, g.result); return null; }
   armFlag(room);
   publish(room);
+  scheduleBot(room);
   return null;
+}
+
+// ---------------------------------------------------------------- bot (výpočet běží ve vlákně)
+let worker = null; let reqId = 0; const waiting = new Map();
+function resetWorker() { worker = null; for (const res of waiting.values()) res(undefined); waiting.clear(); }
+function getWorker() {
+  if (worker) return worker;
+  try {
+    const w = new Worker(new URL('./aiworker.js', import.meta.url));
+    w.on('message', (m) => { const res = waiting.get(m.id); if (res) { waiting.delete(m.id); res(m.move); } });
+    w.on('error', (e) => { console.error('sachy: vlákno bota spadlo:', e.message); if (worker === w) resetWorker(); });
+    w.on('exit', () => { if (worker === w) resetWorker(); });
+    w.unref();
+    worker = w;
+  } catch (e) { console.error('sachy: vlákno bota se nespustilo:', e.message); worker = null; }
+  return worker;
+}
+/** Zeptá se bota na tah; při chybě vrátí undefined (pak se zahraje náhodný legální tah). */
+function askBot(room, ms) {
+  const g = room.game; const w = getWorker();
+  if (!w) return Promise.resolve(undefined);
+  return new Promise((resolve) => {
+    const id = ++reqId; waiting.set(id, resolve);
+    const t = setTimeout(() => { if (waiting.delete(id)) resolve(undefined); }, 20_000); t.unref();
+    w.postMessage({ id, fen: g.fens[g.fens.length - 1], history: g.fens.slice(-110, -1), level: room.bot, ms });
+  });
+}
+function botPlayer(room) { return room.players.find((p) => p.bot); }
+function scheduleBot(room) {
+  const bp = room.bot && botPlayer(room);
+  if (!bp || room.phase !== 'play' || room.botBusy || room.game.state.turn !== bp.color) return;
+  room.botBusy = true;
+  const gameId = room.gameId;
+  const lowMs = room.timed && room.clockOn ? Math.max(80, Math.floor((room.clock[bp.color] - (now() - room.turnAt)) / 25)) : 0; // při málo času jen krátce
+  const think = askBot(room, lowMs || undefined);
+  const wait = new Promise((r) => { room.botT = setTimeout(r, BOT_MIN_MS + Math.random() * (room.bot <= 2 ? 500 : 900)); });
+  Promise.all([think, wait]).then(([mv]) => {
+    room.botBusy = false; room.botT = null;
+    if (room.phase !== 'play' || room.gameId !== gameId || !rooms.has(room.code) || room.game.state.turn !== bp.color) return;
+    let m = mv;
+    if (!m || room.game.find(m.from, m.to, m.promo) === null) { const l = room.game.legal(); const r = l[Math.floor(Math.random() * l.length)]; m = r && { from: r.from, to: r.to, promo: r.promo || null }; }
+    if (m) {
+      const err = doMove(room, bp, { from: m.from, to: m.to, promo: m.promo || undefined });
+      if (err && room.phase === 'play') { const l = room.game.legal(); const r = l[0]; if (r) doMove(room, bp, { from: r.from, to: r.to, promo: r.promo || undefined }); }
+    }
+  });
+}
+/** Bot nabídku remízy přijme, když je na tom hůř (nebo u slabých úrovní občas náhodou). */
+function botAcceptsDraw(room) {
+  const bp = botPlayer(room); const ev = staticEval(room.game.fens[room.game.fens.length - 1]); const mine = bp.color === 'w' ? ev : -ev;
+  if (room.bot <= 2) return Math.random() < 0.4;
+  return mine <= -120 || (room.game.moves.length >= 90 && Math.abs(mine) < 60);
 }
 
 // ---------------------------------------------------------------- místnosti
@@ -204,7 +272,7 @@ function newRoom() {
   const room = {
     code, players: [], nextId: 1, hostId: null, phase: 'lobby', time: 10, inc: 0, pick: 'random', game: null, timed: false,
     clock: { w: 0, b: 0 }, clockOn: false, turnAt: 0, drawOffer: null, rematch: new Set(), result: null,
-    emptySince: now(), flag: null, first: null, dropTimer: null, dropAt: null, dropFor: null,
+    bot: 0, botBusy: false, botT: null, gameId: 0, emptySince: now(), flag: null, first: null, dropTimer: null, dropAt: null, dropFor: null,
   };
   rooms.set(code, room);
   return room;
@@ -235,7 +303,7 @@ function bind(ws, room, pl) {
   room.emptySince = null;
   send(ws, { t: 'joined', code: room.code, you: pl.id, token: pl.token });
 }
-function destroy(room) { clearTimers(room); if (room.dropTimer) clearTimeout(room.dropTimer); rooms.delete(room.code); }
+function destroy(room) { room.botBusy = true; room.gameId++; clearTimers(room); if (room.dropTimer) clearTimeout(room.dropTimer); rooms.delete(room.code); }
 function removeFromLobby(room, pl) {
   room.players = room.players.filter((p) => p !== pl);
   if (room.hostId === pl.id) room.hostId = (room.players[0] || {}).id || null;
@@ -253,6 +321,7 @@ function leave(ws, voluntary) {
     if (voluntary) removeFromLobby(room, pl);
     else { pl.dropTimer = setTimeout(() => { if (!pl.connected && rooms.has(room.code)) removeFromLobby(room, pl); }, LOBBY_GRACE_MS); publish(room); }
   } else if (room.phase === 'play') {
+    if (voluntary && room.bot) { destroy(room); return; }
     if (voluntary) { resign(room, pl); pl.token = null; }
     else if (!room.dropTimer) {
       room.dropFor = pl.id; room.dropAt = now() + DROP_GRACE_MS;
@@ -264,6 +333,7 @@ function leave(ws, voluntary) {
       publish(room);
     }
   } else { // over
+    if (voluntary && room.bot) { destroy(room); return; }
     if (voluntary) { pl.token = null; room.players = room.players.filter((p) => p !== pl); room.rematch.delete(pl.id); if (room.hostId === pl.id) room.hostId = (room.players[0] || {}).id || null; publish(room); }
   }
   if (live(room).length === 0) room.emptySince = now();
@@ -290,6 +360,16 @@ function handle(ws, msg) {
     }
     const r = addPlayer(room, ws, msg);
     if (r.err) { if (msg.t === 'create') destroy(room); return send(ws, { t: 'err', fatal: true, msg: r.err }); }
+    const lvl = Number(msg.bot);
+    if (msg.t === 'create' && BOT_REWARDS[lvl]) { // partie proti botovi: bez čekání na soupeře, rovnou start
+      room.bot = lvl;
+      if (TIMES.includes(Number(msg.time))) room.time = Number(msg.time);
+      if (INCS.includes(Number(msg.inc))) room.inc = Number(msg.inc);
+      if (room.time === 0) room.inc = 0;
+      if (['random', 'w', 'b'].includes(msg.pick)) room.pick = msg.pick;
+      room.players.push({ id: 'bot', name: BOT_NAMES[lvl], token: null, ws: null, connected: true, color: null, acc: null, bot: lvl });
+      return startGame(room, false);
+    }
     return publish(room);
   }
   if (msg.t === 'resume') {
@@ -326,12 +406,17 @@ function handle(ws, msg) {
     case 'resign': return resign(room, pl);
     case 'draw': {
       if (room.phase !== 'play' || room.game.moves.length < 2) return;
+      if (room.bot) {
+        if (botAcceptsDraw(room)) return finish(room, { type: 'remiza', winner: null, reason: 'Bot přijal remízu' });
+        return send(ws, { t: 'err', msg: 'Bot remízu odmítl.' });
+      }
       if (room.drawOffer && room.drawOffer !== pl.id) return finish(room, { type: 'remiza', winner: null, reason: 'Dohoda o remíze' });
       room.drawOffer = pl.id; return publish(room);
     }
     case 'nodraw': { if (room.phase === 'play' && room.drawOffer && room.drawOffer !== pl.id) { room.drawOffer = null; publish(room); } return; }
     case 'rematch': {
       if (room.phase !== 'over' || room.players.length < 2) return;
+      if (room.bot) return startGame(room, true);
       room.rematch.add(pl.id);
       if (room.players.every((p) => room.rematch.has(p.id))) { return startGame(room, true); }
       return publish(room);
@@ -344,8 +429,8 @@ function handle(ws, msg) {
 /** Pro HTTP: kdo se právě hlásí (jméno, profilovka, zůstatek) – menu hry ukáže přihlášeného hráče. */
 export function me(body) {
   const ident = identify(body || {});
-  if (!ident) return { status: 200, json: { account: false, win: WIN_COINS, lose: LOSE_COINS } };
-  return { status: 200, json: { account: true, linked: !!ident.linked, name: ident.acc.name, avatar: ident.acc.avatar, balance: ident.acc.balance, win: WIN_COINS, lose: LOSE_COINS } };
+  if (!ident) return { status: 200, json: { account: false, win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS } };
+  return { status: 200, json: { account: true, linked: !!ident.linked, name: ident.acc.name, avatar: ident.acc.avatar, balance: ident.acc.balance, win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS } };
 }
 
 const clients = new Set();

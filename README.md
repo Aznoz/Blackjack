@@ -176,3 +176,10 @@ Klasické šachy 1v1 přes čtyřpísmenný kód místnosti. Klient je ve složc
 - `sachy/sachy.js` – místnosti, hodiny (bez limitu nebo 1–30 min + přídavek), nabídka remízy, vzdání, odveta s prohozením barev, odpojení (90 s na návrat, pak prohra).
 - Coiny: výhra **+1 500**, prohra **−500** (nikdy pod minimum serveru), remíza nic. Účtuje se jen když mají účet oba hráči a partie má aspoň 4 půltahy; kratší partie (a zrušené před 2. půltahem) bez coinů.
 - Testovací proměnné: `SACHY_MS_PER_MIN`, `SACHY_DROP_MS`, `SACHY_FIRST_MS`, `SACHY_START_FEN`.
+
+### Boti v šachách
+
+- Hra proti botovi: `create` se `bot: 1–5`. Obtížnosti: 1 Nováček, 2 Začátečník, 3 Pokročilý, 4 Expert, 5 Velmistr (hodně těžký). Odměna za výhru: **200 / 500 / 750 / 1000 / 1500** coinů (jen když má hráč účet a partie má aspoň 4 půltahy). Prohra ani remíza proti botovi nic neúčtuje.
+- `sachy/ai.js` – engine (alfa-beta, TT, null move, LMR, quiescence, PST), `sachy/aiworker.js` – běží ve `worker_threads`, takže přemýšlení bota neblokuje ostatní hry. Při selhání workeru zahraje náhodný legální tah.
+- Bot nabídku remízy přijme jen když stojí hůř (nebo je partie dlouhá a vyrovnaná).
+- Testy: `test-sachy-ai.mjs`, `test-sachy-bot.mjs`. Zkušební proměnná: `SACHY_BOT_MIN_MS`.
