@@ -16,8 +16,8 @@ const SPEEDS = FAST ? { pomalu: [400, 300], normalne: [400, 300], rychle: [400, 
   rychle: [40_000, 20_000],
 };
 const BOT_MIN = Number(process.env.STVANICE_BOT_MIN_MS) || 1500;
-const PLAY_MIN = Number(process.env.STVANICE_BOT_MIN_MS) || 3000; // běžný průběh hry je pomalejší než výběr rolí a postav
-const PLAY_MAX = Number(process.env.STVANICE_BOT_MAX_MS) || 4600;
+const PLAY_MIN = Number(process.env.STVANICE_BOT_MIN_MS) || 3800; // běžný průběh hry je pomalejší než výběr rolí a postav
+const PLAY_MAX = Number(process.env.STVANICE_BOT_MAX_MS) || 5800;
 const BOT_MAX = Number(process.env.STVANICE_BOT_MAX_MS) || 2600;
 const BOT_TEMPO = { extrempomalu: 3.5, velmipomalu: 2.4, pomalu: 1.7, normalne: 1, rychle: 0.5 }; // násobek prodlevy botů
 const BOT_NAMES = ['Robo Atlas', 'Kapitán Zlomek', 'Nova-7', 'Dr. Orbit', 'Mechanik Hugo', 'Pilot Lenka', 'Android Bob', 'Komandér Pixel', 'Kyber', 'Droid Eda'];
@@ -90,7 +90,7 @@ function schedule(room) {
   if (isBotTurn(room, pd.pid)) {
     const quick = ['respond', 'discard', 'pick', 'rescue', 'rolepick', 'charpick'].includes(pd.type);
     const pick = pd.type === 'rolepick' || pd.type === 'charpick';
-    const f = (BOT_TEMPO[room.botSpeed] || 1) * (quick ? 0.7 : 1);
+    const f = (BOT_TEMPO[room.botSpeed] || 1) * (quick ? 0.9 : 1);
     room.timer = setTimeout(() => botAct(room), pick ? rnd(BOT_MIN * 1.3 * (BOT_TEMPO[room.botSpeed] || 1), BOT_MAX * 1.3 * (BOT_TEMPO[room.botSpeed] || 1)) : rnd(PLAY_MIN * f, PLAY_MAX * f));
     return;
   }
