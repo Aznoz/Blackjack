@@ -15,8 +15,9 @@ const SPEEDS = FAST ? { pomalu: [400, 300], normalne: [400, 300], rychle: [400, 
   normalne: [75_000, 30_000],
   rychle: [40_000, 20_000],
 };
-const BOT_MIN = Number(process.env.STVANICE_BOT_MIN_MS) || 550;
-const BOT_MAX = Number(process.env.STVANICE_BOT_MAX_MS) || 1300;
+const BOT_MIN = Number(process.env.STVANICE_BOT_MIN_MS) || 1500;
+const BOT_MAX = Number(process.env.STVANICE_BOT_MAX_MS) || 2600;
+const BOT_TEMPO = { pomalu: 1.7, normalne: 1, rychle: 0.5 }; // násobek prodlevy botů
 const BOT_NAMES = ['Robo Atlas', 'Kapitán Zlomek', 'Nova-7', 'Dr. Orbit', 'Mechanik Hugo', 'Pilot Lenka', 'Android Bob', 'Komandér Pixel', 'Kyber', 'Droid Eda'];
 
 const rooms = new Map();
@@ -50,7 +51,7 @@ function lobbyList(room) {
 function view(room, pid) {
   const out = {
     t: 'state', code: room.code, phase: room.phase, you: pid, hostId: room.hostId,
-    total: room.total, speed: room.speed, lobby: lobbyList(room), min: MIN_PLAYERS, max: MAX_PLAYERS,
+    total: room.total, speed: room.speed, botSpeed: room.botSpeed, lobby: lobbyList(room), min: MIN_PLAYERS, max: MAX_PLAYERS,
   };
   if (room.game) {
     const gv = room.game.view(pid);
@@ -86,7 +87,9 @@ function schedule(room) {
   const h = byId(room, pd.pid);
   if (isBotTurn(room, pd.pid)) {
     const quick = ['respond', 'discard', 'pick', 'rescue', 'rolepick', 'charpick'].includes(pd.type);
-    room.timer = setTimeout(() => botAct(room), rnd(quick ? BOT_MIN * 0.7 : BOT_MIN, quick ? BOT_MAX * 0.7 : BOT_MAX));
+    const pick = pd.type === 'rolepick' || pd.type === 'charpick';
+    const f = (BOT_TEMPO[room.botSpeed] || 1) * (pick ? 1.3 : quick ? 0.7 : 1);
+    room.timer = setTimeout(() => botAct(room), rnd(BOT_MIN * f, BOT_MAX * f));
     return;
   }
   const [playMs, replyMs] = SPEEDS[room.speed] || SPEEDS.normalne;
@@ -146,7 +149,7 @@ function newRoom() {
   const code = makeCode();
   if (!code) return null;
   const room = {
-    code, players: [], nextId: 1, hostId: null, phase: 'lobby', total: 4, speed: 'normalne',
+    code, players: [], nextId: 1, hostId: null, phase: 'lobby', total: 4, speed: 'normalne', botSpeed: 'normalne',
     game: null, bots: new Map(), timer: null, deadline: null, deadlineMax: null, emptySince: now(),
   };
   rooms.set(code, room);
@@ -278,6 +281,7 @@ function handle(ws, msg) {
       if (room.phase !== 'lobby' || room.hostId !== pl.id) return;
       if (msg.total != null) room.total = Math.max(MIN_PLAYERS, Math.min(MAX_PLAYERS, Math.round(Number(msg.total)) || 4));
       if (typeof msg.speed === 'string' && SPEEDS[msg.speed]) room.speed = msg.speed;
+      if (typeof msg.botSpeed === 'string' && BOT_TEMPO[msg.botSpeed]) room.botSpeed = msg.botSpeed;
       return publish(room);
     }
     case 'kick': {

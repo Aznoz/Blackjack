@@ -161,11 +161,12 @@ function renderLobby() {
   $('hostCfg').hidden = !host;
   $('cfgView').hidden = host;
   const SPEED = { pomalu: 'pomalu', normalne: 'normálně', rychle: 'rychle' };
-  $('cfgView').textContent = `U stolu ${total} hráčů · tempo: ${SPEED[st.speed] || st.speed}`;
+  $('cfgView').textContent = `U stolu ${total} hráčů · čas na tah: ${SPEED[st.speed] || st.speed} · tempo botů: ${SPEED[st.botSpeed] || st.botSpeed || 'normálně'}`;
   const sel = $('cfgTotal');
   if (!sel.options.length) for (let n = MIN_PLAYERS; n <= MAX_PLAYERS; n++) sel.add(new Option(`${n} hráčů`, String(n)));
   if (document.activeElement !== sel) sel.value = String(st.total);
   if (document.activeElement !== $('cfgSpeed')) $('cfgSpeed').value = st.speed;
+  if (document.activeElement !== $('cfgBot')) $('cfgBot').value = st.botSpeed || 'normalne';
   const bots = total - humans.length;
   $('lobbyHint').textContent = bots > 0 ? `Hraje ${humans.length} ${humans.length === 1 ? 'člověk' : humans.length < 5 ? 'lidé' : 'lidí'} a ${bots} ${bots === 1 ? 'bot' : bots < 5 ? 'boti' : 'botů'}. Kamarády pozveš kódem nebo odkazem.` : `Hraje ${humans.length} lidí.`;
   if (!host) $('lobbyHint').textContent += ' Čekáme, až zakladatel spustí hru.';
@@ -428,7 +429,7 @@ function renderTurnLabel() {
 }
 
 function renderLog() {
-  $('logbox').innerHTML = G.log.slice(-4).map((l) => `<div>${esc(l.text)}</div>`).join('');
+  $('logbox').innerHTML = G.log.slice(-5).map((l) => `<div>${esc(l.text)}</div>`).join('');
 }
 
 // ------------------------------------------------------------------ prompty a lišta s tlačítky
@@ -798,7 +799,6 @@ async function runFx() {
   while (fxQ.length) {
     const e = fxQ.shift();
     try { await playEvent(e); } catch (err) { /* animace nikdy nesmí shodit hru */ }
-    if (fxQ.length > 6) await sleep(30); // při velkém zpoždění zrychli
   }
   fxBusy = false;
 }
@@ -841,6 +841,15 @@ function shake(id) {
 function screenFlash(col) {
   const f = $('flash'); f.style.background = col; f.hidden = false; f.classList.remove('go'); void f.offsetWidth; f.classList.add('go'); setTimeout(() => { f.hidden = true; }, 450);
 }
+let playShowT = null;
+function playShow(card, who, to, note) {
+  let b = $('playShow');
+  if (!b) { b = document.createElement('div'); b.id = 'playShow'; $('stage').appendChild(b); }
+  const T = TYPES[card.type] || { name: card.type, text: '' };
+  b.innerHTML = `<div class="ps-card">${cardHtml(card, { cls: 'big' })}</div><div class="ps-cap"><b>${esc(who)}</b>${to ? ` <i>→</i> <b>${esc(to)}</b>` : ''}<span>${esc(note || T.name)}</span><small>${esc(T.text)}</small></div>`;
+  b.hidden = false; b.classList.remove('go'); void b.offsetWidth; b.classList.add('go');
+  clearTimeout(playShowT); playShowT = setTimeout(() => { b.hidden = true; }, 2600);
+}
 function flipShow(card, caption) {
   const b = $('flipShow'); b.innerHTML = cardHtml(card, { cls: 'big' }) + `<div class="cap">${esc(caption)}</div>`; b.hidden = false;
   setTimeout(() => { b.hidden = true; }, 1300);
@@ -854,12 +863,15 @@ async function playEvent(e) {
       lastDrop = null;
       const isShot = (e.card.type === 'strela') || e.as === 'strela';
       const to = e.to && e.to !== e.by ? rectOf(e.to) : centerPoint();
-      if (e.defend) { sfx.shield(); await fly(e.card, rectOf(e.by), centerPoint(), { dur: 420 }); break; }
+      const tn = e.to && e.to !== e.by ? nameOf(e.to) : '';
+      if (e.defend) { sfx.shield(); playShow(e.card, nameOf(e.by), tn, 'brání se: ' + cardName(e.card)); await fly(e.card, rectOf(e.by), centerPoint(), { dur: 520 }); await sleep(500); break; }
       if (isShot) sfx.shot(); else sfx.card();
-      await fly(e.card, from, to || centerPoint(), { dur: isShot ? 380 : 520 });
+      playShow(e.card, nameOf(e.by), tn, e.rescue ? 'záchrana: ' + cardName(e.card) : e.duel ? 'duel: odhazuje ' + cardName(e.card) : isShot && e.card.type !== 'strela' ? 'střílí (' + cardName(e.card) + ')' : cardName(e.card));
+      await fly(e.card, from, to || centerPoint(), { dur: isShot ? 460 : 560 });
+      await sleep(isShot ? 350 : 500);
       break;
     }
-    case 'equip': { sfx.card(); const to = e.to ? rectOf(e.to) : rectOf(e.by); await fly(e.card, rectOf(e.by), to, { dur: 420 }); break; }
+    case 'equip': { sfx.card(); const to = e.to ? rectOf(e.to) : rectOf(e.by); playShow(e.card, nameOf(e.by), e.to && e.to !== e.by ? nameOf(e.to) : '', e.to && e.to !== e.by ? cardName(e.card) + ' (pokládá před soupeře)' : 'vykládá: ' + cardName(e.card)); await fly(e.card, rectOf(e.by), to, { dur: 520 }); await sleep(450); break; }
     case 'damage': {
       sfx.hit(); shake(e.to); floater(e.to, `−${e.n}`, 'dmg');
       if (e.to === me) { screenFlash('rgba(255,50,80,.35)'); if (navigator.vibrate) try { navigator.vibrate([120, 40, 160]); } catch (x) { /* nic */ } }
@@ -977,6 +989,7 @@ function init() {
   };
   $('cfgTotal').onchange = () => send({ t: 'config', total: Number($('cfgTotal').value) });
   $('cfgSpeed').onchange = () => send({ t: 'config', speed: $('cfgSpeed').value });
+  $('cfgBot').onchange = () => send({ t: 'config', botSpeed: $('cfgBot').value });
   $('startBtn').onclick = () => { audio(); send({ t: 'start' }); };
   $('leaveLobby').onclick = leave;
   $('leaveGame').onclick = () => { if (confirm('Opravdu odejít ze hry? Za tebe bude hrát bot.')) leave(); };

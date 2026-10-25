@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Vesmírná štvanice</title>
 <meta name="theme-color" content="#050813">
-<link rel="stylesheet" href="stvanice.css?v=2">
+<link rel="stylesheet" href="stvanice.css?v=3">
 </head>
 <body>
 <div id="app">
@@ -54,6 +54,13 @@
           <option value="pomalu">Pomalu (2 min / 45 s)</option>
           <option value="normalne">Normálně (75 s / 30 s)</option>
           <option value="rychle">Rychle (40 s / 20 s)</option>
+        </select>
+      </label>
+      <label>Tempo botů
+        <select id="cfgBot">
+          <option value="pomalu">Pomalu (dobře se sleduje)</option>
+          <option value="normalne">Normálně</option>
+          <option value="rychle">Rychle</option>
         </select>
       </label>
     </div>
@@ -128,6 +135,6 @@
   <div id="flash" hidden></div>
 </div>
 <script src="config.js"></script>
-<script type="module" src="main.js?v=2"></script>
+<script type="module" src="main.js?v=3"></script>
 </body>
 </html>
