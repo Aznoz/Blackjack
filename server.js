@@ -1088,6 +1088,11 @@ async function handleApi(req, res, p) {
       const r = sachy.me(await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p === '/api/obesenec/me' && req.method === 'POST') { // Oběšenec: kdo se hlásí (jméno z Google účtu, profilovka)
+      if (!obesenec) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = obesenec.me(await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1175,6 +1180,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ ok: true, ...(stvanice ? stvanice.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
+  if (p === '/obesenec/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ ok: true, ...(obesenec ? obesenec.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
   if (p === '/sachy/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ ok: true, ...(sachy ? sachy.stats() : {}), uptime: Math.round(process.uptime()) }));
@@ -1254,6 +1263,12 @@ let sachy = null;
 import('./sachy/sachy.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); sachy = m; console.log('Šachy: načteno (WebSocket /sachy).'); }).catch((e) => console.error('Šachy se nenačetly:', e.message));
 cwss.on('connection', (ws) => { if (!sachy) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } sachy.handleConnection(ws); });
 
+// sedmá cesta: /obesenec = Oběšenec pro 1–6 hráčů (složka obesenec/)
+const owss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
+let obesenec = null;
+import('./obesenec/obesenec.js').then((m) => { m.init({ resolveAccount, TOKEN_RE }); obesenec = m; console.log('Oběšenec: načteno (WebSocket /obesenec).'); }).catch((e) => console.error('Oběšenec se nenačetl:', e.message));
+owss.on('connection', (ws) => { if (!obesenec) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } obesenec.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1261,7 +1276,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });

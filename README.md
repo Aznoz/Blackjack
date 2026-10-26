@@ -183,3 +183,11 @@ Klasické šachy 1v1 přes čtyřpísmenný kód místnosti. Klient je ve složc
 - `sachy/ai.js` – engine (alfa-beta, TT, null move, LMR, quiescence, PST), `sachy/aiworker.js` – běží ve `worker_threads`, takže přemýšlení bota neblokuje ostatní hry. Při selhání workeru zahraje náhodný legální tah.
 - Bot nabídku remízy přijme jen když stojí hůř (nebo je partie dlouhá a vyrovnaná).
 - Testy: `test-sachy-ai.mjs`, `test-sachy-bot.mjs`. Zkušební proměnná: `SACHY_BOT_MIN_MS`.
+
+## Oběšenec (stejný server)
+
+Hádání slov pro 1–6 hráčů, kód místnosti jako u BOMBY. Klient je ve `public/obesenec/`, server v `obesenec/` (WebSocket `/obesenec`, zdravotní kontrola `/obesenec/health`, profil `POST /api/obesenec/me`). Jméno a profilovka se berou z Google účtu na Herně (hosté se jménem z pole).
+
+- `obesenec/words.js` – 570+ slov v kategoriích. Obtížnost se určuje podle délky slova: lehká 4–6 písmen, normální 7–8, těžká 9–10, expert 11+. Nastavení obtížností (počet chyb 9/8/7/6, nápověda kategorie, první písmeno zdarma) je v `LEVEL_CFG`. Nová slova stačí dopsat do `RAW` (duplicity a nepísmena se přeskočí).
+- `obesenec/obesenec.js` – místnosti: zakladatel volí obtížnost, počet slov (3–15) a čas na tah (15–60 s), hráči se střídají u jednoho oběšence. Hádá se po písmenech bez diakritiky, nebo celým slovem (špatně = 2 chyby). Body: +2 za odkryté písmeno, +5 za poslední písmeno, +5 a +3 za chybějící písmeno při trefě celého slova. Nestihnutý tah se přeskočí; když všichni dlouho nehrají, hra se ukončí. Bez coinů.
+- Test: `test-obesenec.mjs`. Zkušební proměnné: `OBES_NEXT_MS`, `OBES_TURN_MS`.
