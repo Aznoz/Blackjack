@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test-rules.js && node test-hockey-physics.js && node test-bots.js && node test-google.js && node test-hockey.js && node test-claw.js && node test-stacker.js && node test-komora.mjs && node test-komora-cards.mjs && node test-bomba.mjs && node test-stvanice.mjs && node test-stvanice-rules.mjs && node test-stvanice-bots.mjs && node test-stvanice-room.mjs && node test-sachy-engine.mjs && node test-sachy-room.mjs && node test-sachy-ai.mjs && node test-sachy-bot.mjs && node test-obesenec.mjs && node test-avatar-persist.js"
+    "test": "node test-rules.js && node test-hockey-physics.js && node test-bots.js && node test-google.js && node test-hockey.js && node test-claw.js && node test-stacker.js && node test-komora.mjs && node test-komora-cards.mjs && node test-bomba.mjs && node test-stvanice.mjs && node test-stvanice-rules.mjs && node test-stvanice-bots.mjs && node test-stvanice-room.mjs && node test-sachy-engine.mjs && node test-sachy-room.mjs && node test-sachy-ai.mjs && node test-sachy-bot.mjs && node test-obesenec.mjs && node test-kresleni.mjs && node test-avatar-persist.js"
   },
   "engines": {
     "node": ">=18"

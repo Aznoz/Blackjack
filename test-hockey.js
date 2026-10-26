@@ -195,6 +195,7 @@ async function main() {
   // --- zavření spojení = odchod od stolu; nové přihlášení nevrací ke stolu ---
   B.close(); await sleep(300);
   const B2 = new Bot('B2', 'idle', B.token); await B2.connect();
+  await B2.until(() => B2.lobby, 2000, 'lobby po návratu B'); // lobby chodí hned po uvítání, ale ne vždy ve stejné chvíli
   check(B2.table === null && B2.balance === B.balance + 0 || B2.welcome.balance === 5200, 'po návratu B nemá stejný zůstatek: ' + B2.welcome.balance);
   check(!B2.lobby.some((t) => t.players.length && t.permanent), 'po zavření spojení někdo sedí u stolu');
 

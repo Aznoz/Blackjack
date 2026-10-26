@@ -191,3 +191,12 @@ Hádání slov pro 1–6 hráčů, kód místnosti jako u BOMBY. Klient je ve `p
 - `obesenec/words.js` – 570+ slov v kategoriích. Obtížnost se určuje podle délky slova: lehká 4–6 písmen, normální 7–8, těžká 9–10, expert 11+. Nastavení obtížností (počet chyb 9/8/7/6, nápověda kategorie, první písmeno zdarma) je v `LEVEL_CFG`. Nová slova stačí dopsat do `RAW` (duplicity a nepísmena se přeskočí).
 - `obesenec/obesenec.js` – místnosti: zakladatel volí obtížnost, počet slov (3–15) a čas na tah (15–60 s), hráči se střídají u jednoho oběšence. Hádá se po písmenech bez diakritiky, nebo celým slovem (špatně = 2 chyby). Body: +2 za odkryté písmeno, +5 za poslední písmeno, +5 a +3 za chybějící písmeno při trefě celého slova. Nestihnutý tah se přeskočí; když všichni dlouho nehrají, hra se ukončí. Bez coinů.
 - Test: `test-obesenec.mjs`. Zkušební proměnné: `OBES_NEXT_MS`, `OBES_TURN_MS`.
+
+## Kresli a hádej (stejný server)
+
+Kreslení a hádání pro 2–8 hráčů (jako Gartic.io / Skribbl), kód místnosti jako u BOMBY. Klient je ve `public/kresleni/`, server v `kresleni/` (WebSocket `/kresleni`, zdravotní kontrola `/kresleni/health`, profil `POST /api/kresleni/me`). Jméno a profilovka z Google účtu na Herně. Bez coinů.
+
+- `kresleni/words.js` – 330+ slov ve 3 obtížnostech (lehká, střední, těžká) + Mix; víceslovné výrazy jsou v seznamu `PHRASES`. Nová slova se dopisují do `RAW`.
+- `kresleni/kresleni.js` – zakladatel volí slova, počet kol (1–5) a čas na kreslení (40–120 s). V každém kole se vystřídají všichni: kreslíř vybírá ze 3 slov (12 s), pak kreslí; ostatní hádají v chatu (bez ohledu na diakritiku a velikost, „skoro“ = o písmeno vedle). Body: 100 + až 300 podle zbývajícího času, první uhádnuvší +50, kreslíř +40 za každého uhádnuvšího. Nápověda odkrývá písmena ve 40 % a 70 % času. Zprávy kreslíře a těch, kdo už uhádli, vidí jen oni. Pozdější příchozí dostane dosavadní kresbu. Při 2 hráčích hra po výpadku jednoho počká (45 s) na návrat.
+- Kresba se přenáší po tazích (začátek, body, výplň, zpět, smazat) na logickém plátně 800×600; server drží celou historii (limit 500 tahů / 24 000 bodů). Před každou výplní se plátno překreslí načisto, aby výplň vyšla všem stejně.
+- Test: `test-kresleni.mjs`. Zkušební proměnné: `KRES_CHOOSE_MS`, `KRES_REVEAL_MS`, `KRES_DRAW_MS`, `KRES_GRACE_MS`.

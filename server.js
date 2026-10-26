@@ -1093,6 +1093,11 @@ async function handleApi(req, res, p) {
       const r = obesenec.me(await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p === '/api/kresleni/me' && req.method === 'POST') { // Kreslení: kdo se hlásí (jméno z Google účtu, profilovka)
+      if (!kresleni) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = kresleni.me(await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1184,6 +1189,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
     return res.end(JSON.stringify({ ok: true, ...(obesenec ? obesenec.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
+  if (p === '/kresleni/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ ok: true, ...(kresleni ? kresleni.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
   if (p === '/sachy/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ ok: true, ...(sachy ? sachy.stats() : {}), uptime: Math.round(process.uptime()) }));
@@ -1269,6 +1278,12 @@ let obesenec = null;
 import('./obesenec/obesenec.js').then((m) => { m.init({ resolveAccount, TOKEN_RE }); obesenec = m; console.log('Oběšenec: načteno (WebSocket /obesenec).'); }).catch((e) => console.error('Oběšenec se nenačetl:', e.message));
 owss.on('connection', (ws) => { if (!obesenec) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } obesenec.handleConnection(ws); });
 
+// osmá cesta: /kresleni = Kreslení a hádání pro 2–8 hráčů (složka kresleni/); kresba se přenáší po malých zprávách, proto větší limit
+const dwss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
+let kresleni = null;
+import('./kresleni/kresleni.js').then((m) => { m.init({ resolveAccount, TOKEN_RE }); kresleni = m; console.log('Kreslení: načteno (WebSocket /kresleni).'); }).catch((e) => console.error('Kreslení se nenačetlo:', e.message));
+dwss.on('connection', (ws) => { if (!kresleni) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } kresleni.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1276,7 +1291,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });
