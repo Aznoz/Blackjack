@@ -203,8 +203,16 @@ Kreslení a hádání pro 2–8 hráčů (jako Gartic.io / Skribbl), kód místn
 
 ## Key Master (3D automat, 1 hráč)
 
-3D automat jako ten z arkád (three.js, soubor `public/keymaster/vendor/three.module.min.js` je přibalený). Modré rameno na svislých tyčích vozí zlatý klíč po patře sem a tam, hráč ho zastaví (tlačítko **STOP**, mezerník) před svítícím zeleným kroužkem. Trefa = klíč projede kroužkem do přihrádky s odměnou. Tři patra: 1. coiny, 2. malá věcná odměna, 3. velká věcná odměna; každé další patro má rychlejší klíč a užší kroužek. Po každé trefě hráč odměnu **vybere, nebo riskuje** vyšší patro (netrefa = o všechno nevybrané přijde). Automat jde otáčet tahem prstu / myší (tlačítka ⟲ ⟳ ◎ otočí o 90° / vrátí čelní pohled).
+3D automat jako ten z arkád (three.js, soubor `public/keymaster/vendor/three.module.min.js` je přibalený). Hráč nejdřív držením ◀ ▶ (nebo šipkami / A, D) vodorovně zamíří zlatý klíč na ramenu na **svítící dírku** (desky s dírkou ve tvaru klíče, jako na fotce), pak stiskne **Vyjet**: rameno s klíčem jede po tyčích nahoru a hráč ho tlačítkem **STOP** (mezerník) zastaví přesně v úrovni dírky. Trefa (vodorovně i svisle) = klíč zapadne do dírky a odemkne odměnu. Tři patra: 1. coiny, 2. malá věcná odměna, 3. velká věcná odměna; každé další patro má rychlejší rameno a užší dírku. Po každé trefě hráč odměnu **vybere, nebo riskuje** vyšší patro (netrefa = o všechno nevybrané přijde). Automat jde otáčet tahem prstu / myší (tlačítka ⟲ ⟳ ◎ otočí o 90° / vrátí čelní pohled).
 
 - Server: `keymaster.js`, HTTP API `POST /api/keymaster/{state,start,stage,claim,end}` (stejný vzor jako Stacker). Pokus stojí **100**; patra se potvrzují postupně (`stage`), odměnu losuje server podle nejvyššího potvrzeného patra (`claim`), minimální doby mezi kroky hlídají podvody. Coiny: 50–2000 (váhy 45/40/30/20/10/4/1). Věcné odměny jsou **stejné jako ve Stackeru** a padají do stejného inventáře, takže se prodávají ve stejném Obchodu.
 - Web: `public/keymaster/` (`index.html`, `keymaster.css`, `keymaster.js`, `header.js`, `config.js`, `vendor/`). `config.js` může přepsat adresu serveru (`window.KEYMASTER_API_URL`), jinak se vezme z `portal-config.js`.
 - Test: `node test-keymaster.js`.
+
+## Kolo štěstí (3D arkádové kolo, 1 hráč)
+
+Velké svislé kolo jako v arkádách (three.js, `public/wheel/vendor/three.module.min.js` je přibalený): černý buben, zelená kapota s obrazovkou „JACKPOT 10 000“, jazýček nahoře cvaká o kolíky. Roztočení stojí **100**; kolo má 24 stejně velkých výsečí (20, 40, 50, 70, 100, 150, 200, 300, 500 ★, 1000, 10 000), ale výsledek losuje server podle vah, takže velké výhry padají mnohem řidčeji než malé (šance jsou vypsané v pravidlech i v bočních panelech). Výseč **500 ★** vyplatí 500 a dá **jackpotový roztoč zdarma** (padají jen 200 / 300 / 1000 / 10 000, jackpot 5 %). Jackpot 10 000 má na hlavním kole 0,1 %, dohromady zhruba 1 z 670 roztočení; návratnost ≈ 90 %. Automat jde otáčet tahem, dvěma prsty / kolečkem se kolo přibližuje.
+
+- Server: `wheel.js`, HTTP API `POST /api/wheel/{state,spin,bonus,collect}`. `spin` strhne vklad a vylosuje výseč, `collect` výhru připíše až po dotočení (nejdřív po 4 s). Nesebrané kolo se při dalším načtení stránky (`state` s `fresh`) hráči připíše. Nevyužitý jackpotový roztoč se ukládá v účtu (`wheelBonus`).
+- Web: `public/wheel/` (`index.html`, `wheel.css`, `wheel.js`, `header.js`, `config.js`, `vendor/`). `config.js` může přepsat adresu serveru (`window.WHEEL_API_URL`).
+- Test: `node test-wheel.js` (včetně simulace 40 000 roztočení).
