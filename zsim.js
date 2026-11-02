@@ -23,9 +23,7 @@
     // rameno: čep (svět) a výchozí směr, délka, poloměr, rozmach
     PIVOT_X: 1.1, PIVOT_Y: 0.0,
     ARM_DX: 0.0, ARM_DY: 1.0,
-    ARM_LEN: 1.45, ARM_R: 0.05, ARM_HOOK: 1.45,          // část ramene od konce, která se dotýká puků (celé rameno)
-    SLIP_BASE: 0.75,         // pravděpodobnost, že největší puk je při daném výstřelu „kluzký“ a rameno ho mine (projede kolem)
-    SLIP_K: 6, SLIP_MAX: 0.95, // menší puk (= cennější) je kluzčí: SLIP_BASE + (0,125 - r) * SLIP_K, nejvýš SLIP_MAX
+    ARM_LEN: 1.45, ARM_R: 0.05, ARM_HOOK: 0.1,           // jen posledních 0,1 ramene je „prst“, který se dotýká puků (zbytek ramene je nad nimi)
     SWEEP: 2.309,            // rozmach ramene (rad, proti směru hodinových ručiček)
     SWEEP_T: 1.7,            // doba rozmachu (s)
     SETTLE_T: 0.9,           // doba, po kterou se po rozmachu ještě počítá (puky se uklidní)
@@ -47,13 +45,6 @@
   const STEP_ANGLE = (2 * Math.PI) / C.PHI_STEPS; // jen konstanta; do výpočtu vstupuje jen jako číslo
   const smooth = (u) => u * u * (3 - 2 * u);
 
-  /** Deterministické „náhodné“ číslo 0..1 pro dvojici (puk, úhel); jen celočíselné operace, takže je stejné na serveru i v prohlížeči. */
-  function slipU(id, idx) {
-    let h = Math.imul(id | 0, 0x9e3779b1) ^ Math.imul((idx | 0) + 1, 0x85ebca6b);
-    h ^= h >>> 15; h = Math.imul(h, 0x2c1b3c6d); h ^= h >>> 12; h = Math.imul(h, 0x297a2d39); h ^= h >>> 15;
-    return (h >>> 0) / 4294967296;
-  }
-
   /** Úhel plošiny phiIdx (kroky po 0,5°) -> směry čepu, ramene a díry v souřadnicích plošiny. */
   function create(pucks, phiIdx) {
     const idx = Math.max(0, Math.min(C.PHI_STEPS - 1, Math.floor(phiIdx) || 0));
@@ -63,7 +54,7 @@
     pl.x *= pn; pl.y *= pn;
     return {
       t: 0, step: 0, idx, pl, dl, hl, armAng: 0, // armAng: o kolik se rameno už otočilo (rad, jen pro zobrazení)
-      pucks: pucks.map((p) => ({ id: p.id, r: p.r, x: p.x, y: p.y, vx: 0, vy: 0, alive: true, slip: slipU(p.id, idx) < Math.min(C.SLIP_MAX, C.SLIP_BASE + (0.125 - p.r) * C.SLIP_K) })),
+      pucks: pucks.map((p) => ({ id: p.id, r: p.r, x: p.x, y: p.y, vx: 0, vy: 0, alive: true })),
       fallen: [], done: false,
     };
   }
@@ -90,7 +81,7 @@
     for (let it = 0; it < 3; it++) {
       // rameno (kapsle)
       for (const p of live) {
-        if (!p.alive || p.slip) continue; // kluzký puk rameno mine
+        if (!p.alive) continue;
         const rx = p.x - pl.x, ry = p.y - pl.y;
         let q = rx * dl.x + ry * dl.y; if (q < C.ARM_LEN - C.ARM_HOOK) q = C.ARM_LEN - C.ARM_HOOK; else if (q > C.ARM_LEN) q = C.ARM_LEN;
         const cx = pl.x + dl.x * q, cy = pl.y + dl.y * q;
