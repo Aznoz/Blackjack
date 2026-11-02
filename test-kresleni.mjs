@@ -113,6 +113,38 @@ drawer1.send({ t: 'd', op: 'u' }); await sleep(100);
 assert.equal(room(a.code).items.length, 1); assert.equal(g1.items.length, 1, 'zpět se přenese');
 drawer1.send({ t: 'd', op: 'x' }); await sleep(100);
 assert.equal(room(a.code).items.length, 0); assert.equal(g2.items.length, 0);
+
+// --- tvary (čára / obdélník / elipsa) a vlastní barva z barevného kola
+drawer1.send({ t: 'd', op: 's', s: 'l', c: 4, w: 1, x1: 10, y1: 10, x2: 900, y2: -20 });
+drawer1.send({ t: 'd', op: 's', s: 'r', c: '#12ab9f', w: 2, x1: 50, y1: 60, x2: 200, y2: 150, fl: 1 });
+drawer1.send({ t: 'd', op: 's', s: 'o', c: 3, w: 0, x1: 300, y1: 300, x2: 400, y2: 350, fl: 0 });
+drawer1.send({ t: 'd', op: 's', s: 'l', c: 2, w: 0, x1: 1, y1: 1, x2: 5, y2: 5, fl: 1 });
+await sleep(150);
+{
+  const it = room(a.code).items;
+  assert.equal(it.length, 4, 'čtyři tvary uloženy');
+  assert.deepEqual(it[0], { k: 'g', s: 'l', c: 4, w: 1, x1: 10, y1: 10, x2: 800, y2: 0, fl: 0 }, 'souřadnice tvaru se ořežou');
+  assert.equal(it[1].c, '#12ab9f'); assert.equal(it[1].fl, 1); assert.equal(it[3].fl, 0, 'čára se nevyplňuje');
+  for (const g of [g1, g2]) {
+    assert.equal(g.ops.length, 4, 'tvary dorazily hádajícím'); assert.equal(g.ops[1].op, 's'); assert.equal(g.ops[1].c, '#12ab9f');
+  }
+}
+// neplatné tvary: špatný typ, špatná barva, chybějící body, nekreslíř
+for (const bad of [
+  { s: 'q', c: 1, w: 1, x1: 1, y1: 1, x2: 2, y2: 2 }, { s: '__proto__', c: 1, w: 1, x1: 1, y1: 1, x2: 2, y2: 2 }, { s: 'r', c: '#12ab9', w: 1, x1: 1, y1: 1, x2: 2, y2: 2 },
+  { s: 'r', c: '#12AB9F', w: 1, x1: 1, y1: 1, x2: 2, y2: 2 }, { s: 'r', c: 'red', w: 1, x1: 1, y1: 1, x2: 2, y2: 2 }, { s: 'r', c: 16, w: 1, x1: 1, y1: 1, x2: 2, y2: 2 },
+  { s: 'r', c: 1, w: 9, x1: 1, y1: 1, x2: 2, y2: 2 }, { s: 'r', c: 1, w: 1, x1: 1, y1: 1, x2: 2 }, { s: 'r', c: 1, w: 1, x1: 'a', y1: 1, x2: 2, y2: 2 },
+]) drawer1.send({ t: 'd', op: 's', ...bad });
+drawer1.send({ t: 'd', op: 'b', c: '#zzzzzz', w: 1, x: 1, y: 1 }); drawer1.send({ t: 'd', op: 'f', c: '#nope00', x: 1, y: 1 });
+g1.send({ t: 'd', op: 's', s: 'r', c: 1, w: 1, x1: 1, y1: 1, x2: 2, y2: 2 });
+await sleep(150);
+assert.equal(room(a.code).items.length, 4, 'neplatné tvary a barvy se ignorují');
+drawer1.send({ t: 'd', op: 'b', c: '#0a0b0c', w: 1, x: 7, y: 8 }); drawer1.send({ t: 'd', op: 'f', c: '#ff00ff', x: 9, y: 9 }); await sleep(100);
+assert.equal(room(a.code).items.length, 6, 'vlastní barva funguje i u tahu a výplně');
+drawer1.send({ t: 'd', op: 'u' }); drawer1.send({ t: 'd', op: 'u' }); drawer1.send({ t: 'd', op: 'u' }); await sleep(100);
+assert.equal(room(a.code).items.length, 3); assert.equal(g1.items.length, 3, 'zpět funguje i u tvarů');
+drawer1.send({ t: 'd', op: 'x' }); await sleep(100);
+assert.equal(room(a.code).items.length, 0);
 drawer1.send({ t: 'd', op: 'b', c: 2, w: 0, x: 5, y: 5 }); drawer1.send({ t: 'd', op: 'p', pts: [6, 6, 7, 7] }); await sleep(100);
 
 // --- hádání: špatná odpověď je vidět všem, kreslíř nemůže hádat

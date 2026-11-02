@@ -332,12 +332,16 @@ function handleChat(room, pl, raw) {
 
 // ---------------------------------------------------------------- kresba
 const idx = (v, max) => (Number.isInteger(v) && v >= 0 && v < max ? v : null); // index barvy/tloušťky: mimo rozsah se zahodí
+// barva = index do palety, nebo vlastní barva z barevného kola ve tvaru '#rrggbb' (malá písmena)
+const HEX_RE = /^#[0-9a-f]{6}$/;
+const col = (v) => (typeof v === 'string' ? (HEX_RE.test(v) ? v : null) : idx(v, PALETTE_SIZE));
+const SHAPES = Object.freeze({ l: 1, r: 1, o: 1 }); // rovná čára, obdélník/čtverec, elipsa/kruh
 const int = (v, lo, hi) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : null; };
 function handleDraw(room, pl, m) {
   if (room.phase !== 'draw' || pl.id !== room.drawer) return;
   switch (m.op) {
     case 'b': { // začátek tahu: barva, tloušťka a první bod
-      const c = idx(m.c, PALETTE_SIZE), w = idx(m.w, WIDTHS), x = int(m.x, 0, W), y = int(m.y, 0, H);
+      const c = col(m.c), w = idx(m.w, WIDTHS), x = int(m.x, 0, W), y = int(m.y, 0, H);
       if (c === null || w === null || x === null || y === null) return;
       if (room.items.length >= MAX_ITEMS || room.pts >= MAX_POINTS) { room.cur = null; return; }
       room.cur = { k: 's', c, w, pts: [x, y] }; room.items.push(room.cur); room.pts++;
@@ -356,10 +360,19 @@ function handleDraw(room, pl, m) {
       return broadcastDraw(room, { t: 'd', op: 'p', pts }, pl.id);
     }
     case 'f': { // vyplnění plochy
-      const c = idx(m.c, PALETTE_SIZE), x = int(m.x, 0, W), y = int(m.y, 0, H);
+      const c = col(m.c), x = int(m.x, 0, W), y = int(m.y, 0, H);
       if (c === null || x === null || y === null || room.items.length >= MAX_ITEMS) return;
       room.cur = null; room.items.push({ k: 'f', c, x, y });
       return broadcastDraw(room, { t: 'd', op: 'f', c, x, y }, pl.id);
+    }
+    case 's': { // tvar: čára / obdélník / elipsa mezi dvěma body, volitelně vyplněný
+      const c = col(m.c), w = idx(m.w, WIDTHS);
+      const x1 = int(m.x1, 0, W), y1 = int(m.y1, 0, H), x2 = int(m.x2, 0, W), y2 = int(m.y2, 0, H);
+      if (typeof m.s !== 'string' || !Object.hasOwn(SHAPES, m.s) || c === null || w === null || [x1, y1, x2, y2].includes(null)) return;
+      if (room.items.length >= MAX_ITEMS || room.pts >= MAX_POINTS) return;
+      const fl = m.s !== 'l' && m.fl ? 1 : 0;
+      room.cur = null; room.pts += 2; room.items.push({ k: 'g', s: m.s, c, w, x1, y1, x2, y2, fl });
+      return broadcastDraw(room, { t: 'd', op: 's', s: m.s, c, w, x1, y1, x2, y2, fl }, pl.id);
     }
     case 'u': { // zpět
       room.cur = null;
