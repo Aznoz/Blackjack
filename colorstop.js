@@ -2,7 +2,7 @@
 /**
  * Color Stop: serverová část (peníze a kontrola).
  * Šipka jezdí dokola po kruhu 12 políček. Svítí vždy jedno políčko, hráč musí šipku zastavit (STOP) uvnitř něj.
- * Po zásahu šipka otočí směr, v novém směru se rozsvítí další políčko a šipka zrychlí. Hraje se do 50 zásahů,
+ * Po zásahu šipka otočí směr, v novém směru se rozsvítí další políčko (zpočátku daleko, ke konci čím dál blíž) a šipka zrychlí. Hraje se do 50 zásahů,
  * první netrefa hru ukončí. Výplata je podle dosaženého skóre (50 = jackpot).
  *
  * Hru počítá prohlížeč (je to hra na reakci), server:
@@ -19,8 +19,9 @@ const CS = {
   CELLS: 12,                       // políček na kruhu
   CELL_DEG: 30,                    // úhel jednoho políčka
   SPEED0: 100,                     // °/s na začátku
-  SPEED_STEP: 4,                   // o kolik °/s se šipka zrychlí po každém zásahu
-  DMIN: 3, DMAX: 9,                // nové políčko je 3 až 9 políček před šipkou (v novém směru)
+  SPEED_STEP: 6,                   // o kolik °/s se šipka zrychlí po každém zásahu (po 49 zásazích 394 °/s)
+  DMIN: 2, DMAX: 9,                // nové políčko je 2 až 9 políček před šipkou (v novém směru); 2 = mezera jen jedno políčko
+  SHRINK_FROM: 10, SHRINK_TO: 46,  // od 10. zásahu se největší vzdálenost zmenšuje z 9 na 3, od 46. zásahu je vždy jen 2 (mezera 1 políčko)
   COLORS: 8,                       // počet barev (jen vzhled)
   // [minimální skóre, výplata]; platí první řádek, který hráč splní
   PAYOUTS: Object.freeze([[50, 20000], [45, 6000], [40, 3000], [35, 1500], [30, 800], [25, 400], [20, 250], [15, 150], [10, 100], [5, 50]].map((r) => Object.freeze(r))),
@@ -28,8 +29,14 @@ const CS = {
   MAX_GAME_MS: 60 * 60 * 1000,
 };
 const speedAt = (k) => CS.SPEED0 + CS.SPEED_STEP * k;
+/** Největší možná vzdálenost nového políčka po k zásazích: zpočátku 9, od 10. zásahu se mezery zmenšují, na konci jen 2. */
+const dmaxAt = (k) => {
+  if (k >= CS.SHRINK_TO) return CS.DMIN;
+  if (k <= CS.SHRINK_FROM) return CS.DMAX;
+  return Math.max(3, Math.round(CS.DMAX - ((CS.DMAX - 3) * (k - CS.SHRINK_FROM)) / (CS.SHRINK_TO - CS.SHRINK_FROM)));
+};
 const payoutFor = (score) => { for (const [min, pay] of CS.PAYOUTS) if (score >= min) return pay; return 0; };
-CS.payoutFor = payoutFor; CS.speedAt = speedAt; Object.freeze(CS);
+CS.payoutFor = payoutFor; CS.speedAt = speedAt; CS.dmaxAt = dmaxAt; Object.freeze(CS);
 
 module.exports = function createColorStop({ resolveAccount, markDirty, notifyBalance, TOKEN_RE, FLOOR = 200, rand = Math.random, now = Date.now }) {
   const pending = new Map(); // acc.key -> { id, at, seq }
@@ -54,7 +61,7 @@ module.exports = function createColorStop({ resolveAccount, markDirty, notifyBal
   function makeRoute() {
     const route = []; let prev = -1;
     for (let k = 0; k < CS.STEPS; k++) {
-      const d = CS.DMIN + Math.min(CS.DMAX - CS.DMIN, Math.floor(rand() * (CS.DMAX - CS.DMIN + 1)));
+      const span = dmaxAt(k) - CS.DMIN, d = CS.DMIN + Math.min(span, Math.floor(rand() * (span + 1)));
       let c = Math.min(CS.COLORS - 1, Math.floor(rand() * CS.COLORS)); if (c === prev) c = (c + 1 + Math.floor(rand() * (CS.COLORS - 1))) % CS.COLORS; prev = c;
       route.push([d, c]);
     }

@@ -13,7 +13,9 @@ const call = (a, b = {}) => cs.handle(a, { token: 'x'.repeat(24), ...b });
 // --- tabulka
 assert.equal(CS.payoutFor(0), 0); assert.equal(CS.payoutFor(4), 0); assert.equal(CS.payoutFor(5), 50); assert.equal(CS.payoutFor(9), 50);
 assert.equal(CS.payoutFor(10), 100); assert.equal(CS.payoutFor(49), 6000); assert.equal(CS.payoutFor(50), 20000);
-assert.equal(CS.speedAt(0), 100); assert.equal(CS.speedAt(49), 296);
+assert.equal(CS.speedAt(0), 100); assert.equal(CS.speedAt(49), 394);
+assert.equal(CS.dmaxAt(0), 9); assert.equal(CS.dmaxAt(10), 9); assert.equal(CS.dmaxAt(46), 2); assert.equal(CS.dmaxAt(49), 2);
+for (let k = 11; k < 46; k++) assert.ok(CS.dmaxAt(k) <= CS.dmaxAt(k - 1) && CS.dmaxAt(k) >= 3, 'dmax klesá: ' + k);
 
 // --- neplatný token
 assert.equal(cs.handle('state', { token: 5 }).status, 400);
@@ -30,7 +32,7 @@ assert.equal(r.status, 200); assert.equal(r.json.balance, 900);
 const g1 = r.json; assert.equal(g1.route.length, 50);
 for (let i = 0; i < 50; i++) {
   const [d, c] = g1.route[i];
-  assert.ok(Number.isInteger(d) && d >= 3 && d <= 9, 'vzdálenost ' + d); assert.ok(Number.isInteger(c) && c >= 0 && c < 8, 'barva ' + c);
+  assert.ok(Number.isInteger(d) && d >= 2 && d <= CS.dmaxAt(i), `vzdálenost ${d} v kroku ${i}`); assert.ok(Number.isInteger(c) && c >= 0 && c < 8, 'barva ' + c);
   if (i) assert.notEqual(c, g1.route[i - 1][1], 'dvě stejné barvy po sobě');
 }
 
@@ -88,7 +90,11 @@ assert.equal(call('end', { gameId: g1.gameId, score: 3 }).status, 409, 'hra jde 
   x = q('end', { gameId: x.json.gameId ?? 0, score: 0 }); // špatné id -> 409
   assert.equal(x.status, 409);
 }
-// --- trasa je různá, ale odpovídá pravidlům (statisticky)
-{ let sum = 0, n = 0; for (let i = 0; i < 200; i++) { const g = call('start'); if (g.status !== 200) { acc.balance = 1000; continue; } for (const [d] of g.json.route) { sum += d; n++; } acc.balance = 1000; } assert.ok(Math.abs(sum / n - 6) < 0.3, 'průměrná vzdálenost ≈ 6: ' + sum / n); }
+// --- trasa: mezery se ke konci zmenšují, nejmenší možná je jedno políčko (vzdálenost 2)
+{ const avg = (from, to) => { let sum = 0, n = 0, min = 99; for (let i = 0; i < 300; i++) { acc.balance = 1000; const g = call('start'); for (let k = from; k < to; k++) { sum += g.json.route[k][0]; n++; min = Math.min(min, g.json.route[k][0]); } } return { avg: sum / n, min }; };
+  const early = avg(0, 10), mid = avg(20, 30), late = avg(40, 46), last = avg(46, 50);
+  console.log('  průměrná vzdálenost: začátek', early.avg.toFixed(2), '| střed', mid.avg.toFixed(2), '| konec', late.avg.toFixed(2), '| poslední 4:', last.avg.toFixed(2));
+  assert.ok(early.avg > 5.4 && early.avg < 6.6, 'začátek ≈ 5,5 (2–9)'); assert.ok(mid.avg < early.avg && late.avg < mid.avg, 'mezery se zmenšují');
+  assert.equal(early.min, 2, 'nejmenší vzdálenost 2 (mezera jen 1 políčko) se vyskytuje i na začátku'); assert.equal(last.avg, 2, 'poslední zásahy mají vždy mezeru 1 políčko'); }
 
 console.log('Color Stop: všechny testy prošly ✓');
