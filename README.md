@@ -200,3 +200,11 @@ Kreslení a hádání pro 2–8 hráčů (jako Gartic.io / Skribbl), kód místn
 - `kresleni/kresleni.js` – zakladatel volí slova, počet kol (1–5) a čas na kreslení (40–120 s). V každém kole se vystřídají všichni: kreslíř vybírá ze 3 slov (12 s), pak kreslí; ostatní hádají v chatu (bez ohledu na diakritiku a velikost, „skoro“ = o písmeno vedle). Body: 100 + až 300 podle zbývajícího času, první uhádnuvší +50, kreslíř +40 za každého uhádnuvšího. Nápověda odkrývá písmena ve 40 % a 70 % času. Zprávy kreslíře a těch, kdo už uhádli, vidí jen oni. Pozdější příchozí dostane dosavadní kresbu. Při 2 hráčích hra po výpadku jednoho počká (45 s) na návrat.
 - Kresba se přenáší po tazích (začátek, body, výplň, zpět, smazat) na logickém plátně 800×600; server drží celou historii (limit 500 tahů / 24 000 bodů). Před každou výplní se plátno překreslí načisto, aby výplň vyšla všem stejně.
 - Test: `test-kresleni.mjs`. Zkušební proměnné: `KRES_CHOOSE_MS`, `KRES_REVEAL_MS`, `KRES_DRAW_MS`, `KRES_GRACE_MS`.
+
+## Key Master (3D automat, 1 hráč)
+
+3D automat jako ten z arkád (three.js, soubor `public/keymaster/vendor/three.module.min.js` je přibalený). Modré rameno na svislých tyčích vozí zlatý klíč po patře sem a tam, hráč ho zastaví (tlačítko **STOP**, mezerník) před svítícím zeleným kroužkem. Trefa = klíč projede kroužkem do přihrádky s odměnou. Tři patra: 1. coiny, 2. malá věcná odměna, 3. velká věcná odměna; každé další patro má rychlejší klíč a užší kroužek. Po každé trefě hráč odměnu **vybere, nebo riskuje** vyšší patro (netrefa = o všechno nevybrané přijde). Automat jde otáčet tahem prstu / myší (tlačítka ⟲ ⟳ ◎ otočí o 90° / vrátí čelní pohled).
+
+- Server: `keymaster.js`, HTTP API `POST /api/keymaster/{state,start,stage,claim,end}` (stejný vzor jako Stacker). Pokus stojí **100**; patra se potvrzují postupně (`stage`), odměnu losuje server podle nejvyššího potvrzeného patra (`claim`), minimální doby mezi kroky hlídají podvody. Coiny: 50–2000 (váhy 45/40/30/20/10/4/1). Věcné odměny jsou **stejné jako ve Stackeru** a padají do stejného inventáře, takže se prodávají ve stejném Obchodu.
+- Web: `public/keymaster/` (`index.html`, `keymaster.css`, `keymaster.js`, `header.js`, `config.js`, `vendor/`). `config.js` může přepsat adresu serveru (`window.KEYMASTER_API_URL`), jinak se vezme z `portal-config.js`.
+- Test: `node test-keymaster.js`.
