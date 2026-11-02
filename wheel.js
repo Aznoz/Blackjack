@@ -5,29 +5,30 @@
  * rozkrouží kolo tak, aby se zastavilo na vylosované výseči.
  *  - roztočení stojí 100 žetonů (strhne se hned),
  *  - výhra se připíše až po dotočení kola (`collect`), nejdřív po minimální době, ať se zůstatek neprozradí předem,
- *  - výseč „500 + jackpotový roztoč“ vyplatí 500 a hráč dostane jedno zdarma kolo s tabulkou jen velkých výher,
- *  - jackpot 10 000 má na hlavním kole šanci 0,1 %, v bonusovém roztočení 5 %.
+ *  - všechny výhry jsou násobeny MULT (2×); výseč „500 + jackpotový roztoč“ vyplatí 500 × MULT a hráč dostane jedno zdarma kolo s tabulkou jen velkých výher,
+ *  - jackpot (10 000 × MULT) má na hlavním kole šanci 0,1 %, v bonusovém roztočení 5 %.
  * Rozehraný, ale nesebraný výsledek se při dalším načtení stránky (state) hráči připíše, nic nepropadne.
  */
+const MULT = 2; // všechny výhry jsou násobkem základních hodnot (šance a cena roztočení se nemění)
 const SC = Number(process.env.TIME_SCALE) > 0 ? Number(process.env.TIME_SCALE) : 1;
 
 // pořadí výsečí kolem dokola (24 kusů); star = „jackpotový roztoč“
 const SLOTS = Object.freeze([
   { v: 20 }, { v: 100 }, { v: 50 }, { v: 300 }, { v: 40 }, { v: 70 }, { v: 20 }, { v: 1000 }, { v: 150 }, { v: 50 }, { v: 40 }, { v: 100 },
   { v: 20 }, { v: 200 }, { v: 70 }, { v: 500, star: true }, { v: 40 }, { v: 50 }, { v: 20 }, { v: 150 }, { v: 100 }, { v: 70 }, { v: 200 }, { v: 10000 },
-].map((s) => Object.freeze(s)));
+].map((s) => Object.freeze({ ...s, v: s.v * MULT })));
 
 // šance (v tisícinách) pro hlavní kolo: klíč = index první výseče dané hodnoty se řídí hodnotou (a hvězdou)
 const MAIN_W = Object.freeze([
   { v: 20, w: 305 }, { v: 40, w: 210 }, { v: 50, w: 150 }, { v: 70, w: 110 }, { v: 100, w: 90 }, { v: 150, w: 60 },
   { v: 200, w: 40 }, { v: 300, w: 20 }, { v: 500, star: true, w: 10 }, { v: 1000, w: 4 }, { v: 10000, w: 1 },
-]);
+].map((t) => Object.freeze({ ...t, v: t.v * MULT })));
 // bonusový (jackpotový) roztoč: jen velké výhry
-const BONUS_W = Object.freeze([{ v: 200, w: 450 }, { v: 300, w: 300 }, { v: 1000, w: 200 }, { v: 10000, w: 50 }]);
+const BONUS_W = Object.freeze([{ v: 200, w: 450 }, { v: 300, w: 300 }, { v: 1000, w: 200 }, { v: 10000, w: 50 }].map((t) => Object.freeze({ ...t, v: t.v * MULT })));
 
 const WHEEL = Object.freeze({
   PRICE: 100,
-  JACKPOT: 10000,
+  JACKPOT: 10000 * MULT,
   SLOTS, MAIN_W, BONUS_W,
   MIN_COLLECT_MS: Math.max(40, Math.round(4000 * SC)), // kolo se točí asi 6 s, dřív výhru nevyplatíme
   MAX_PENDING_MS: 10 * 60 * 1000,
