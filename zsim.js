@@ -28,7 +28,7 @@
     SWEEP_T: 1.7,            // doba rozmachu (s)
     SETTLE_T: 0.9,           // doba, po kterou se po rozmachu ještě počítá (puky se uklidní)
     // výherní díra: směr (svět) a polovina úhlu (cos)
-    HOLE_X: 0.0, HOLE_Y: -1.0, HOLE_COS: 0.984807753012208, // 270° (dole, u diváka), ±10°
+    HOLE_X: 0.0, HOLE_Y: -1.0, HOLE_COS: 0.9902680687415704, // 270° (dole, u diváka), ±8°
     DAMP: 0.88,              // útlum rychlosti puku za krok
   });
   const TOTAL_T = C.SWEEP_T + C.SETTLE_T;
