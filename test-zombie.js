@@ -52,7 +52,7 @@ assert.equal(r.status, 200); assert.equal(acc.zsTries, 2); assert.equal(r.json.t
   assert.deepEqual(r.json.result.fallen.map((f) => f.id).sort(), expected.fallen.map((f) => f.id).sort(), 'server vyplatil to, co dává simulace');
   const coins = expected.fallen.reduce((a, f) => a + (before.find((p) => p.id === f.id).v || 0), 0);
   assert.equal(r.json.result.coins, coins); assert.equal(r.json.result.payout, coins + 0); assert.equal(r.json.balance, 5000 + coins);
-  assert.equal(r.json.pucks.filter((p) => p.k === 'c').length, 24, 'mince se doplní'); assert.ok(r.json.added.length >= expected.fallen.length);
+  assert.equal(r.json.pucks.filter((p) => p.k === 'c').length, 24, 'mince se doplní'); assert.ok(r.json.added.length >= r.json.result.fallen.filter((f) => f.k === 'c').length);
 }
 assert.equal(call('shoot', { phi: 300 }).status, 429, 'příliš rychlý druhý výstřel'); assert.equal(acc.zsTries, 2);
 t += 2100; acc.balance = 5000;
@@ -102,6 +102,6 @@ assert.equal(call('shoot', { phi: 5 }).status, 409);
   const z3 = createZombie({ resolveAccount: () => ({ acc: z3acc }), markDirty() {}, notifyBalance() {}, TOKEN_RE: /.+/, rand, now: () => t }); const q = (a, b) => z3.handle(a, { token: 'z'.repeat(24), ...b });
   for (let g = 0; g < 120; g++) { q('buy'); for (let k = 0; k < 3; k++) { t += 2100; const x = q('shoot', { phi: Math.floor(rand() * 720) }); sum += x.json.result.coins; letters += x.json.result.letters.length; n++; } }
   console.log(`  náhodné načasování: průměr ${(sum / n).toFixed(0)} coinů na pokus (cena pokusu ${(500 / 3).toFixed(0)}), písmen na pokus ${(letters / n).toFixed(3)}`);
-  assert.ok(sum / n > 60 && sum / n < 400, 'průměrná výhra mimo rozumný rozsah'); }
+  assert.ok(sum / n > 60 && sum / n < 450, 'průměrná výhra mimo rozumný rozsah'); }
 
 console.log('Zombie Snatcher: všechny testy prošly ✓');

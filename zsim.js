@@ -23,12 +23,12 @@
     // rameno: čep (svět) a výchozí směr, délka, poloměr, rozmach
     PIVOT_X: 1.1, PIVOT_Y: 0.0,
     ARM_DX: 0.0, ARM_DY: 1.0,
-    ARM_LEN: 1.42, ARM_R: 0.05,
-    SWEEP: 1.95,             // rozmach ramene (rad, proti směru hodinových ručiček)
+    ARM_LEN: 1.45, ARM_R: 0.05, ARM_HOOK: 0.1, // ARM_HOOK: jen posledních 0,4 ramene je „prst“, který se dotýká puků (zbytek ramene je nad nimi)
+    SWEEP: 2.309,            // rozmach ramene (rad, proti směru hodinových ručiček)
     SWEEP_T: 1.7,            // doba rozmachu (s)
     SETTLE_T: 0.9,           // doba, po kterou se po rozmachu ještě počítá (puky se uklidní)
     // výherní díra: směr (svět) a polovina úhlu (cos)
-    HOLE_X: -0.9396926207859084, HOLE_Y: -0.3420201433256687, HOLE_COS: 0.9659258262890683, // 200°, ±15°
+    HOLE_X: 0.0, HOLE_Y: -1.0, HOLE_COS: 0.9945218953682733, // 270° (dole, u diváka), ±6°
     DAMP: 0.88,              // útlum rychlosti puku za krok
   });
   const TOTAL_T = C.SWEEP_T + C.SETTLE_T;
@@ -83,7 +83,7 @@
       for (const p of live) {
         if (!p.alive) continue;
         const rx = p.x - pl.x, ry = p.y - pl.y;
-        let q = rx * dl.x + ry * dl.y; if (q < 0) q = 0; else if (q > C.ARM_LEN) q = C.ARM_LEN;
+        let q = rx * dl.x + ry * dl.y; if (q < C.ARM_LEN - C.ARM_HOOK) q = C.ARM_LEN - C.ARM_HOOK; else if (q > C.ARM_LEN) q = C.ARM_LEN;
         const cx = pl.x + dl.x * q, cy = pl.y + dl.y * q;
         let dx = p.x - cx, dy = p.y - cy; const d2 = dx * dx + dy * dy, rr = p.r + C.ARM_R;
         if (d2 < rr * rr) {
