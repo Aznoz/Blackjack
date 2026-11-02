@@ -18,6 +18,7 @@ const createClaw = require('./claw');
 const createStacker = require('./stacker');
 const createKeymaster = require('./keymaster');
 const createWheel = require('./wheel');
+const createColorStop = require('./colorstop');
 const { CFG } = R;
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -1076,6 +1077,10 @@ async function handleApi(req, res, p) {
       const r = wheel.handle(p.slice('/api/wheel/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p.startsWith('/api/colorstop/') && req.method === 'POST') {
+      const r = colorstop.handle(p.slice('/api/colorstop/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/keymaster/') && req.method === 'POST') {
       const r = keymaster.handle(p.slice('/api/keymaster/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1326,6 +1331,7 @@ hwss.on('connection', (ws) => hockey.handleConnection(ws));
 
 const stacker = createStacker({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Stacker (HTTP API /api/stacker/*)
 const wheel = createWheel({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Kolo štěstí (HTTP API /api/wheel/*)
+const colorstop = createColorStop({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Color Stop (HTTP API /api/colorstop/*)
 const keymaster = createKeymaster({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Key Master (HTTP API /api/keymaster/*)
 const claw = createClaw({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // automat na plyšáky (HTTP API /api/claw/*)
 

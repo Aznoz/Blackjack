@@ -210,6 +210,15 @@ Kreslení a hádání pro 2–8 hráčů (jako Gartic.io / Skribbl), kód místn
 - Web: `public/keymaster/` (`index.html`, `keymaster.css`, `keymaster.js`, `header.js`, `config.js`, `vendor/`). `config.js` může přepsat adresu serveru (`window.KEYMASTER_API_URL`), jinak se vezme z `portal-config.js`.
 - Test: `node test-keymaster.js`.
 
+## Color Stop (arkáda na reakci, 1 hráč)
+
+Kolem dokola jezdí šipka po kruhu 12 políček, vždy svítí jedno. Hráč stiskne **STOP** (mezerník, tlačítko nebo klepnutí na plochu), když je šipka nad svítícím políčkem. Po zásahu šipka **otočí směr**, v novém směru se rozsvítí další políčko (3 až 9 políček daleko, jiná barva) a šipka **zrychlí** (100 °/s + 4 °/s za každý zásah). Šipka políčko přejede nebo STOP mimo = konec hry. Cíl je **50 zásahů** (jackpot).
+
+- Server: `colorstop.js`, HTTP API `POST /api/colorstop/{state,start,end}`. Hra stojí **100**. `start` strhne cenu a vylosuje celou trasu (vzdálenost a barvu každého dalšího políčka), `end` vyplatí podle skóre: 5+ → 50, 10+ → 100, 15+ → 150, 20+ → 250, 25+ → 400, 30+ → 800, 35+ → 1 500, 40+ → 3 000, 45+ → 6 000, **50 → 20 000**. Tabulka a rychlosti jsou konstanty `CS` na začátku souboru.
+- Hra je reakční a počítá se v prohlížeči, server proto skóre **omezí podle času**: šipka potřebuje na cestu k dalšímu políčku minimální čas (vzdálenost / rychlost), takže nikdo nevyplatí „50 zásahů za dvě vteřiny“. Nedohraná hra (zavřená stránka) propadá, při zavření se pokusí odeslat aspoň dosavadní skóre.
+- Web: `public/colorstop/` (`index.html`, `colorstop.css`, `colorstop.js`, `header.js`, `config.js`), kreslí se na 2D plátno. `config.js` může přepsat adresu serveru (`window.COLORSTOP_API_URL`), jinak se vezme z `portal-config.js`.
+- Test: `node test-colorstop.js`.
+
 ## Kolo štěstí (3D arkádové kolo, 1 hráč)
 
 Velké svislé kolo jako v arkádách (three.js, `public/wheel/vendor/three.module.min.js` je přibalený): černý buben, zelená kapota s obrazovkou „JACKPOT 20 000“, jazýček nahoře cvaká o kolíky. Roztočení stojí **100**; kolo má 24 stejně velkých výsečí (40, 80, 100, 140, 200, 300, 400, 600, 1000 ★, 2000, 20 000; všechny výhry jsou násobeny konstantou `MULT = 2` v `wheel.js`, šance a cena se nemění), ale výsledek losuje server podle vah, takže velké výhry padají mnohem řidčeji než malé (šance jsou vypsané v pravidlech i v bočních panelech). Výseč **1000 ★** vyplatí 1000 a dá **jackpotový roztoč zdarma** (padají jen 400 / 600 / 2000 / 20 000, jackpot 5 %). Jackpot 20 000 má na hlavním kole 0,1 %, dohromady zhruba 1 z 670 roztočení; návratnost ≈ 179 %. Automat jde otáčet tahem, dvěma prsty / kolečkem se kolo přibližuje.
