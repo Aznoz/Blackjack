@@ -89,8 +89,32 @@ assert.equal(entry.w, drawer1.state.options?.[1] ?? entry.w);
 assert.equal(drawer1.state.word, entry.w, 'kreslíř vidí slovo');
 for (const o of others(drawer1)) {
   assert.equal(o.state.word, null, 'hádající slovo nevidí');
-  assert.equal(o.state.mask.length, [...entry.w].length);
-  assert.ok(o.state.mask.every((ch, i) => ch === '_' || ch === ' '), 'maska nic neprozradí');
+  assert.equal(o.state.mask, null, 'bez nápovědy hádající nevidí ani počet písmen');
+  assert.equal(o.state.wordLen, 0);
+}
+{ // ruční nápovědy kreslíře: 1 = počet písmen, 2 = písmeno, 3 = další písmeno (slova od 7 písmen)
+  const letters = [...entry.w].filter((ch) => ch !== ' ').length;
+  const max = letters >= 7 ? 3 : letters >= 3 ? 2 : 1;
+  assert.deepEqual(drawer1.state.hint, { level: 0, max }, 'kreslíř ví, kolik nápověd může dát');
+  const [h1] = others(drawer1);
+  h1.send({ t: 'hint' }); await sleep(120);
+  assert.equal(h1.state.hint.level, 0, 'nápovědu smí dát jen kreslíř');
+  const shown = (o) => o.state.mask.filter((ch) => ch !== '_' && ch !== ' ').length;
+  for (let lvl = 1; lvl <= max; lvl++) {
+    drawer1.send({ t: 'hint' }); await sleep(150);
+    for (const o of others(drawer1)) {
+      assert.equal(o.state.hint.level, lvl);
+      assert.equal(o.state.mask.length, [...entry.w].length, 'maska má délku slova');
+      assert.equal(o.state.wordLen, letters);
+      assert.equal(shown(o), Math.max(0, lvl - 1), `po ${lvl}. nápovědě je odkryto ${Math.max(0, lvl - 1)} písmen`);
+      assert.ok(o.state.mask.every((ch, i) => ch === '_' || ch === [...entry.w][i]), 'odkrytá písmena sedí');
+      assert.equal(o.state.word, null);
+    }
+  }
+  drawer1.send({ t: 'hint' }); drawer1.send({ t: 'hint' }); await sleep(150);
+  assert.equal(drawer1.state.hint.level, max, 'víc nápověd než max nejde');
+  assert.equal(shown(others(drawer1)[0]), Math.max(0, max - 1));
+  assert.ok(others(drawer1)[0].chat.some((m) => /Nápověda/.test(m.text)), 'nápověda se ukáže v chatu');
 }
 
 // --- kresba se přenáší ostatním a ukládá pro příchozí

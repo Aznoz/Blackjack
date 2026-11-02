@@ -52,7 +52,7 @@ function newRoom() {
   if (!code) return null;
   const room = {
     code, players: [], nextId: 1, hostId: null, phase: 'lobby', level: 'mix', rounds: 3, drawSec: 80,
-    round: 0, order: [], idx: -1, drawer: null, options: [], entry: null, revealed: new Set(),
+    round: 0, order: [], idx: -1, drawer: null, options: [], entry: null, revealed: new Set(), hintLevel: 0,
     items: [], cur: null, pts: 0, guessed: new Map(), gains: new Map(), turnEnd: 0, turns: [],
     used: new Set(), chat: [], chatId: 0, ev: null, evId: 0, result: null, reveal: null,
     emptySince: now(), timers: { choose: null, draw: null, next: null, hints: [] },
@@ -162,6 +162,23 @@ function maskOf(room) {
   return w.map((ch) => { if (ch === ' ') return ' '; const show = room.revealed.has(k); k++; return show ? ch : '_'; });
 }
 
+/** Kolik nápověd lze k aktuálnímu slovu dát: 1 = počet písmen, 2 = náhodné písmeno, 3 = další písmeno (jen slova od 7 písmen). */
+const hintMax = (room) => { const n = wordLetters(room); return n >= 7 ? 3 : n >= 3 ? 2 : 1; };
+function giveHint(room, pl) {
+  if (room.phase !== 'draw' || pl.id !== room.drawer || !room.entry || room.hintLevel >= hintMax(room)) return;
+  room.hintLevel++;
+  const n = wordLetters(room);
+  let text;
+  if (room.hintLevel === 1) text = `💡 Nápověda: slovo má ${n} ${n === 1 ? 'písmeno' : n < 5 ? 'písmena' : 'písmen'}.`;
+  else {
+    const free = [...Array(n).keys()].filter((k) => !room.revealed.has(k));
+    room.revealed.add(free[Math.floor(Math.random() * free.length)]);
+    text = room.hintLevel === 2 ? '💡 Nápověda: odkryté jedno písmeno.' : '💡 Nápověda: odkryté další písmeno.';
+  }
+  sys(room, text, 'hint');
+  publish(room, { type: 'hint' });
+}
+
 function view(room, pid) {
   const inTurn = room.entry && (room.phase === 'draw' || room.phase === 'reveal');
   const knows = pid === room.drawer || room.guessed.has(pid);
@@ -174,9 +191,10 @@ function view(room, pid) {
     drawer: room.phase === 'lobby' || room.phase === 'over' ? null : room.drawer,
     options: room.phase === 'choose' && pid === room.drawer ? room.options.map((o) => o.w) : null,
     chooseMs: room.phase === 'choose' && room.timers.choose ? Math.max(0, room.chooseEnd - now()) : 0,
-    mask: room.phase === 'draw' && room.entry ? maskOf(room) : null,
+    mask: room.phase === 'draw' && room.entry && room.hintLevel >= 1 ? maskOf(room) : null,
+    hint: room.phase === 'draw' && room.entry ? { level: room.hintLevel, max: hintMax(room) } : null,
     word: showWord ? room.entry.w : null,
-    wordLen: inTurn ? wordLetters(room) : 0,
+    wordLen: inTurn && (room.hintLevel >= 1 || room.phase === 'reveal' || knows) ? wordLetters(room) : 0,
     guessed: [...room.guessed.keys()],
     turnMs: room.phase === 'draw' ? Math.max(0, room.turnEnd - now()) : 0,
     reveal: room.phase === 'reveal' ? room.reveal : null,
@@ -232,7 +250,7 @@ function startChoose(room) {
   clearTimers(room);
   room.phase = 'choose';
   room.options = drawWords(room);
-  room.entry = null; room.revealed = new Set(); room.guessed = new Map(); room.gains = new Map(); room.reveal = null;
+  room.entry = null; room.revealed = new Set(); room.hintLevel = 0; room.guessed = new Map(); room.gains = new Map(); room.reveal = null;
   room.items = []; room.cur = null; room.pts = 0;
   broadcastDraw(room, { t: 'draw', items: [] });
   room.chooseEnd = now() + CHOOSE_MS;
@@ -255,18 +273,7 @@ function startDraw(room) {
   const ms = DRAW_OVERRIDE_MS || room.drawSec * 1000;
   room.turnStart = now(); room.turnEnd = now() + ms;
   room.timers.draw = setTimeout(() => { room.timers.draw = null; endTurn(room, 'time'); }, ms);
-  // nápovědy: odkrytá písmena v 40 % a 70 % času (u delších slov)
-  const n = wordLetters(room);
-  const hints = n >= 8 ? 2 : n >= 4 ? 1 : 0;
-  for (let h = 0; h < hints; h++) {
-    room.timers.hints.push(setTimeout(() => {
-      if (room.phase !== 'draw') return;
-      const free = [...Array(n).keys()].filter((k) => !room.revealed.has(k));
-      if (free.length <= 1) return;
-      room.revealed.add(free[Math.floor(Math.random() * free.length)]);
-      publish(room, { type: 'hint' });
-    }, Math.round(ms * (h === 0 ? 0.4 : 0.7))));
-  }
+  room.revealed = new Set(); room.hintLevel = 0; // nápovědy dává kreslíř ručně (💡), samy se nedávají
   const dr = byId(room, room.drawer);
   sys(room, `✏️ ${dr ? dr.name : 'Kreslíř'} kreslí – hádejte, co to je!`, 'turn');
   publish(room, { type: 'draw', drawer: room.drawer });
@@ -472,6 +479,7 @@ function handle(ws, msg) {
       return pick(room, i);
     }
     case 'd': return handleDraw(room, pl, msg);
+    case 'hint': return giveHint(room, pl);
     case 'chat': return handleChat(room, pl, msg.text);
     case 'again': {
       if (room.phase !== 'over' || room.hostId !== pl.id) return;
