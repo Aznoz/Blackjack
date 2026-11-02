@@ -219,6 +219,16 @@ Kolem dokola jezdí šipka po kruhu 12 políček, vždy svítí jedno. Hráč st
 - Web: `public/colorstop/` (`index.html`, `colorstop.css`, `colorstop.js`, `header.js`, `config.js`), kreslí se na 2D plátno. `config.js` může přepsat adresu serveru (`window.COLORSTOP_API_URL`), jinak se vezme z `portal-config.js`.
 - Test: `node test-colorstop.js`.
 
+## Zombie Snatcher (3D automat s plošinou, 1 hráč)
+
+Podle arkády z Dave & Buster's. Otočná modrá plošina v kopuli, na ní puky s hodnotami **50, 100, 200, 500, 750, 1000, 1500, 2000, 3000, 5000** (čím větší hodnota, tím menší puk a blíž ke sloupu) a šest malých stejně velkých zelených puků s písmeny **Z O M B I E**. Za **500** hráč koupí **3 pokusy** (najednou nejvýš 9). **STOP** (mezerník / tlačítko) rozmáchne pevné rameno a shrne puky; puk, který přejede přes okraj ve výherní díře, spadne a vyplatí se jeho hodnota. Zbylé puky zůstávají, kde se zastavily, a ztracené se doplní. Spadnou-li **všechna písmena** (i postupně, napříč hrami), je **jackpot 10 000** a písmena se vynulují. Automat jde otáčet tahem, dvěma prsty se přibližuje.
+
+- Fyzika `zsim.js` je **jeden soubor pro server i prohlížeč** (deterministická, jen + − × ÷ a odmocnina, bitově shodná v Node i v prohlížečích). Vstupem je rozložení puků a úhel plošiny při STOP (0 až 719, po 0,5°). Prohlížeč výstřel hned přehraje, server ho **přepočítá** a vyplatí jen to, co vyšlo jemu.
+- Server: `zombie.js`, HTTP API `POST /api/zombie/{state,buy,shoot}`. **Uložené v účtu (Upstash)**: zbývající pokusy `zsTries` a nasbíraná písmena `zsLetters` (bitová maska). Rozložení puků na plošině je jen v paměti serveru (po restartu se vygeneruje nové, pokusy i písmena zůstanou). Nový nákup po dohrání = nová plošina. Mezi dvěma výstřely musí uplynout 2 s.
+- Vyváženost (hráč s náhodným načasováním): ≈ 175 coinů na pokus (cena pokusu je ≈ 167), písmeno padne zhruba 1 ze 16 pokusů, jackpot je velmi vzácný. Šikovný hráč (nebo bot), který zvolí ideální úhel, vyhraje víc, to je u dovednostních her nevyhnutelné. Konstanty jsou v `ZS` (`zombie.js`) a `C` (`zsim.js`; po změně je nutné zkopírovat `zsim.js` i do `public/zombie/`).
+- Web: `public/zombie/` (`index.html`, `zombie.css`, `zombie.js`, `zsim.js`, `header.js`, `config.js`, `vendor/`). `config.js` může přepsat adresu serveru (`window.ZOMBIE_API_URL`).
+- Test: `node test-zombie.js`.
+
 ## Kolo štěstí (3D arkádové kolo, 1 hráč)
 
 Velké svislé kolo jako v arkádách (three.js, `public/wheel/vendor/three.module.min.js` je přibalený): černý buben, zelená kapota s obrazovkou „JACKPOT 20 000“, jazýček nahoře cvaká o kolíky. Roztočení stojí **100**; kolo má 24 stejně velkých výsečí (40, 80, 100, 140, 200, 300, 400, 600, 1000 ★, 2000, 20 000; všechny výhry jsou násobeny konstantou `MULT = 2` v `wheel.js`, šance a cena se nemění), ale výsledek losuje server podle vah, takže velké výhry padají mnohem řidčeji než malé (šance jsou vypsané v pravidlech i v bočních panelech). Výseč **1000 ★** vyplatí 1000 a dá **jackpotový roztoč zdarma** (padají jen 400 / 600 / 2000 / 20 000, jackpot 5 %). Jackpot 20 000 má na hlavním kole 0,1 %, dohromady zhruba 1 z 670 roztočení; návratnost ≈ 179 %. Automat jde otáčet tahem, dvěma prsty / kolečkem se kolo přibližuje.
