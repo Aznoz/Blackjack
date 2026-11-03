@@ -7,21 +7,20 @@
  * dopředu; co přepadne přes přední okraj, spadne do výherního otvoru a vyplatí se.
  *
  * Mince na plošině jsou kruhy v pohledu shora (fyzika je jen na serveru, prohlížeč dostane pohyb po snímcích a jen ho přehraje):
- *  - mince (hodnoty 5 až 100) a „karty“ se symboly věcných odměn ze Stackeru (padne-li karta, hráč dostane díl té věci
+ *  - mince (hodnoty 10 až 250; hráčova mince z otvoru je náhodného typu) a „karty“ se symboly věcných odměn ze Stackeru (padne-li karta, hráč dostane díl té věci
  *    do stejného inventáře jako ve Stackeru / Key Masteru),
- *  - plošina je v čase hráče vždy v rovnováze: kolik mincí hráč vhodí (vlastní + doplněné strojem), tolik jich v průměru vypadne.
+ *  - plošina je v rovnováze: kolik mincí hráč vhodí, tolik jich (zhruba i hodnotou) vypadne. Plošina jezdí v prohlížeči neustále, ale bez nové mince se hromada nehýbe.
  * Uloženo v účtu (Upstash): zbývající mince `cpCoins`. Rozložení plošiny je v paměti serveru (po restartu se vygeneruje nové).
  */
 const { ITEMS } = require('./stacker');
 
-const COINS = Object.freeze([ // typy mincí: hodnota, poloměr, váha při doplňování
-  { name: 'Bronzová', v: 5, r: 0.36, w: 45 },
-  { name: 'Stříbrná', v: 10, r: 0.42, w: 30 },
-  { name: 'Zlatá', v: 25, r: 0.48, w: 15 },
-  { name: 'Platinová', v: 50, r: 0.54, w: 7 },
-  { name: 'Rubínová', v: 100, r: 0.6, w: 3 },
+const COINS = Object.freeze([ // typy mincí: hodnota, poloměr, váha (mince z otvoru se losuje podle vah)
+  { name: 'Bronzová', v: 10, r: 0.36, w: 38 },
+  { name: 'Stříbrná', v: 25, r: 0.42, w: 30 },
+  { name: 'Zlatá', v: 50, r: 0.48, w: 20 },
+  { name: 'Platinová', v: 100, r: 0.54, w: 8 },
+  { name: 'Rubínová', v: 250, r: 0.6, w: 4 },
 ].map((c) => Object.freeze(c)));
-const PLAYER_COIN = 1; // mince, kterou vhazuje hráč (stříbrná)
 
 // karty: jaké věci se na nich objevují (váhy upřednostňují levné věci, kartu pak může padnout i velká věc)
 const CARD_WEIGHTS = Object.freeze({ 'Čokoláda': 50, 'Drak na létání': 25, 'Hra do party': 15, 'Svítilna': 6, 'Kšiltovka': 3, 'Plyšový medvěd': 1.2, 'Sluchátka': 0.5, 'Herní ovladač': 0.3, 'Chytré hodinky': 0.3 });
@@ -37,9 +36,8 @@ const CP = Object.freeze({
   H: 6.0,            // výška pádu mince mezi kolíky
   R_CARD: 0.6,
   DT: 1 / 120, T_PRE: 0.1, T_OUT: 0.8, T_HOLD: 0.15, T_BACK: 0.8, T_SETTLE: 0.6, SAMPLE: 6,
-  HOUSE_COINS: 2,    // kolik mincí vhodí stroj navíc ke každé hráčově minci (udržuje plošinu)
-  CARD_CHANCE: 0.009, // šance, že se po hodu na plošinu přidá nová karta
-  MAX_ITEMS: 70, MAX_CARDS: 3,
+  CARD_CHANCE: 0.012, // šance, že hráčově minci doprovodí „bonusová“ karta
+  MAX_CARDS: 3,
   MIN_DROP_GAP_MS: 1500,
   MAX_SHELF_AGE_MS: 6 * 60 * 60 * 1000,
   DROP_STEP: 0.3,    // rozestup mezi pády mincí z jednoho hodu (s)
@@ -177,15 +175,11 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
   }
 
   function newShelf() {
-    if (!template) { // jednou za běh serveru: „rozehraná“ plošina v rovnováze (aby první hráč nedostal jednorázový příval mincí)
+    if (!template) { // jednou za běh serveru: „rozehraná“ plošina v rovnováze
       const sh = { items: [], nextId: 0 };
-      for (let i = 0; i < 30; i++) { const t = randCoinType(), s = freeSpot(sh.items, COINS[t].r, 1.8, 5.8); if (s) sh.items.push(mkCoin(sh, t, s[0], s[1])); }
-      for (let i = 0; i < 26; i++) {
-        const defs = [{ k: 'c', t: PLAYER_COIN, r: COINS[PLAYER_COIN].r, x: (rand() - 0.5) * 8 }];
-        for (let h = 0; h < CP.HOUSE_COINS; h++) { const t = randCoinType(); defs.push({ k: 'c', t, r: COINS[t].r, x: (rand() - 0.5) * 8 }); }
-        turn(sh, defs);
-      }
-      const card = freeSpot(sh.items, CP.R_CARD, 0.9, 2.2); if (card) sh.items.push(mkCard(sh, card[0], card[1]));
+      for (let i = 0; i < 46; i++) { const t = randCoinType(), s = freeSpot(sh.items, COINS[t].r, 2.7, 6.2); if (s) sh.items.push(mkCoin(sh, t, s[0], s[1])); }
+      for (let i = 0; i < 40; i++) { const t = randCoinType(); turn(sh, [{ k: 'c', t, r: COINS[t].r, x: (rand() - 0.5) * 8 }]); }
+      const card = freeSpot(sh.items, CP.R_CARD, 2.7, 3.8); if (card) sh.items.push(mkCard(sh, card[0], card[1]));
       template = sh;
     }
     return { items: template.items.map((it) => ({ ...it, ...(it.k === 'k' ? { item: randCardItem() } : {}) })), nextId: template.nextId, at: now(), lastDrop: 0 };
@@ -241,9 +235,8 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
       if (t - shelf.lastDrop < CP.MIN_DROP_GAP_MS) return bad(429, 'Moc rychle, počkej, až plošina dotlačí.', acc);
       shelf.lastDrop = t;
 
-      const defs = [{ k: 'c', t: PLAYER_COIN, r: COINS[PLAYER_COIN].r, x, mine: true }];
-      const n = shelf.items.length, nh = n < 44 ? CP.HOUSE_COINS + 1 : n < 62 ? CP.HOUSE_COINS : n < CP.MAX_ITEMS ? 1 : 0;
-      for (let i = 0; i < nh; i++) { const ty = randCoinType(); defs.push({ k: 'c', t: ty, r: COINS[ty].r, x: (rand() - 0.5) * (CP.W - 1) }); }
+      const ty = randCoinType();
+      const defs = [{ k: 'c', t: ty, r: COINS[ty].r, x, mine: true }];
       const cards = shelf.items.filter((it) => it.k === 'k').length;
       if (cards < CP.MAX_CARDS && rand() < CP.CARD_CHANCE) defs.push({ k: 'k', item: randCardItem(), r: CP.R_CARD, x: (rand() - 0.5) * (CP.W - 1) });
 
