@@ -43,7 +43,7 @@ const CP = Object.freeze({
   DT: 1 / 120, T_PRE: 0.1, T_OUT: 0.8, T_HOLD: 0.15, T_BACK: 0.8, T_SETTLE: 0.6, SAMPLE: 6,
   CARD_CHANCE: 0.02,  // šance, že z otvoru po hráčově minci vypadne nová karta (dopadne na hromadu)
   MAX_CARDS: 5,
-  MIN_DROP_GAP_MS: 350,
+  MIN_DROP_GAP_MS: 60, MAX_PENDING: 12, // hodit jde pořád dokola; na plošině může čekat nejvýš 12 mincí na tah
   MAX_SHELF_AGE_MS: 6 * 60 * 60 * 1000,
   DROP_STEP: 0.3,    // rozestup mezi pády mincí z jednoho hodu (s)
 });
@@ -193,34 +193,51 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
     return null;
   }
 
-  /** Jeden celý tah: nové věci (id, typ, dráha pádu), pohyb plošiny, co spadlo. Mění shelf.items. */
-  function turn(shelf, spawnDefs) {
-    const spawn = []; let tMax = 0;
-    spawnDefs.forEach((d, i) => {
-      const r = d.r, pl = plinko(Math.max(-CP.W / 2 + r, Math.min(CP.W / 2 - r, d.x)), r, rand);
-      const t0 = i * CP.DROP_STEP, dur = pl.steps * CP.DT, y = CP.YD + (rand() - 0.5) * 0.5;
-      const item = d.k === 'k' ? { id: ++shelf.nextId, k: 'k', item: d.item, r, x: q2(pl.x), y: q2(y) } : { id: ++shelf.nextId, k: 'c', t: d.t, v: COINS[d.t].v, r, lay: randLay(), x: q2(pl.x), y: q2(y) };
-      spawn.push({ ...item, t0: q2(t0), dur: q2(dur), x0: q2(d.x), path: pl.path.map(([px, ph]) => [Math.round(px * 100), Math.round(ph * 100)]), mine: !!d.mine });
-      shelf.items.push(item);
-      tMax = Math.max(tMax, t0 + dur);
-    });
+  /** Vloží jednu věc z otvoru: spočítá pád mezi kolíky a dopad. Věc čeká v shelf.pending, dokud ji nezatlačí tah plošiny.
+   *  Karta má při pádu mezi kolíky stejný poloměr jako mince (jinak by se mezi kolíky zasekla). */
+  function spawnOne(shelf, d, t0) {
+    const pr = d.k === 'k' ? COIN_R : d.r, r = d.r;
+    const pl = plinko(Math.max(-CP.W / 2 + pr, Math.min(CP.W / 2 - pr, d.x)), pr, rand);
+    let y = CP.YD; // dopadová hloubka: aby se nově dopadlé mince nepřekrývaly, hledá se volné místo mezi čekajícími
+    for (let tr = 0; tr < 12; tr++) {
+      const yy = 0.55 + rand() * 0.95;
+      if (shelf.pending.every((o) => o.k !== 'c' || d.k === 'k' || Math.hypot(o.x - pl.x, o.y - yy) > r * 2 + 0.05)) { y = yy; break; }
+      y = yy;
+    }
+    const item = d.k === 'k' ? { id: ++shelf.nextId, k: 'k', item: d.item, r, x: q2(pl.x), y: q2(y) } : { id: ++shelf.nextId, k: 'c', t: d.t, v: COINS[d.t].v, r, lay: randLay(), x: q2(pl.x), y: q2(y) };
+    shelf.pending.push(item);
+    return { ...item, t0: q2(t0), dur: q2(pl.steps * CP.DT), x0: q2(d.x), path: pl.path.map(([px, ph]) => [Math.round(px * 100), Math.round(ph * 100)]), mine: !!d.mine };
+  }
+
+  /** Tah plošiny: zatlačí vybrané čekající věci (ids; bez ids všechny) spolu s hromadou. Mění shelf.items. */
+  function strokeShelf(shelf, ids) {
+    const take = ids ? shelf.pending.filter((it) => ids.includes(it.id)) : shelf.pending.slice();
+    shelf.pending = shelf.pending.filter((it) => !take.includes(it));
+    for (const it of take) shelf.items.push(it);
     const sim = stroke(shelf.items, rand);
     const fallenIds = new Set(sim.fell.map((f) => f.id));
     const fallenItems = shelf.items.filter((it) => fallenIds.has(it.id));
     shelf.items = sim.live;
-    return { spawn, tStroke: q2(tMax + 0.15), frames: sim.frames, fell: sim.fell, fallenItems };
+    return { frames: sim.frames, fell: sim.fell, fallenItems, ids: take.map((it) => it.id) };
+  }
+
+  /** Celý tah najednou (rozehrání plošiny a testy): nové věci + tah. */
+  function turn(shelf, spawnDefs) {
+    const spawn = spawnDefs.map((d, i) => spawnOne(shelf, d, i * CP.DROP_STEP));
+    const res = strokeShelf(shelf, null);
+    return { spawn, tStroke: 0, frames: res.frames, fell: res.fell, fallenItems: res.fallenItems };
   }
 
   function newShelf() {
     if (!template) { // jednou za běh serveru: „rozehraná“ plošina v rovnováze, na mincích leží karty
-      const sh = { items: [], nextId: 0 };
+      const sh = { items: [], pending: [], nextId: 0 };
       for (let i = 0; i < 56; i++) { const t = randCoinType(), lay = randLay(), s = freeSpot(sh.items, COINS[t].r, 2.7, 6.2, lay); if (s) sh.items.push(mkCoin(sh, t, s[0], s[1], lay)); }
       for (let i = 0; i < 40; i++) { const t = randCoinType(); turn(sh, [{ k: 'c', t, r: COINS[t].r, x: (rand() - 0.5) * 8 }]); }
       const base = sh.items.filter((it) => it.k === 'c' && it.y > 2.8 && it.y < 5.6);
       for (let i = 0; i < CP.START_CARDS && base.length; i++) { const c = base.splice(Math.floor(rand() * base.length), 1)[0]; sh.items.push(mkCard(sh, Math.max(-3.9, Math.min(3.9, c.x + (rand() - 0.5) * 0.3)), c.y + (rand() - 0.5) * 0.3)); }
       template = sh;
     }
-    return { items: template.items.map((it) => ({ ...it, ...(it.k === 'k' ? { item: randCardItem() } : {}) })), nextId: template.nextId, at: now(), lastDrop: 0 };
+    return { items: template.items.map((it) => ({ ...it, ...(it.k === 'k' ? { item: randCardItem() } : {}) })), pending: [], nextId: template.nextId, at: now(), lastDrop: 0 };
   }
   function shelfOf(acc) {
     let sh = shelves.get(acc.key);
@@ -240,9 +257,27 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
 
   function topUp(acc) {
     if ((acc.cpCoins | 0) > 0 || acc.seat || acc.htable) return false;
+    const sh = shelves.get(acc.key); if (sh && sh.pending.length) return false;
     if (acc.balance >= FLOOR) return false;
     acc.balance = FLOOR; markDirty(); notifyBalance(acc);
     return true;
+  }
+
+  /** Připíše výhru z tahu (mince do zůstatku, karty do inventáře) a vrátí popis pro prohlížeč. */
+  function payout(acc, res) {
+    let coins = 0; const cardsWon = [];
+    for (const it of res.fallenItems) {
+      if (it.k === 'c') coins += it.v;
+      else {
+        if (!Array.isArray(acc.items)) acc.items = [];
+        acc.items[it.item] = (acc.items[it.item] | 0) + 1;
+        cardsWon.push({ id: it.id, item: it.item, parts: acc.items[it.item], need: ITEMS[it.item].need });
+      }
+    }
+    if (coins) { acc.balance += coins; notifyBalance(acc); }
+    if (coins || cardsWon.length) markDirty();
+    const fell = res.fell.map((f) => { const it = res.fallenItems.find((o) => o.id === f.id); return it.k === 'c' ? { id: f.id, f: f.f, k: 'c', v: it.v } : { id: f.id, f: f.f, k: 'k', item: it.item }; });
+    return { frames: res.frames, fell, coins, cards: cardsWon, ids: res.ids };
   }
 
   function handle(action, body) {
@@ -252,8 +287,10 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
     if (!Number.isInteger(acc.cpCoins)) acc.cpCoins = 0;
 
     if (action === 'state') {
+      const shelf = shelfOf(acc); let flushed = false;
+      if (shelf.pending.length) { payout(acc, strokeShelf(shelf, null)); flushed = true; } // mince, které při zavření stránky nestihly dotlačit
       const r = topUp(acc);
-      return { status: 200, json: state(acc, shelfOf(acc), { refilled: r }) };
+      return { status: 200, json: state(acc, shelf, { refilled: r, flushed }) };
     }
 
     if (action === 'buy') {
@@ -265,35 +302,31 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
       return { status: 200, json: state(acc, shelfOf(acc), { bought: pack[0] }) };
     }
 
+    // drop: mince z otvoru padá mezi kolíky a dopadne na plošinu (zatím jen čeká); tah plošiny je zvlášť (push)
     if (action === 'drop') {
       if ((acc.cpCoins | 0) < 1) return bad(409, 'Nemáš žádnou minci. Kup si další.', acc);
       const x = Number(body.x);
       if (!Number.isFinite(x) || Math.abs(x) > CP.W / 2) return bad(400, 'Neplatná poloha.', acc);
       const shelf = shelfOf(acc), t = now();
-      if (t - shelf.lastDrop < CP.MIN_DROP_GAP_MS) return bad(429, 'Moc rychle, počkej, až plošina dotlačí.', acc);
+      if (shelf.pending.length >= CP.MAX_PENDING) return bad(429, 'Počkej, než plošina zatlačí mince.', acc);
+      if (t - shelf.lastDrop < CP.MIN_DROP_GAP_MS) return bad(429, 'Moc rychle.', acc);
       shelf.lastDrop = t;
-
       const ty = randCoinType();
-      const defs = [{ k: 'c', t: ty, r: COINS[ty].r, x, mine: true }];
-      const cards = shelf.items.filter((it) => it.k === 'k').length;
-      if (cards < CP.MAX_CARDS && rand() < CP.CARD_CHANCE) defs.push({ k: 'k', item: randCardItem(), r: CP.R_CARD, x: (rand() - 0.5) * (CP.W - 1) });
+      const spawn = [spawnOne(shelf, { k: 'c', t: ty, r: COINS[ty].r, x, mine: true }, 0)];
+      const cards = shelf.items.filter((it) => it.k === 'k').length + shelf.pending.filter((it) => it.k === 'k').length;
+      if (cards < CP.MAX_CARDS && rand() < CP.CARD_CHANCE) spawn.push(spawnOne(shelf, { k: 'k', item: randCardItem(), r: CP.R_CARD, x: (rand() - 0.5) * (CP.W - 1) }, CP.DROP_STEP));
+      acc.cpCoins -= 1; markDirty();
+      return { status: 200, json: { balance: acc.balance, coins: acc.cpCoins, drop: { spawn }, pending: shelf.pending.length } };
+    }
 
-      acc.cpCoins -= 1;
-      const res = turn(shelf, defs);
-      let coins = 0; const cardsWon = [];
-      for (const it of res.fallenItems) {
-        if (it.k === 'c') coins += it.v;
-        else {
-          if (!Array.isArray(acc.items)) acc.items = [];
-          acc.items[it.item] = (acc.items[it.item] | 0) + 1;
-          cardsWon.push({ id: it.id, item: it.item, parts: acc.items[it.item], need: ITEMS[it.item].need });
-        }
-      }
-      if (coins) { acc.balance += coins; notifyBalance(acc); }
-      markDirty();
+    // push: tah plošiny, který zatlačí čekající mince (ids = ty, které prohlížeč do tahu počítá) a vyplatí, co přepadne
+    if (action === 'push') {
+      const shelf = shelfOf(acc);
+      const ids = Array.isArray(body.ids) ? body.ids.filter((n) => Number.isInteger(n)).slice(0, 40) : null;
+      if (!shelf.pending.length || (ids && !shelf.pending.some((it) => ids.includes(it.id)))) return bad(409, 'Není co tlačit.', acc);
+      const res = payout(acc, strokeShelf(shelf, ids));
       const refilled = topUp(acc);
-      const fellInfo = res.fell.map((f) => { const it = res.fallenItems.find((o) => o.id === f.id); return it.k === 'c' ? { id: f.id, f: f.f, k: 'c', v: it.v } : { id: f.id, f: f.f, k: 'k', item: it.item }; });
-      return { status: 200, json: state(acc, shelf, { drop: { spawn: res.spawn, tStroke: res.tStroke, frames: res.frames, fell: fellInfo, coins, cards: cardsWon }, refilled }) };
+      return { status: 200, json: state(acc, shelf, { push: res, refilled }) };
     }
 
     return bad(404, 'Neznámá akce.');
