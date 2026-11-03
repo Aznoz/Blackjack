@@ -38,16 +38,17 @@ const CP = Object.freeze({
   DT: 1 / 120, T_PRE: 0.1, T_OUT: 0.8, T_HOLD: 0.15, T_BACK: 0.8, T_SETTLE: 0.6, SAMPLE: 6,
   CARD_CHANCE: 0.012, // šance, že hráčově minci doprovodí „bonusová“ karta
   MAX_CARDS: 3,
-  MIN_DROP_GAP_MS: 1500,
+  MIN_DROP_GAP_MS: 350,
   MAX_SHELF_AGE_MS: 6 * 60 * 60 * 1000,
   DROP_STEP: 0.3,    // rozestup mezi pády mincí z jednoho hodu (s)
 });
 
-// kolíky (mince se mezi nimi odráží): střídavé řady
+// kolíky (mince se mezi nimi odráží): střídavé řady. Mezery jsou všude větší než největší mince (nic se nezasekne),
+// u stěn kolík není (mezi kolíkem a stěnou by se větší mince zaklínila).
 const PEGS = (() => {
   const out = [];
-  for (let row = 0; row < 6; row++) {
-    const h = 5.0 - row * 0.8, xs = row % 2 ? [-2.7, -0.9, 0.9, 2.7] : [-3.6, -1.8, 0, 1.8, 3.6];
+  for (let row = 0; row < 4; row++) {
+    const h = 5.0 - row * 1.2, xs = row % 2 ? [-1.125, 1.125] : [-2.25, 0, 2.25];
     for (const x of xs) out.push([x, h]);
   }
   return out;
@@ -61,7 +62,12 @@ function plinko(x0, r, rand) {
   let x = x0, h = CP.H, vx = (rand() - 0.5) * 0.8, vh = 0;
   const path = [[x, h]];
   const lim = CP.W / 2 - r;
+  let hMark = h, iMark = 0;
   for (let i = 0; i < 1200 && h > 0; i++) {
+    if (i - iMark >= 40) { // záchrana: kdyby mince 1/3 s skoro neklesla (zaklínila se), dostane silný postrčení
+      if (hMark - h < 0.25) { vx += (rand() < 0.5 ? -1 : 1) * (1.2 + rand()); vh = Math.min(vh, 0) - 2; }
+      hMark = h; iMark = i;
+    }
     vh -= g * dt; x += vx * dt; h += vh * dt;
     if (x < -lim) { x = -lim; vx = Math.abs(vx) * 0.5; } else if (x > lim) { x = lim; vx = -Math.abs(vx) * 0.5; }
     for (const [px, ph] of PEGS) {
