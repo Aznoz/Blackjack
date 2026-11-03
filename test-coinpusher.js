@@ -106,6 +106,31 @@ t += 1600;
   assert.ok(cards >= 1 && cards <= 40, "karty padají občas: " + cards);
 }
 
+// --- minimum karet: na plošině jsou pořád aspoň 2 (když jich je méně, z otvoru vypadne 1 nebo 2 nové)
+{
+  acc.cpCoins = 20; acc.balance = 5000; t += 5000; call('state');
+  const sh = cp.shelfOf(acc); const cardsOf = () => sh.items.filter((it) => it.k === 'k').length + sh.pending.filter((it) => it.k === 'k').length;
+  const flush = () => { let r = call('state'); return r; };
+  sh.items = sh.items.filter((it) => it.k !== 'k'); sh.pending = []; assert.equal(cardsOf(), 0);
+  t += 100; let a = call('drop', { x: 0 }); assert.equal(a.status, 200);
+  assert.equal(a.json.drop.spawn.filter((q) => q.k === 'k').length, CP.MIN_CARDS, 'bez karet vypadnou dvě');
+  assert.ok(cardsOf() >= CP.MIN_CARDS); flush();
+  // jedna karta na plošině: vypadne jedna nová
+  sh.items = sh.items.filter((it) => it.k !== 'k'); sh.pending = [];
+  const keep = { id: ++sh.nextId, k: 'k', item: 0, r: CP.R_CARD, x: 0, y: 4.5 }; sh.items.push(keep);
+  t += 100; a = call('drop', { x: 1 }); assert.equal(a.status, 200);
+  assert.equal(a.json.drop.spawn.filter((q) => q.k === 'k').length, CP.MIN_CARDS - 1, 'při jedné kartě vypadne jedna');
+  flush();
+  // 600 hodů se stálým vybíráním karet: po každém hodu jsou karty aspoň dvě (na plošině nebo čekající na tah)
+  for (let i = 0; i < 80; i++) {
+    acc.cpCoins = Math.max(acc.cpCoins, 2); t += 1600;
+    if (i % 3 === 0) sh.items = sh.items.filter((it) => it.k !== 'k' || Math.random() < 0.3); // karty „odnesl“ hráč
+    const d = call('drop', { x: (rand() - 0.5) * 8 }); assert.equal(d.status, 200);
+    assert.ok(cardsOf() >= CP.MIN_CARDS, 'po hodu jsou aspoň ' + CP.MIN_CARDS + ' karty: ' + cardsOf());
+    const p = call('push', { ids: d.json.drop.spawn.map((q) => q.id) }); assert.equal(p.status, 200);
+  }
+}
+
 // --- házení bez přestávky: více mincí padá hned po sobě a jeden tah je zatlačí společně
 {
   acc.cpCoins = 12; acc.balance = 5000; t += 1000;

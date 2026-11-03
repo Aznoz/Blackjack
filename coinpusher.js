@@ -42,6 +42,7 @@ const CP = Object.freeze({
   START_CARDS: 4,
   DT: 1 / 120, T_PRE: 0.1, T_OUT: 0.8, T_HOLD: 0.15, T_BACK: 0.8, T_SETTLE: 0.6, SAMPLE: 6,
   CARD_CHANCE: 0.02,  // šance, že z otvoru po hráčově minci vypadne nová karta (dopadne na hromadu)
+  MIN_CARDS: 2,       // na plošině (včetně těch, co čekají na tah) mají být pořád aspoň tolik karet; když je jich méně, z otvoru vypadne 1 nebo 2 nové
   MAX_CARDS: 5,
   MIN_DROP_GAP_MS: 60, MAX_PENDING: 12, // hodit jde pořád dokola; na plošině může čekat nejvýš 12 mincí na tah
   MAX_SHELF_AGE_MS: 6 * 60 * 60 * 1000,
@@ -319,7 +320,10 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
       const ty = randCoinType();
       const spawn = [spawnOne(shelf, { k: 'c', t: ty, r: COINS[ty].r, x, mine: true }, 0)];
       const cards = shelf.items.filter((it) => it.k === 'k').length + shelf.pending.filter((it) => it.k === 'k').length;
-      if (cards < CP.MAX_CARDS && rand() < CP.CARD_CHANCE) spawn.push(spawnOne(shelf, { k: 'k', item: randCardItem(), r: CP.R_CARD, x: (rand() - 0.5) * (CP.W - 1) }, CP.DROP_STEP));
+      let extra = 0;
+      if (cards < CP.MIN_CARDS) extra = CP.MIN_CARDS - cards;                 // doplnění: vždy aspoň MIN_CARDS karet (vypadne 1 nebo 2)
+      else if (cards < CP.MAX_CARDS && rand() < CP.CARD_CHANCE) extra = 1;    // jinak jen občas bonus
+      for (let i = 0; i < extra; i++) spawn.push(spawnOne(shelf, { k: 'k', item: randCardItem(), r: CP.R_CARD, x: (rand() - 0.5) * (CP.W - 1) }, CP.DROP_STEP * (i + 1)));
       acc.cpCoins -= 1; markDirty();
       return { status: 200, json: { balance: acc.balance, coins: acc.cpCoins, drop: { spawn }, pending: shelf.pending.length } };
     }
