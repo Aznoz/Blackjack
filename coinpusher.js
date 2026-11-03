@@ -14,12 +14,13 @@
  */
 const { ITEMS } = require('./stacker');
 
-const COINS = Object.freeze([ // typy mincí: hodnota, poloměr, váha (mince z otvoru se losuje podle vah)
-  { name: 'Bronzová', v: 10, r: 0.36, w: 38 },
-  { name: 'Stříbrná', v: 25, r: 0.42, w: 30 },
-  { name: 'Zlatá', v: 50, r: 0.48, w: 20 },
-  { name: 'Platinová', v: 100, r: 0.54, w: 8 },
-  { name: 'Rubínová', v: 250, r: 0.6, w: 4 },
+const COIN_R = 0.4; // všechny mince jsou stejně velké, liší se barvou a hodnotou
+const COINS = Object.freeze([ // typy mincí: hodnota, váha (mince z otvoru se losuje podle vah)
+  { name: 'Bronzová', v: 10, r: COIN_R, w: 38 },
+  { name: 'Stříbrná', v: 25, r: COIN_R, w: 30 },
+  { name: 'Zlatá', v: 50, r: COIN_R, w: 20 },
+  { name: 'Platinová', v: 100, r: COIN_R, w: 8 },
+  { name: 'Rubínová', v: 250, r: COIN_R, w: 4 },
 ].map((c) => Object.freeze(c)));
 
 // karty: jaké věci se na nich objevují (váhy upřednostňují levné věci, kartu pak může padnout i velká věc)
@@ -34,26 +35,29 @@ const CP = Object.freeze({
   YD: 0.9,           // hloubka, kam mince dopadají
   PMAX: 1.9,         // o kolik se plošina při tlačení posune dopředu
   H: 6.0,            // výška pádu mince mezi kolíky
-  R_CARD: 0.6,
+  R_CARD: 0.5,        // karta leží NA mincích (s mincemi nekoliduje), tohle je jen poloha vůči stěně
+  CARD_CARRY: 0.9,    // karta jede s mincemi, které jsou pod ní (do této vzdálenosti)
+  LAYER_P: 0.25,      // šance, že mince leží na druhé vrstvě (na jiných mincích)
+  LAYER_K: 0.5,       // mince v různých vrstvách se smí překrývat (vzdálenost aspoň takový podíl součtu poloměrů)
+  START_CARDS: 4,
   DT: 1 / 120, T_PRE: 0.1, T_OUT: 0.8, T_HOLD: 0.15, T_BACK: 0.8, T_SETTLE: 0.6, SAMPLE: 6,
-  CARD_CHANCE: 0.012, // šance, že hráčově minci doprovodí „bonusová“ karta
-  MAX_CARDS: 3,
+  CARD_CHANCE: 0.02,  // šance, že z otvoru po hráčově minci vypadne nová karta (dopadne na hromadu)
+  MAX_CARDS: 5,
   MIN_DROP_GAP_MS: 350,
   MAX_SHELF_AGE_MS: 6 * 60 * 60 * 1000,
   DROP_STEP: 0.3,    // rozestup mezi pády mincí z jednoho hodu (s)
 });
 
-// kolíky (mince se mezi nimi odráží): střídavé řady. Mezery jsou všude větší než největší mince (nic se nezasekne),
-// u stěn kolík není (mezi kolíkem a stěnou by se větší mince zaklínila).
+// kolíky (mince se mezi nimi odráží): hustě, střídavé řady. Mezery mezi kolíky jsou i šikmo větší než mince (a u stěn je mezera širší než mince).
 const PEGS = (() => {
   const out = [];
-  for (let row = 0; row < 4; row++) {
-    const h = 5.0 - row * 1.2, xs = row % 2 ? [-1.125, 1.125] : [-2.25, 0, 2.25];
+  for (let row = 0; row < 6; row++) {
+    const h = 5.0 - row * 0.8, xs = row % 2 ? [-2.7, -0.9, 0.9, 2.7] : [-3.5, -1.8, 0, 1.8, 3.5];
     for (const x of xs) out.push([x, h]);
   }
   return out;
 })();
-const PEG_R = 0.14;
+const PEG_R = 0.12;
 const q2 = (n) => Math.round(n * 100) / 100;
 
 /** Pád mince mezi kolíky: vrací [[x, h], ...] po 1/30 s a dopadovou polohu. Náhoda (odrazy) pochází ze serveru. */
@@ -87,7 +91,9 @@ function plinko(x0, r, rand) {
   return { path, x: Math.max(-lim, Math.min(lim, x)), steps: path.length * 4 };
 }
 
-/** Jeden tah plošiny: vloží nové věci, rozjede plošinu dopředu a zpět; vrací snímky pohybu a věci, které spadly. */
+/** Jeden tah plošiny: vloží nové věci, rozjede plošinu dopředu a zpět; vrací snímky pohybu a věci, které spadly.
+ *  Mince jsou kruhy; mince ve stejné vrstvě se neprotínají, mince v různých vrstvách se smí překrývat (leží na sobě).
+ *  Karty leží na mincích: nekolidují s nimi, jen jedou s mincemi pod sebou (a plošina je tlačí). */
 function stroke(items, rand) {
   const { DT } = CP;
   const nPre = Math.round(CP.T_PRE / DT), nOut = Math.round(CP.T_OUT / DT), nHold = Math.round(CP.T_HOLD / DT), nBack = Math.round(CP.T_BACK / DT), nSettle = Math.round(CP.T_SETTLE / DT);
@@ -113,24 +119,48 @@ function stroke(items, rand) {
     frames.push(fr);
   };
   snapshot(true);
+  let prevP = -1;
   for (let s = 0; s < total; s++) {
     const p = face(s);
-    for (let iter = 0; iter < 8; iter++) {
-      for (let i = 0; i < live.length; i++) {
-        const a = live[i];
-        for (let j = i + 1; j < live.length; j++) {
-          const b = live[j], dx = b.x - a.x, dy = b.y - a.y, rr = a.r + b.r;
-          if (dx > rr || dx < -rr || dy > rr || dy < -rr) continue;
-          const d2 = dx * dx + dy * dy; if (d2 >= rr * rr) continue;
-          let d = Math.sqrt(d2), nx, ny;
-          if (d < 1e-6) { nx = rand() - 0.5; ny = 0.2; const n = Math.sqrt(nx * nx + ny * ny); nx /= n; ny /= n; d = 0; } else { nx = dx / d; ny = dy / d; }
-          const ov = (rr - d) / 2; a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov;
-        }
+    const still = !(p > prevP) && s !== 0 && s !== total - 1; prevP = p; // mince se hýbou jen když je plošina tlačí dopředu (couvání a stání nic nemění)
+    for (const it of live) { it.ox = it.x; it.oy = it.y; }
+    const cs = live.filter((it) => it.k === 'c');
+    const pairs = [];
+    if (!still) {
+    // mřížka (buňka 1,0 >= největší dosah dvojice 0,8): páry se hledají jen mezi sousedními buňkami
+    const grid = new Map();
+    for (const it of cs) { const key = Math.floor(it.x + 5) * 64 + Math.floor(it.y + 1); let g = grid.get(key); if (!g) { g = []; grid.set(key, g); } g.push(it); }
+    for (let ci = 0; ci < cs.length; ci++) {
+      const a = cs[ci], gx = Math.floor(a.x + 5), gy = Math.floor(a.y + 1);
+      for (let ox = -1; ox <= 1; ox++) for (let oy = -1; oy <= 1; oy++) {
+        const g = grid.get((gx + ox) * 64 + gy + oy); if (!g) continue;
+        for (const b of g) if (b.id > a.id) pairs.push(a, b);
       }
-      for (const it of live) {
-        if (it.x < -lim + it.r) it.x = -lim + it.r; else if (it.x > lim - it.r) it.x = lim - it.r;
-        if (it.y < p + it.r) it.y = p + it.r;
+    }
+    }
+    for (let iter = 0; iter < (still ? 0 : 6); iter++) {
+      let moved = false;
+      for (let pi = 0; pi < pairs.length; pi += 2) {
+        const a = pairs[pi], b = pairs[pi + 1], dx = b.x - a.x, dy = b.y - a.y, rr = (a.r + b.r) * (a.lay === b.lay ? 1 : CP.LAYER_K);
+        if (dx > rr || dx < -rr || dy > rr || dy < -rr) continue;
+        const d2 = dx * dx + dy * dy; if (d2 >= rr * rr) continue;
+        let d = Math.sqrt(d2), nx, ny;
+        if (d < 1e-6) { nx = rand() - 0.5; ny = 0.2; const n = Math.sqrt(nx * nx + ny * ny); nx /= n; ny /= n; d = 0; } else { nx = dx / d; ny = dy / d; }
+        const ov = (rr - d) / 2; a.x -= nx * ov; a.y -= ny * ov; b.x += nx * ov; b.y += ny * ov; moved = true;
       }
+      for (const it of cs) {
+        if (it.x < -lim + it.r) { it.x = -lim + it.r; moved = true; } else if (it.x > lim - it.r) { it.x = lim - it.r; moved = true; }
+        if (it.y < p + it.r) { it.y = p + it.r; moved = true; }
+      }
+      if (!moved) break;
+    }
+    for (const c of live) { // karty jedou s mincemi pod sebou
+      if (c.k !== 'k') continue;
+      let sx = 0, sy = 0, n = 0;
+      for (const o of cs) { if (Math.abs(o.x - c.x) > CP.CARD_CARRY || Math.abs(o.y - c.y) > CP.CARD_CARRY) continue; if (Math.hypot(o.x - c.x, o.y - c.y) > CP.CARD_CARRY) continue; sx += o.x - o.ox; sy += o.y - o.oy; n++; }
+      if (n) { c.x += sx / n; c.y += sy / n; }
+      if (c.x < -lim + c.r) c.x = -lim + c.r; else if (c.x > lim - c.r) c.x = lim - c.r;
+      if (c.y < p + 0.3) c.y = p + 0.3;
     }
     for (let i = live.length - 1; i >= 0; i--) {
       if (live[i].y > CP.YF) { fell.push({ id: live[i].id, f: frames.length }); live.splice(i, 1); }
@@ -150,14 +180,15 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
   const randCoinType = () => COINS.indexOf(pickWeighted(COINS, (c) => c.w));
   const randCardItem = () => pickWeighted(CARD_ITEMS, (p) => p[1])[0];
 
-  const mkCoin = (shelf, t, x, y) => ({ id: ++shelf.nextId, k: 'c', t, v: COINS[t].v, r: COINS[t].r, x: q2(x), y: q2(y) });
+  const randLay = () => (rand() < CP.LAYER_P ? 1 : 0);
+  const mkCoin = (shelf, t, x, y, lay = randLay()) => ({ id: ++shelf.nextId, k: 'c', t, v: COINS[t].v, r: COINS[t].r, lay, x: q2(x), y: q2(y) });
   const mkCard = (shelf, x, y) => ({ id: ++shelf.nextId, k: 'k', item: randCardItem(), r: CP.R_CARD, x: q2(x), y: q2(y) });
 
-  /** Volné místo pro věc o poloměru r v pásu y0..y1 (nebo null). */
-  function freeSpot(items, r, y0, y1) {
+  /** Volné místo pro minci o poloměru r a vrstvě lay v pásu y0..y1 (nebo null). */
+  function freeSpot(items, r, y0, y1, lay) {
     for (let t = 0; t < 200; t++) {
       const x = (rand() - 0.5) * (CP.W - 2 * r - 0.1), y = y0 + rand() * (y1 - y0);
-      if (items.every((o) => Math.hypot(o.x - x, o.y - y) > o.r + r + 0.02)) return [x, y];
+      if (items.every((o) => o.k !== 'c' || Math.hypot(o.x - x, o.y - y) > (o.r + r) * (o.lay === lay ? 1 : CP.LAYER_K) + 0.02)) return [x, y];
     }
     return null;
   }
@@ -168,7 +199,7 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
     spawnDefs.forEach((d, i) => {
       const r = d.r, pl = plinko(Math.max(-CP.W / 2 + r, Math.min(CP.W / 2 - r, d.x)), r, rand);
       const t0 = i * CP.DROP_STEP, dur = pl.steps * CP.DT, y = CP.YD + (rand() - 0.5) * 0.5;
-      const item = d.k === 'k' ? { id: ++shelf.nextId, k: 'k', item: d.item, r, x: q2(pl.x), y: q2(y) } : { id: ++shelf.nextId, k: 'c', t: d.t, v: COINS[d.t].v, r, x: q2(pl.x), y: q2(y) };
+      const item = d.k === 'k' ? { id: ++shelf.nextId, k: 'k', item: d.item, r, x: q2(pl.x), y: q2(y) } : { id: ++shelf.nextId, k: 'c', t: d.t, v: COINS[d.t].v, r, lay: randLay(), x: q2(pl.x), y: q2(y) };
       spawn.push({ ...item, t0: q2(t0), dur: q2(dur), x0: q2(d.x), path: pl.path.map(([px, ph]) => [Math.round(px * 100), Math.round(ph * 100)]), mine: !!d.mine });
       shelf.items.push(item);
       tMax = Math.max(tMax, t0 + dur);
@@ -181,11 +212,12 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
   }
 
   function newShelf() {
-    if (!template) { // jednou za běh serveru: „rozehraná“ plošina v rovnováze
+    if (!template) { // jednou za běh serveru: „rozehraná“ plošina v rovnováze, na mincích leží karty
       const sh = { items: [], nextId: 0 };
-      for (let i = 0; i < 46; i++) { const t = randCoinType(), s = freeSpot(sh.items, COINS[t].r, 2.7, 6.2); if (s) sh.items.push(mkCoin(sh, t, s[0], s[1])); }
+      for (let i = 0; i < 56; i++) { const t = randCoinType(), lay = randLay(), s = freeSpot(sh.items, COINS[t].r, 2.7, 6.2, lay); if (s) sh.items.push(mkCoin(sh, t, s[0], s[1], lay)); }
       for (let i = 0; i < 40; i++) { const t = randCoinType(); turn(sh, [{ k: 'c', t, r: COINS[t].r, x: (rand() - 0.5) * 8 }]); }
-      const card = freeSpot(sh.items, CP.R_CARD, 2.7, 3.8); if (card) sh.items.push(mkCard(sh, card[0], card[1]));
+      const base = sh.items.filter((it) => it.k === 'c' && it.y > 2.8 && it.y < 5.6);
+      for (let i = 0; i < CP.START_CARDS && base.length; i++) { const c = base.splice(Math.floor(rand() * base.length), 1)[0]; sh.items.push(mkCard(sh, Math.max(-3.9, Math.min(3.9, c.x + (rand() - 0.5) * 0.3)), c.y + (rand() - 0.5) * 0.3)); }
       template = sh;
     }
     return { items: template.items.map((it) => ({ ...it, ...(it.k === 'k' ? { item: randCardItem() } : {}) })), nextId: template.nextId, at: now(), lastDrop: 0 };
@@ -196,7 +228,7 @@ module.exports = function createCoinPusher({ resolveAccount, markDirty, notifyBa
     return sh;
   }
 
-  const pubItem = (it) => (it.k === 'k' ? { id: it.id, k: 'k', item: it.item, r: it.r, x: it.x, y: it.y } : { id: it.id, k: 'c', t: it.t, v: it.v, r: it.r, x: it.x, y: it.y });
+  const pubItem = (it) => (it.k === 'k' ? { id: it.id, k: 'k', item: it.item, r: it.r, x: it.x, y: it.y } : { id: it.id, k: 'c', t: it.t, v: it.v, r: it.r, lay: it.lay, x: it.x, y: it.y });
   const pub = () => ({
     packs: CP.PACKS.map((p) => ({ n: p[0], price: p[1] })), maxCoins: CP.MAX_COINS, W: CP.W, YF: CP.YF, YD: CP.YD, PMAX: CP.PMAX, H: CP.H,
     pegs: PEGS, pegR: PEG_R, types: COINS.map((c) => ({ name: c.name, v: c.v, r: c.r })), cardR: CP.R_CARD,
