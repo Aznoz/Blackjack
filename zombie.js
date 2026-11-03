@@ -113,7 +113,7 @@ module.exports = function createZombie({ resolveAccount, markDirty, notifyBalanc
       if (acc.zsTries + ZS.TRIES_PER_BUY > ZS.MAX_TRIES) return bad(409, `Můžeš mít nejvýš ${ZS.MAX_TRIES} pokusů najednou.`, acc);
       if (acc.balance < ZS.PRICE) return bad(402, 'Nemáš dost žetonů.', acc);
       acc.balance -= ZS.PRICE; acc.zsTries += ZS.TRIES_PER_BUY; markDirty(); notifyBalance(acc);
-      const plat = acc.zsTries === ZS.TRIES_PER_BUY ? newPlatform(acc) : platformOf(acc); // nový nákup po dohrání = nová plošina
+      const plat = platformOf(acc); // puky na plošině zůstávají i po dokoupení pokusů
       return { status: 200, json: state(acc, plat, { bought: true }) };
     }
 

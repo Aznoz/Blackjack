@@ -19,7 +19,7 @@ const CS = {
   CELLS: 12,                       // políček na kruhu
   CELL_DEG: 30,                    // úhel jednoho políčka
   SPEED0: 100,                     // °/s na začátku
-  SPEED_STEP: 6,                   // o kolik °/s se šipka zrychlí po každém zásahu (po 49 zásazích 394 °/s)
+  SPEED_STEP: 5,                   // o kolik °/s se šipka zrychlí po každém zásahu (po 49 zásazích 345 °/s)
   DMIN: 2, DMAX: 9,                // nové políčko je 2 až 9 políček před šipkou (v novém směru); 2 = mezera jen jedno políčko
   SHRINK_FROM: 10, SHRINK_TO: 46,  // od 10. zásahu se největší vzdálenost zmenšuje z 9 na 3, od 46. zásahu je vždy jen 2 (mezera 1 políčko)
   COLORS: 8,                       // počet barev (jen vzhled)

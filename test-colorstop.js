@@ -13,7 +13,7 @@ const call = (a, b = {}) => cs.handle(a, { token: 'x'.repeat(24), ...b });
 // --- tabulka
 assert.equal(CS.payoutFor(0), 0); assert.equal(CS.payoutFor(4), 0); assert.equal(CS.payoutFor(5), 50); assert.equal(CS.payoutFor(9), 50);
 assert.equal(CS.payoutFor(10), 100); assert.equal(CS.payoutFor(49), 6000); assert.equal(CS.payoutFor(50), 20000);
-assert.equal(CS.speedAt(0), 100); assert.equal(CS.speedAt(49), 394);
+assert.equal(CS.speedAt(0), 100); assert.equal(CS.speedAt(49), 345);
 assert.equal(CS.dmaxAt(0), 9); assert.equal(CS.dmaxAt(10), 9); assert.equal(CS.dmaxAt(46), 2); assert.equal(CS.dmaxAt(49), 2);
 for (let k = 11; k < 46; k++) assert.ok(CS.dmaxAt(k) <= CS.dmaxAt(k - 1) && CS.dmaxAt(k) >= 3, 'dmax klesá: ' + k);
 
@@ -44,7 +44,7 @@ assert.equal(call('end', { gameId: g1.gameId, score: 'x' }).status, 400);
 assert.equal(acc.balance, 900, 'neplatné konce nic nevyplatí');
 
 // --- podvod: 50 zásahů okamžitě -> skóre se omezí na 0
-t += 300;
+t += 200;
 r = call('end', { gameId: g1.gameId, score: 50 });
 assert.equal(r.status, 200); assert.equal(r.json.score, 0); assert.equal(r.json.capped, true); assert.equal(r.json.payout, 0); assert.equal(r.json.jackpot, false);
 assert.equal(acc.balance, 900);

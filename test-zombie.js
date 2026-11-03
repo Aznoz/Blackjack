@@ -92,7 +92,7 @@ function findHit(ch) { // vezme skutečné rozložení, jednomu puku dá polomě
 }
 // --- po posledním pokusu nelze střílet a nový nákup udělá novou plošinu
 assert.equal(call('shoot', { phi: 5 }).status, 409);
-{ const oldIds = zs.platformOf(acc).pucks.map((p) => p.id).join(); acc.balance = 5000; r = call('buy'); assert.equal(r.json.tries, 3); assert.notEqual(r.json.pucks.map((p) => p.id).join(), oldIds); }
+{ const oldIds = zs.platformOf(acc).pucks.map((p) => p.id).join(); acc.balance = 5000; r = call('buy'); assert.equal(r.json.tries, 3); assert.equal(r.json.pucks.map((p) => p.id).join(), oldIds, 'puky zůstávají i po dokoupení pokusů'); }
 // --- obnova kreditu pod minimem jen bez rozehraných pokusů
 { const poor = { key: 'p', balance: 10, lastSeen: 0, zsTries: 0, zsLetters: 0 }; const z2 = createZombie({ resolveAccount: () => ({ acc: poor }), markDirty() {}, notifyBalance() {}, TOKEN_RE: /.+/, rand, now: () => t });
   const q = (a, b) => z2.handle(a, { token: 'y'.repeat(24), ...b }); assert.equal(q('buy').status, 402); assert.equal(q('state').json.refilled, true); assert.equal(poor.balance, 200);
