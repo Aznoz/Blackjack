@@ -219,6 +219,16 @@ Kolem dokola jezdí šipka po kruhu 12 políček, vždy svítí jedno. Hráč st
 - Web: `public/colorstop/` (`index.html`, `colorstop.css`, `colorstop.js`, `header.js`, `config.js`), kreslí se na 2D plátno. `config.js` může přepsat adresu serveru (`window.COLORSTOP_API_URL`), jinak se vezme z `portal-config.js`.
 - Test: `node test-colorstop.js`.
 
+## Coin Pusher (3D automat na mince, 1 hráč)
+
+Klasika z heren: nahoře jezdí otvor, mezerníkem / tlačítkem **VHODIT MINCI** se z něj pustí mince, odrazí se mezi kolíky a dopadne na plošinu. Plošina pak zatlačí hromadu mincí dopředu a **co přepadne přes přední okraj, je výhra**. Mince se kupují v balíčcích: **1 za 50, 3 za 100, 5 za 175, 10 za 350** (najednou nejvýš 30, nevhozené zůstávají v účtu). Na plošině jsou mince **5 / 10 / 25 / 50 / 100** (čím větší hodnota, tím větší a vzácnější mince) a občas **karta** se symbolem věci ze Stackeru; když přepadne, hráč dostane **díl** té věci do stejného inventáře (prodej v Obchodu). Automat jde otáčet tahem, dvěma prsty / kolečkem se přibližuje.
+
+- Fyzika je **jen na serveru** (`coinpusher.js`): server počítá odraz mince mezi kolíky (s náhodou) i tlačení plošiny a prohlížeči pošle dráhy a snímky pohybu, které jen přehraje. Díky tomu se nedá podvádět a nemusí se hlídat shodné soubory v prohlížeči a na serveru.
+- API: `POST /api/coinpusher/{state,buy,drop}`. `drop` potřebuje `x` (poloha otvoru, ±4,5), mezi hody musí uplynout 1,5 s. **Uložené v účtu (Upstash)**: zbývající mince `cpCoins`; díly karet v `items`. Rozložení plošiny je jen v paměti serveru (po restartu nebo po 6 hodinách nečinnosti se vytvoří nová „rozehraná“).
+- Ekonomika: plošina je v rovnováze, kolik mincí se vhodí (hráčova + 1–3 mince, které přidá stroj), tolik jich v průměru vypadne. Ladí se konstantami `CP` (`HOUSE_COINS`, `CARD_CHANCE`, `MAX_ITEMS`) a váhami `COINS.w`, `CARD_WEIGHTS`. Měřeno na 400 hodech: ≈ 35 coinů na hod (cena jedné mince je 35 až 50), karta zhruba jednou za 80 hodů, levné věci jsou na kartách častější.
+- Web: `public/coinpusher/` (`index.html`, `coinpusher.css`, `coinpusher.js`, `header.js`, `config.js`, `vendor/`). `config.js` může přepsat adresu serveru (`window.COINPUSHER_API_URL`).
+- Test: `node test-coinpusher.js`.
+
 ## Zombie Snatcher (3D automat s plošinou, 1 hráč)
 
 Podle arkády z Dave & Buster's. Otočná modrá plošina v kopuli, na ní puky s hodnotami **50, 100, 200, 500, 750, 1000, 1500, 2000, 3000, 5000** (čím větší hodnota, tím menší puk a blíž ke sloupu) a šest malých stejně velkých zelených puků s písmeny **Z O M B I E**. Za **500** hráč koupí **3 pokusy** (najednou nejvýš 9). **STOP** (mezerník / tlačítko) rozmáchne pevné rameno (vysoko nad puky, dotýká se jich jen „prst“ na jeho konci, puky se od něj přirozeně smekají); na konci rozmachu dojede přímo k **výherní díře** (dole u diváka, výřez ±8° v okraji plošiny). Automat jde otáčet tahem, dvěma prsty se přibližuje.

@@ -20,6 +20,7 @@ const createKeymaster = require('./keymaster');
 const createWheel = require('./wheel');
 const createColorStop = require('./colorstop');
 const createZombie = require('./zombie');
+const createCoinPusher = require('./coinpusher');
 const { CFG } = R;
 
 const PORT = parseInt(process.env.PORT, 10) || 3000;
@@ -123,6 +124,7 @@ function makeAccount(key, d = {}) {
     clawPlays: Number.isFinite(d.clawPlays) ? Math.max(0, Math.min(60, Math.floor(d.clawPlays))) : 0, // zakoupené hry v automatu na plyšáky
     items: Array.isArray(d.items) ? d.items.slice(0, 64).map((n) => (Number.isFinite(n) ? Math.max(0, Math.min(100000, Math.floor(n))) : 0)) : [], // nasbírané díly věcných odměn ze Stackeru
     wheelBonus: d.wheelBonus ? 1 : 0, // nevyužitý jackpotový roztoč zdarma z Kola štěstí
+    cpCoins: Number.isFinite(d.cpCoins) ? Math.max(0, Math.min(30, Math.floor(d.cpCoins))) : 0, // zbývající mince z Coin Pusheru
     zsTries: Number.isFinite(d.zsTries) ? Math.max(0, Math.min(9, Math.floor(d.zsTries))) : 0, // zbývající pokusy ze Zombie Snatcheru (3 za 500)
     zsLetters: Number.isFinite(d.zsLetters) ? Math.max(0, Math.min(63, Math.floor(d.zsLetters))) : 0, // nasbíraná písmena Z-O-M-B-I-E (bitová maska)
     bombAt: Number.isFinite(d.bombAt) ? d.bombAt : 0, // kdy hráč naposledy použil bombu (cooldown přežije restart)
@@ -271,7 +273,7 @@ function saveNow() {
   try {
     const out = {};
     for (const [k, a] of accounts) {
-      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
+      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
     }
     store.write('players', JSON.stringify(out));
     const g = {};
@@ -1084,6 +1086,10 @@ async function handleApi(req, res, p) {
       const r = zombie.handle(p.slice('/api/zombie/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p.startsWith('/api/coinpusher/') && req.method === 'POST') {
+      const r = coinpusher.handle(p.slice('/api/coinpusher/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/colorstop/') && req.method === 'POST') {
       const r = colorstop.handle(p.slice('/api/colorstop/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1339,6 +1345,7 @@ hwss.on('connection', (ws) => hockey.handleConnection(ws));
 const stacker = createStacker({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Stacker (HTTP API /api/stacker/*)
 const wheel = createWheel({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Kolo štěstí (HTTP API /api/wheel/*)
 const zombie = createZombie({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Zombie Snatcher (HTTP API /api/zombie/*)
+const coinpusher = createCoinPusher({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Coin Pusher (HTTP API /api/coinpusher/*)
 const colorstop = createColorStop({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Color Stop (HTTP API /api/colorstop/*)
 const keymaster = createKeymaster({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // Key Master (HTTP API /api/keymaster/*)
 const claw = createClaw({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); // automat na plyšáky (HTTP API /api/claw/*)
