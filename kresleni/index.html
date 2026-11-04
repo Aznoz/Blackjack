@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, interactive-widget=resizes-content">
+<title>Kresli a hádej – online</title>
+<meta name="theme-color" content="#14122b">
+<link rel="stylesheet" href="kresleni.css?v=6">
+</head>
+<body>
+<div id="app">
+  <header class="top">
+    <a class="back" id="back" href="../">← Herna</a>
+    <h1>KRESLENÍ</h1>
+    <button class="icon" id="mute" type="button" aria-label="Zvuk">🔊</button>
+  </header>
+
+  <!-- menu -->
+  <main id="menu" class="screen narrow">
+    <div class="hero">
+      <div class="hero-art" aria-hidden="true"><span class="pencil">✏️</span><svg viewBox="0 0 160 60"><path d="M6 40 C 26 6, 44 6, 58 32 S 92 58, 108 26 S 140 8, 154 34" /></svg></div>
+      <p class="lead">Jeden kreslí, ostatní hádají. Vyber si slovo, nakresli ho dřív, než vyprší čas, a ostatní ho musí napsat do chatu. Čím dřív uhodnou, tím víc bodů. Hraje se 2 až 8 lidí.</p>
+    </div>
+    <div class="acct" id="acct" hidden></div>
+    <label class="field" id="nameField">Tvoje jméno
+      <input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza">
+    </label>
+    <p class="muted small" id="acctHint"></p>
+    <button class="btn big" id="create" type="button">Vytvořit hru</button>
+    <div class="or">nebo se připoj ke kamarádům</div>
+    <form class="join" id="joinForm">
+      <input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti">
+      <button class="btn" type="submit">Připojit se</button>
+    </form>
+    <p class="status" id="menuStatus"></p>
+    <details class="rules">
+      <summary>Pravidla</summary>
+      <ol>
+        <li>Hrát můžou 2 až 8 hráčů. Zakladatel pošle ostatním kód nebo odkaz a před startem zvolí <b>obtížnost slov</b>, <b>počet kol</b> a <b>čas na kreslení</b>.</li>
+        <li>V každém kole se vystřídají všichni: kreslíř dostane na výběr ze 3 slov (má na to pár vteřin) a pak je nakreslí. Nesmí psát písmena ani čísla k obrázku.</li>
+        <li>Ostatní píšou tipy do chatu. Slovo se hádá bez ohledu na háčky, čárky a velikost písmen. Když je tip jen o písmeno vedle, dostaneš „skoro“.</li>
+        <li>Postupně se odkrývají písmena slova (nápověda).</li>
+        <li>Body: za uhádnutí <b>100 + až 300</b> podle zbývajícího času, první uhádnuvší navíc <b>+50</b>. Kreslíř dostane <b>+40</b> za každého, kdo uhádl.</li>
+        <li>Kdo už slovo uhádl, píše v chatu jen mezi uhádnuvšími a kreslířem, aby ostatním nic neprozradil.</li>
+        <li>Tah končí, když uhádnou všichni, nebo vyprší čas. Po posledním kole vyhrává hráč s nejvíc body.</li>
+      </ol>
+    </details>
+  </main>
+
+  <!-- lobby -->
+  <main id="lobby" class="screen narrow" hidden>
+    <div class="codebox">
+      <span>Kód místnosti</span>
+      <b id="roomCode">----</b>
+      <button class="btn small" id="copyLink" type="button">Zkopírovat odkaz</button>
+    </div>
+    <div class="lobby-head"><span>Hráči</span><span id="lobbyCount"></span></div>
+    <ul id="lobbyPlayers" class="lobby-players"></ul>
+    <div id="hostCfg">
+      <div class="lvl-title">Slova</div>
+      <div class="levels" id="levels"></div>
+      <div class="cfg">
+        <label>Počet kol
+          <select id="cfgRounds"><option value="1">1 kolo</option><option value="2">2 kola</option><option value="3">3 kola</option><option value="4">4 kola</option><option value="5">5 kol</option></select>
+        </label>
+        <label>Čas na kreslení
+          <select id="cfgDraw"><option value="40">40 sekund</option><option value="60">60 sekund</option><option value="80">80 sekund</option><option value="100">100 sekund</option><option value="120">120 sekund</option></select>
+        </label>
+      </div>
+    </div>
+    <p id="cfgView" class="muted cfgview"></p>
+    <button class="btn big" id="startBtn" type="button">Začít hru</button>
+    <p class="muted" id="lobbyHint"></p>
+    <button class="link" id="leaveLobby" type="button">Opustit místnost</button>
+  </main>
+
+  <!-- hra -->
+  <main id="game" class="screen" hidden>
+    <div class="gwrap">
+      <section class="stage">
+        <div class="gbar">
+          <span class="rinfo" id="roundInfo"></span>
+          <div class="wordbox" id="wordBox"></div>
+          <div class="gright"><button type="button" class="hintbtn" id="hintBtn" hidden aria-label="Nápověda">💡</button><div class="clock" id="clock"><b id="clockNum">--</b></div></div>
+        </div>
+        <div class="timebar" id="timeBar"><i id="timeFill"></i></div>
+        <div class="cwrap" id="cwrap">
+          <canvas id="cv" width="800" height="600" aria-label="Plátno"></canvas>
+          <canvas id="pv" width="800" height="600" aria-hidden="true"></canvas>
+          <div class="ov" id="ov" hidden></div>
+        </div>
+        <div class="tools" id="tools" hidden>
+          <div class="pal" id="pal"></div>
+          <div class="cpanel" id="cpanel" hidden>
+            <canvas id="wheel" width="168" height="168" aria-label="Barevné kolo"></canvas>
+            <div class="cside"><span class="clabel">Jas</span><input type="range" id="cval" min="5" max="100" value="100" aria-label="Jas"><b id="chex" class="chex">#000000</b></div>
+          </div>
+          <div class="trow">
+            <div class="sizes" id="sizes"></div>
+            <div class="tbtns">
+              <button type="button" class="tb on" id="tPen" aria-label="Tužka" title="Tužka">✏️</button>
+              <button type="button" class="tb" id="tEraser" aria-label="Guma" title="Guma">🧽</button>
+              <button type="button" class="tb" id="tLine" aria-label="Rovná čára" title="Rovná čára (se Shiftem rovně)">╱</button>
+              <button type="button" class="tb" id="tRect" aria-label="Čtverec / obdélník" title="Čtverec / obdélník (se Shiftem čtverec)">▭</button>
+              <button type="button" class="tb" id="tOval" aria-label="Kruh / elipsa" title="Kruh / elipsa (se Shiftem kruh)">◯</button>
+              <button type="button" class="tb" id="tShapeFill" aria-label="Výplň tvaru" title="Tvar jen obrys" hidden>◻</button>
+              <button type="button" class="tb" id="tFill" aria-label="Vyplnit" title="Vyplnit plochu">🪣</button>
+              <button type="button" class="tb" id="tUndo" aria-label="Zpět" title="Zpět">↩️</button>
+              <button type="button" class="tb" id="tClear" aria-label="Smazat vše" title="Smazat vše">🗑️</button>
+            </div>
+          </div>
+        </div>
+      </section>
+      <aside class="plist" id="players"></aside>
+      <aside class="chat">
+        <div class="chatlog" id="chatLog" role="log" aria-live="polite"></div>
+        <form id="chatForm" class="chatform" autocomplete="off">
+          <input id="chatInput" maxlength="60" autocomplete="off" autocorrect="off" autocapitalize="none" spellcheck="false" enterkeyhint="send" placeholder="Piš tip…">
+          <button class="btn" type="submit" aria-label="Odeslat">➤</button>
+        </form>
+      </aside>
+    </div>
+  </main>
+
+  <!-- konec -->
+  <main id="over" class="screen narrow" hidden>
+    <h2 id="overTitle">Konec hry</h2>
+    <p class="lead" id="overSub"></p>
+    <div class="podium" id="podium"></div>
+    <ol id="board" class="board"></ol>
+    <button class="btn big" id="again" type="button">Hrát znovu</button>
+    <p class="muted" id="overHint"></p>
+    <button class="link" id="leaveOver" type="button">Odejít do menu</button>
+  </main>
+  <div class="toast" id="toast" role="alert" hidden></div>
+</div>
+<script src="config.js?v=1"></script>
+<script src="kresleni.js?v=6"></script>
+</body>
+</html>

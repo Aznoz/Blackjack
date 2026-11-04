@@ -1,538 +1,541 @@
-// KRESLENÍ A HÁDÁNÍ (jako Gartic.io / Skribbl) – 2 až 8 hráčů, jeden kreslí a ostatní hádají slovo v chatu.
-// Logika místností, kol, bodování a synchronizace kresby. WebSocket obsluhuje hlavní server na cestě /kresleni.
-// Účty (jméno a profilovka z Google účtu) dodává server přes init().
-import crypto from 'node:crypto';
-import { POOLS, LEVELS, LEVEL_NAMES, fold } from './words.js';
+(() => {
+  'use strict';
+  const CFG = window.KRESLENI_CONFIG || {};
+  const $ = (id) => document.getElementById(id);
+  const COLORS = ['#ffd84a', '#5ee1ff', '#7ee08a', '#ff8fb1', '#c59bff', '#ff9a5b', '#9fe8ff', '#ffb4a8'];
+  const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch (e) { /* nic */ } }, del(k) { try { localStorage.removeItem(k); } catch (e) { /* nic */ } } };
+  const LEVELS = [
+    { id: 'lehka', name: 'Lehká', desc: 'Jednoduché věci: slunce, kočka, strom…' },
+    { id: 'normalni', name: 'Střední', desc: 'Sněhulák, klavír, hrad, bagr…' },
+    { id: 'tezka', name: 'Těžká', desc: 'Tornádo, labyrint, horská dráha…' },
+    { id: 'mix', name: 'Mix', desc: 'Všechno dohromady – nejvíc slov.' },
+  ];
+  const LV = Object.fromEntries(LEVELS.map((l) => [l.id, l]));
+  const PAL = ['#ffffff', '#111111', '#7f7f7f', '#c8c8c8', '#e8352b', '#ff8a1f', '#ffd21f', '#8bd62a', '#1faa4b', '#16c1c9', '#2b6be8', '#6a3fd1', '#d12bb8', '#ff8fb3', '#8a5a2b', '#f0c9a0'];
+  const SIZES = [3, 7, 14, 26];
+  const colorOf = (c) => (typeof c === 'string' ? c : PAL[c] || '#000000'); // index do palety, nebo vlastní barva '#rrggbb'
+  const CW = 800, CH = 600;
 
-export const MAX_PLAYERS = 8;
-export const MIN_PLAYERS = 2;
-const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVXYZ';
-const EMPTY_ROOM_MS = 90_000;
-const LOBBY_GRACE_MS = 30_000;
-const CHOOSE_MS = Number(process.env.KRES_CHOOSE_MS) || 12_000; // čas kreslíře na výběr slova
-const REVEAL_MS = Number(process.env.KRES_REVEAL_MS) || 6_000; // pauza po tahu (ukázka slova a bodů)
-const DRAW_OVERRIDE_MS = Number(process.env.KRES_DRAW_MS) || 0; // jen pro testy
-export const ROUND_CHOICES = [1, 2, 3, 4, 5];
-export const DRAW_CHOICES = [40, 60, 80, 100, 120];
-export const W = 800, H = 600; // logické rozměry plátna
-const PALETTE_SIZE = 16, WIDTHS = 4;
-const MAX_ITEMS = 500, MAX_POINTS = 24_000; // ochrana serveru před zahlcením jednou kresbou
-const CHAT_KEEP = 60;
-const GUESS_BASE = 100, GUESS_TIME_BONUS = 300, FIRST_BONUS = 50, DRAWER_PER_GUESS = 40;
-
-export { LEVELS, LEVEL_NAMES };
-const rooms = new Map();
-const now = () => Date.now();
-
-let deps = null;
-export function init(d) { deps = d; }
-
-function cleanName(s) {
-  const t = String(s ?? '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 14);
-  return t || 'Hráč';
-}
-function makeCode() {
-  for (let i = 0; i < 200; i++) {
-    let c = '';
-    for (let j = 0; j < 4; j++) c += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
-    if (!rooms.has(c)) return c;
+  const API = String(CFG.SERVER_URL || '').replace(/^wss:/, 'https:').replace(/^ws:/, 'http:').replace(/\/kresleni\/?$/, '');
+  let memToken = null;
+  function getToken() {
+    let t = null;
+    try { t = JSON.parse(LS.get('bj_token')); } catch (e) { t = LS.get('bj_token'); }
+    t = t || memToken;
+    if (!t || !/^[A-Za-z0-9_-]{20,64}$/.test(t)) {
+      const b = new Uint8Array(24); crypto.getRandomValues(b);
+      t = btoa(String.fromCharCode(...b)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      LS.set('bj_token', JSON.stringify(t)); memToken = t;
+    }
+    return t;
   }
-  return null;
-}
-function send(ws, obj) { if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(obj)); } catch { /* spojení padlo */ } } }
-function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+  function getSession() { let x = LS.get('portal_session'); try { x = JSON.parse(x); } catch (e) { /* surový řetězec */ } return typeof x === 'string' ? x : undefined; }
+  const ident = () => ({ token: getToken(), session: getSession() });
 
-const active = (room) => room.players.filter((p) => !p.left);
-const live = (room) => active(room).filter((p) => p.connected);
-const byId = (room, id) => room.players.find((p) => p.id === id);
+  const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const SUIT = { S: '♠', H: '♥', D: '♦', C: '♣' };
+  const AVS = [['A', 'S'], ['2', 'H'], ['3', 'D'], ['4', 'C'], ['5', 'S'], ['6', 'H'], ['7', 'D'], ['8', 'C'], ['9', 'S'], ['10', 'H']];
+  const color = (id) => COLORS[(parseInt(String(id).slice(1), 10) - 1 + COLORS.length) % COLORS.length];
+  /** Profilovka z účtu na Herně (karta nebo nahraný obrázek); host bez účtu dostane barevné písmeno. */
+  function avatarHtml(p) {
+    const id = p.avatar;
+    if (typeof id === 'string' && /^u:[0-9a-f]{16}$/.test(id)) return `<img class="av" src="${API}/avatar/${id.slice(2)}.jpg" alt="" onerror="this.style.visibility='hidden'">`;
+    if (typeof id === 'string' && /^a(10|[1-9])$/.test(id)) { const a = AVS[parseInt(id.slice(1), 10) - 1]; return `<span class="av card${a[1] === 'H' || a[1] === 'D' ? ' red' : ''}"><b>${a[0]}</b><i>${SUIT[a[1]]}</i></span>`; }
+    return `<span class="av" style="background:${color(p.id)}">${esc(String(p.name || '?')[0].toUpperCase())}</span>`;
+  }
 
-// ---------------------------------------------------------------- místnosti
-function newRoom() {
-  const code = makeCode();
-  if (!code) return null;
-  const room = {
-    code, players: [], nextId: 1, hostId: null, phase: 'lobby', level: 'mix', rounds: 3, drawSec: 80,
-    round: 0, order: [], idx: -1, drawer: null, options: [], entry: null, revealed: new Set(), hintLevel: 0,
-    items: [], cur: null, pts: 0, guessed: new Map(), gains: new Map(), turnEnd: 0, turns: [],
-    used: new Set(), chat: [], chatId: 0, ev: null, evId: 0, result: null, reveal: null,
-    emptySince: now(), timers: { choose: null, draw: null, next: null, hints: [] },
+  let ws = null, st = null, me = null, session = null, seenEv = 0, wantOpen = false, retry = 0, pending = null;
+  let muted = LS.get('kres_mute') === '1';
+  let stateAt = 0, chat = [], lastTurnKey = '';
+
+  // ---------------- zvuk (syntetický, bez souborů)
+  let ac = null;
+  function audio() { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { return null; } } if (ac.state === 'suspended') ac.resume(); return ac; }
+  function tone(freq, dur, type = 'triangle', vol = 0.07, slide = 0, delay = 0) {
+    if (muted) return; const a = audio(); if (!a) return;
+    const o = a.createOscillator(), g = a.createGain(), t0 = a.currentTime + delay; o.type = type; o.frequency.setValueAtTime(freq, t0);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(30, freq + slide), t0 + dur);
+    g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+    o.connect(g).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.02);
+  }
+  const sfx = {
+    pop() { tone(700, .08, 'triangle', .07); tone(1000, .1, 'triangle', .07, 0, .07); },
+    win() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .18, 'triangle', .09, 0, i * .11)); },
+    tick() { tone(1100, .03, 'square', .03); },
+    turn() { tone(440, .1, 'sine', .08); tone(660, .14, 'sine', .08, 0, .1); },
+    end() { tone(330, .14, 'triangle', .07); tone(247, .22, 'triangle', .07, 0, .13); },
+    hint() { tone(880, .06, 'sine', .05); },
   };
-  rooms.set(code, room);
-  return room;
-}
 
-/** Přihlášení hráče: účet z tokenu/Google relace (jméno a profilovka z účtu); bez něj host. */
-function identify(msg) {
-  if (!deps || typeof msg.token !== 'string' || !deps.TOKEN_RE.test(msg.token)) return null;
-  try { return deps.resolveAccount({ token: msg.token, session: typeof msg.session === 'string' ? msg.session : undefined, name: msg.name }); } catch { return null; }
-}
+  // ---------------- spojení
+  function toast(t) { const e = $('toast'); e.textContent = t; e.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { e.hidden = true; }, 3200); }
+  function setStatus(t, err) { const e = $('menuStatus'); e.textContent = t || ''; e.className = 'status' + (err ? ' err' : ''); }
+  const healthUrl = () => API + '/kresleni/health';
 
-function addPlayer(room, ws, msg) {
-  const ident = identify(msg);
-  if (ident && room.players.some((p) => !p.left && p.acc === ident.acc)) return { err: 'Tenhle účet už v místnosti hraje.' };
-  const base = ident && ident.linked ? ident.acc.name : (String(msg.name ?? '').trim() ? msg.name : ident ? ident.acc.name : msg.name);
-  let n = cleanName(base); let i = 2;
-  while (room.players.some((p) => p.name === n)) n = `${cleanName(base).slice(0, 11)} ${i++}`;
-  const pl = { id: 'p' + room.nextId++, name: n, token: crypto.randomBytes(12).toString('hex'), ws, connected: true, left: false, score: 0, acc: ident ? ident.acc : null, joinedAt: now() };
-  room.players.push(pl);
-  if (!room.hostId) room.hostId = pl.id;
-  if (room.phase !== 'lobby' && room.phase !== 'over' && room.order.length) room.order.push(pl.id); // pozdější příchozí kreslí v aktuálním kole jako poslední
-  bind(ws, room, pl);
-  return { pl };
-}
-function bind(ws, room, pl) {
-  if (pl.ws && pl.ws !== ws) { pl.ws.ctx = null; try { pl.ws.close(4000, 'Přihlášení z jiného okna'); } catch { /* nic */ } }
-  pl.ws = ws; pl.connected = true; ws.ctx = { code: room.code, pid: pl.id };
-  if (pl.dropTimer) { clearTimeout(pl.dropTimer); pl.dropTimer = null; }
-  room.emptySince = null;
-  send(ws, { t: 'joined', code: room.code, you: pl.id, token: pl.token });
-  if (room.phase !== 'lobby') {
-    send(ws, { t: 'draw', items: room.items });
-    send(ws, { t: 'chatlog', list: room.chat.filter((m) => canSee(room, pl, m)) });
+  function connect() {
+    if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+    wantOpen = true;
+    let sock;
+    try { sock = new WebSocket(CFG.SERVER_URL); } catch (e) { setStatus('Špatná adresa serveru.', true); return; }
+    ws = sock;
+    sock.onopen = () => {
+      retry = 0; loadMe();
+      if (pending) { send(pending); pending = null; }
+      else if (session) send({ t: 'resume', code: session.code, token: session.token });
+    };
+    sock.onmessage = (ev) => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } onMsg(m); };
+    sock.onclose = () => {
+      if (ws === sock) ws = null;
+      if (!wantOpen) return;
+      if (st) toast('Spojení spadlo, připojuji znovu…');
+      retry++;
+      if (retry > 12) { wantOpen = false; setStatus('Server neodpovídá. Zkus to za chvilku (může se probouzet).', true); if (st) leaveLocal(); return; }
+      if (!st && !session && !pending) { wantOpen = false; return; }
+      setTimeout(connect, Math.min(4000, 800 * retry));
+    };
+    sock.onerror = () => {};
   }
-  if (room.paused && live(room).length >= MIN_PLAYERS) resumeFromPause(room);
-}
-
-function clearTimers(room) {
-  const T = room.timers;
-  for (const k of ['choose', 'draw', 'next']) { if (T[k]) clearTimeout(T[k]); T[k] = null; }
-  for (const h of T.hints) clearTimeout(h);
-  T.hints = [];
-}
-/** Zbyl jediný hráč (ostatním spadlo spojení): hra se na chvíli zastaví a čeká na návrat; po uplynutí lhůty skončí. */
-const GRACE_MS = Number(process.env.KRES_GRACE_MS) || 45_000;
-function pauseGame(room) {
-  if (room.paused) return;
-  clearTimers(room);
-  room.paused = { phase: room.phase };
-  room.graceT = setTimeout(() => { room.graceT = null; if (rooms.has(room.code) && room.paused) { room.paused = null; finishGame(room, true); } }, GRACE_MS);
-  publish(room, { type: 'paused' });
-}
-function resumeFromPause(room) {
-  const was = room.paused; if (!was) return;
-  room.paused = null;
-  if (room.graceT) clearTimeout(room.graceT);
-  room.graceT = null;
-  sys(room, '▶️ Hra pokračuje.');
-  const dr = byId(room, room.drawer);
-  if ((was.phase === 'choose' || was.phase === 'draw') && dr && dr.connected && !dr.left) startChoose(room);
-  else nextTurn(room);
-}
-function removeFromLobby(room, pl) {
-  room.players = room.players.filter((p) => p !== pl);
-  if (room.hostId === pl.id) room.hostId = (live(room)[0] || room.players[0] || {}).id || null;
-  if (!room.players.length) destroy(room); else publish(room, null);
-}
-function destroy(room) { clearTimers(room); if (room.graceT) clearTimeout(room.graceT); rooms.delete(room.code); }
-
-// ---------------------------------------------------------------- chat
-/** Zprávy hráčů, kteří už slovo znají (kreslíř, ti co uhádli), vidí jen oni – ostatní by se mohli dozvědět slovo. */
-function canSee(room, pl, m) {
-  if (m.vis === 'all') return true;
-  if (m.vis === 'only') return m.pid === pl.id;
-  return pl.id === room.drawer || room.guessed.has(pl.id);
-}
-function pushChat(room, m) {
-  const msg = { id: ++room.chatId, ...m };
-  room.chat.push(msg);
-  if (room.chat.length > CHAT_KEEP) room.chat.shift();
-  for (const p of room.players) if (p.ws && canSee(room, p, msg)) send(p.ws, { t: 'chat', m: msg });
-  return msg;
-}
-const sys = (room, text, kind = 'sys') => pushChat(room, { kind, text, vis: 'all' });
-
-function lev(a, b) {
-  if (a === b) return 0;
-  const m = a.length, n = b.length;
-  if (!m) return n; if (!n) return m;
-  let prev = Array.from({ length: n + 1 }, (_, i) => i);
-  for (let i = 1; i <= m; i++) {
-    const cur = [i];
-    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    prev = cur;
+  function send(o) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(o)); else { pending = o; connect(); } }
+  function wake() { // Render po nečinnosti usíná; pár vteřin se probouzí
+    setStatus('Probouzím server…');
+    fetch(healthUrl(), { cache: 'no-store' }).then(() => { setStatus(''); loadMe(); }).catch(() => setStatus(''));
   }
-  return prev[n];
-}
 
-// ---------------------------------------------------------------- stav pro klienty
-const wordLetters = (room) => [...room.entry.w].filter((c) => c !== ' ').length;
-function maskOf(room) {
-  const w = [...room.entry.w];
-  let k = 0;
-  return w.map((ch) => { if (ch === ' ') return ' '; const show = room.revealed.has(k); k++; return show ? ch : '_'; });
-}
-
-/** Kolik nápověd lze k aktuálnímu slovu dát: 1 = počet písmen, 2 = náhodné písmeno, 3 = další písmeno (jen slova od 7 písmen). */
-const hintMax = (room) => { const n = wordLetters(room); return n >= 7 ? 3 : n >= 3 ? 2 : 1; };
-function giveHint(room, pl) {
-  if (room.phase !== 'draw' || pl.id !== room.drawer || !room.entry || room.hintLevel >= hintMax(room)) return;
-  room.hintLevel++;
-  const n = wordLetters(room);
-  let text;
-  if (room.hintLevel === 1) text = `💡 Nápověda: slovo má ${n} ${n === 1 ? 'písmeno' : n < 5 ? 'písmena' : 'písmen'}.`;
-  else {
-    const free = [...Array(n).keys()].filter((k) => !room.revealed.has(k));
-    room.revealed.add(free[Math.floor(Math.random() * free.length)]);
-    text = room.hintLevel === 2 ? '💡 Nápověda: odkryté jedno písmeno.' : '💡 Nápověda: odkryté další písmeno.';
+  function onMsg(m) {
+    switch (m.t) {
+      case 'joined': session = { code: m.code, token: m.token }; me = m.you; LS.set('kres_session', JSON.stringify(session)); break;
+      case 'state': onState(m); break;
+      case 'draw': items = Array.isArray(m.items) ? m.items : []; redraw(); break;
+      case 'd': onOp(m); break;
+      case 'chat': addChat(m.m); break;
+      case 'chatlog': chat = Array.isArray(m.list) ? m.list.slice() : []; renderChat(); break;
+      case 'err':
+        if (m.fatal) { setStatus(m.msg, true); if (m.gone) { session = null; LS.del('kres_session'); } leaveLocal(true); wantOpen = false; if (ws) ws.close(); }
+        else toast(m.msg);
+        break;
+      default:
+    }
   }
-  sys(room, text, 'hint');
-  publish(room, { type: 'hint' });
-}
 
-function view(room, pid) {
-  const inTurn = room.entry && (room.phase === 'draw' || room.phase === 'reveal');
-  const knows = pid === room.drawer || room.guessed.has(pid);
-  const showWord = inTurn && (room.phase === 'reveal' || knows);
-  const dr = byId(room, room.drawer);
-  return {
-    t: 'state', code: room.code, phase: room.phase, you: pid, hostId: room.hostId,
-    level: room.level, rounds: room.rounds, drawSec: room.drawSec, round: room.round,
-    turnNo: room.turns.length + (room.phase === 'choose' || room.phase === 'draw' ? 1 : 0), turnsTotal: room.rounds * Math.max(2, active(room).length),
-    drawer: room.phase === 'lobby' || room.phase === 'over' ? null : room.drawer,
-    options: room.phase === 'choose' && pid === room.drawer ? room.options.map((o) => o.w) : null,
-    chooseMs: room.phase === 'choose' && room.timers.choose ? Math.max(0, room.chooseEnd - now()) : 0,
-    mask: room.phase === 'draw' && room.entry && room.hintLevel >= 1 ? maskOf(room) : null,
-    hint: room.phase === 'draw' && room.entry ? { level: room.hintLevel, max: hintMax(room) } : null,
-    word: showWord ? room.entry.w : null,
-    wordLen: inTurn && (room.hintLevel >= 1 || room.phase === 'reveal' || knows) ? wordLetters(room) : 0,
-    guessed: [...room.guessed.keys()],
-    turnMs: room.phase === 'draw' ? Math.max(0, room.turnEnd - now()) : 0,
-    reveal: room.phase === 'reveal' ? room.reveal : null,
-    drawerName: dr ? dr.name : null,
-    players: active(room).map((p) => ({ id: p.id, name: p.name, connected: p.connected, score: p.score, avatar: p.acc ? p.acc.avatar : null, account: !!p.acc })),
-    paused: !!room.paused, ev: room.ev, result: room.result || null,
-  };
-}
-function publish(room, ev) {
-  if (ev) room.ev = { id: ++room.evId, ...ev };
-  for (const p of room.players) if (p.ws) send(p.ws, view(room, p.id));
-}
-function broadcastDraw(room, msg, exceptId) {
-  for (const p of room.players) if (p.ws && p.id !== exceptId) send(p.ws, msg);
-}
+  // ---------------- obrazovky
+  function show(id) { for (const s of ['menu', 'lobby', 'game', 'over']) $(s).hidden = s !== id; document.documentElement.classList.toggle('ingame', id === 'game'); window.scrollTo(0, 0); syncVV(); }
 
-// ---------------------------------------------------------------- průběh hry
-function drawWords(room) {
-  let pool = POOLS[room.level].filter((e) => !room.used.has(e.f));
-  if (pool.length < 3) { room.used.clear(); pool = POOLS[room.level].slice(); }
-  return shuffle(pool.slice()).slice(0, 3);
-}
-
-function startGame(room) {
-  clearTimers(room);
-  room.players = room.players.filter((p) => p.connected);
-  for (const p of room.players) p.score = 0;
-  room.round = 1; room.turns = []; room.result = null; room.used.clear();
-  room.order = shuffle(active(room).map((p) => p.id)); room.idx = -1;
-  room.chat = []; room.chatId = 0;
-  nextTurn(room);
-}
-
-/** Najde dalšího kreslíře (přítomného hráče); po posledním v kole začne další kolo, po posledním kole konec hry. */
-function nextTurn(room) {
-  for (;;) {
-    room.idx++;
-    if (room.idx >= room.order.length) {
-      room.round++;
-      if (room.round > room.rounds) return finishGame(room, false);
-      // nové kolo: pořadí se znovu zamíchá, ale poslední kreslíř z minulého kola nesmí kreslit hned znovu (v 1v1 se tak hráči pravidelně střídají)
-      const prev = room.drawer;
-      room.order = shuffle(active(room).map((p) => p.id)); room.idx = 0;
-      if (room.order.length > 1 && room.order[0] === prev) room.order.push(room.order.shift());
-      sys(room, `🏁 Začíná ${room.round}. kolo`, 'round');
-    }
-    const p = byId(room, room.order[room.idx]);
-    if (p && !p.left && p.connected) {
-      // pojistka: nikdy dvakrát za sebou stejný kreslíř, když je k dispozici jiný přítomný hráč (např. po odchodu / návratu hráče uprostřed kola)
-      if (p.id === room.drawer && room.turns.length && live(room).some((q) => q.id !== p.id) && room.order.slice(room.idx + 1).some((id) => id !== p.id)) {
-        room.order.splice(room.idx, 1); room.order.push(p.id); room.idx--; continue;
-      }
-      room.drawer = p.id; break;
-    }
-    if (!live(room).length) return pauseGame(room);
+  // Na mobilu je obrazovka hry pevně rozložená do výšky skutečně viditelné části (bez klávesnice), stránka se neposouvá.
+  // Po otevření klávesnice se výška zmenší a plátno, chat a pole se vejdou do zbytku; skryje se hlavička, hráči a nástroje.
+  function syncVV() {
+    const vv = window.visualViewport, root = document.documentElement;
+    const h = vv ? vv.height : window.innerHeight;
+    root.style.setProperty('--app-h', Math.round(h) + 'px');
+    root.style.setProperty('--app-top', Math.round(vv ? vv.offsetTop : 0) + 'px');
+    const typing = document.activeElement === $('chatInput');
+    root.classList.toggle('kb', typing || (window.innerHeight - h > 120));
   }
-  if (live(room).length < MIN_PLAYERS) return pauseGame(room);
-  startChoose(room);
-}
-
-function startChoose(room) {
-  clearTimers(room);
-  room.phase = 'choose';
-  room.options = drawWords(room);
-  room.entry = null; room.revealed = new Set(); room.hintLevel = 0; room.guessed = new Map(); room.gains = new Map(); room.reveal = null;
-  room.items = []; room.cur = null; room.pts = 0;
-  broadcastDraw(room, { t: 'draw', items: [] });
-  room.chooseEnd = now() + CHOOSE_MS;
-  room.timers.choose = setTimeout(() => { room.timers.choose = null; pick(room, Math.floor(Math.random() * room.options.length)); }, CHOOSE_MS);
-  publish(room, { type: 'choose', drawer: room.drawer });
-}
-
-function pick(room, i) {
-  if (room.phase !== 'choose') return;
-  const e = room.options[i];
-  if (!e) return;
-  if (room.timers.choose) clearTimeout(room.timers.choose);
-  room.timers.choose = null;
-  room.entry = e; room.used.add(e.f);
-  startDraw(room);
-}
-
-function startDraw(room) {
-  room.phase = 'draw';
-  const ms = DRAW_OVERRIDE_MS || room.drawSec * 1000;
-  room.turnStart = now(); room.turnEnd = now() + ms;
-  room.timers.draw = setTimeout(() => { room.timers.draw = null; endTurn(room, 'time'); }, ms);
-  room.revealed = new Set(); room.hintLevel = 0; // nápovědy dává kreslíř ručně (💡), samy se nedávají
-  const dr = byId(room, room.drawer);
-  sys(room, `✏️ ${dr ? dr.name : 'Kreslíř'} kreslí – hádejte, co to je!`, 'turn');
-  publish(room, { type: 'draw', drawer: room.drawer });
-}
-
-function endTurn(room, reason) {
-  if (room.phase !== 'draw' && room.phase !== 'choose') return;
-  clearTimers(room);
-  const wasChoose = room.phase === 'choose';
-  room.phase = 'reveal';
-  if (!room.entry) room.entry = room.options[0] || { w: '?', f: '?' };
-  const gains = [...room.players.filter((p) => !p.left)].map((p) => ({ id: p.id, pts: room.gains.get(p.id) || 0 }));
-  room.reveal = { word: room.entry.w, drawer: room.drawer, reason, gains, nobody: !room.guessed.size };
-  room.turns.push({ drawer: room.drawer, word: room.entry.w, guessed: room.guessed.size });
-  const label = reason === 'all' ? 'Všichni uhádli!' : reason === 'left' ? 'Kreslíř odešel.' : wasChoose ? 'Kreslíř nic nevybral.' : 'Čas vypršel.';
-  sys(room, `${label} Slovo bylo „${room.entry.w}“.`, 'reveal');
-  publish(room, { type: 'turnEnd', reason });
-  room.timers.next = setTimeout(() => { room.timers.next = null; if (rooms.has(room.code)) nextTurn(room); }, REVEAL_MS);
-}
-
-function finishGame(room, abandoned) {
-  clearTimers(room);
-  if (room.graceT) { clearTimeout(room.graceT); room.graceT = null; }
-  room.paused = null;
-  room.phase = 'over';
-  const ranking = active(room).slice().sort((a, b) => b.score - a.score);
-  const top = ranking.length ? ranking[0].score : 0;
-  room.result = { abandoned: !!abandoned, turns: room.turns.length, best: top > 0 ? ranking.filter((p) => p.score === top).map((p) => p.id) : [] };
-  publish(room, { type: 'over' });
-}
-
-function guessWord(room, pl, text) {
-  const g = fold(text);
-  const f = room.entry.f;
-  if (g && g === f) {
-    const left = Math.max(0, room.turnEnd - now());
-    const total = Math.max(1, room.turnEnd - room.turnStart);
-    const first = room.guessed.size === 0;
-    const pts = GUESS_BASE + Math.floor(GUESS_TIME_BONUS * Math.min(1, left / total)) + (first ? FIRST_BONUS : 0);
-    room.guessed.set(pl.id, { pts, t: now() });
-    pl.score += pts; room.gains.set(pl.id, pts);
-    const dr = byId(room, room.drawer);
-    if (dr) { dr.score += DRAWER_PER_GUESS; room.gains.set(dr.id, (room.gains.get(dr.id) || 0) + DRAWER_PER_GUESS); }
-    sys(room, `🎉 ${pl.name} uhádl slovo! (+${pts})`, 'ok');
-    const waiting = live(room).filter((p) => p.id !== room.drawer && !room.guessed.has(p.id));
-    publish(room, { type: 'guess', by: pl.id });
-    if (!waiting.length) endTurn(room, 'all');
-    return;
+  if (window.visualViewport) { window.visualViewport.addEventListener('resize', syncVV); window.visualViewport.addEventListener('scroll', () => { syncVV(); if (document.documentElement.classList.contains('ingame')) window.scrollTo(0, 0); }); }
+  window.addEventListener('resize', syncVV); window.addEventListener('orientationchange', () => setTimeout(syncVV, 200));
+  $('chatInput').addEventListener('focus', () => { syncVV(); setTimeout(() => { syncVV(); window.scrollTo(0, 0); const l = $('chatLog'); l.scrollTop = l.scrollHeight; }, 250); });
+  $('chatInput').addEventListener('blur', () => setTimeout(syncVV, 50));
+  $('chatForm').querySelector('button').addEventListener('pointerdown', (e) => { if (document.activeElement === $('chatInput')) e.preventDefault(); }); // klávesnice se po odeslání nezavře
+  syncVV();
+  function leaveLocal(keepStatus) {
+    st = null; me = null; session = null; seenEv = 0; chat = []; items = []; lastTurnKey = ''; LS.del('kres_session');
+    show('menu'); if (!keepStatus) setStatus('');
+    history.replaceState(null, '', location.pathname);
   }
-  pushChat(room, { kind: 'chat', pid: pl.id, name: pl.name, text, vis: 'all' });
-  if (g && g.length >= 4 && lev(g, f) === 1) pushChat(room, { kind: 'close', pid: pl.id, text: `„${text}“ je skoro dobře!`, vis: 'only' });
-}
+  const nameOf = (id) => (st && st.players.find((p) => p.id === id) || {}).name || '?';
 
-function handleChat(room, pl, raw) {
-  const text = String(raw ?? '').replace(/[\u0000-\u001f<>]/g, '').replace(/\s+/g, ' ').trim().slice(0, 60);
-  if (!text) return;
-  if (room.phase === 'draw' && pl.id !== room.drawer && !room.guessed.has(pl.id)) return guessWord(room, pl, text);
-  if (room.phase === 'draw') { // kreslíř a ti, co už uhádli, píšou jen „mezi sebou“
-    return pushChat(room, { kind: 'chat', pid: pl.id, name: pl.name, text, vis: 'know' });
+  function onState(s) {
+    const prev = st; st = s; me = s.you; stateAt = performance.now();
+    if (session && s.code !== session.code) session.code = s.code;
+    const phaseChanged = !prev || prev.phase !== s.phase;
+    if (s.phase === 'lobby') { renderLobby(); show('lobby'); }
+    else if (s.phase === 'over') { renderOver(); if (phaseChanged) { show('over'); sfx.win(); } }
+    else { if ($('game').hidden) { show('game'); fit(); } renderGame(prev); }
+    if (s.ev && s.ev.id > seenEv) { const first = seenEv === 0; seenEv = s.ev.id; if (!first) onEvent(s.ev); }
   }
-  pushChat(room, { kind: 'chat', pid: pl.id, name: pl.name, text, vis: 'all' });
-}
 
-// ---------------------------------------------------------------- kresba
-const idx = (v, max) => (Number.isInteger(v) && v >= 0 && v < max ? v : null); // index barvy/tloušťky: mimo rozsah se zahodí
-// barva = index do palety, nebo vlastní barva z barevného kola ve tvaru '#rrggbb' (malá písmena)
-const HEX_RE = /^#[0-9a-f]{6}$/;
-const col = (v) => (typeof v === 'string' ? (HEX_RE.test(v) ? v : null) : idx(v, PALETTE_SIZE));
-const SHAPES = Object.freeze({ l: 1, r: 1, o: 1 }); // rovná čára, obdélník/čtverec, elipsa/kruh
-const int = (v, lo, hi) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : null; };
-function handleDraw(room, pl, m) {
-  if (room.phase !== 'draw' || pl.id !== room.drawer) return;
-  switch (m.op) {
-    case 'b': { // začátek tahu: barva, tloušťka a první bod
-      const c = col(m.c), w = idx(m.w, WIDTHS), x = int(m.x, 0, W), y = int(m.y, 0, H);
-      if (c === null || w === null || x === null || y === null) return;
-      if (room.items.length >= MAX_ITEMS || room.pts >= MAX_POINTS) { room.cur = null; return; }
-      room.cur = { k: 's', c, w, pts: [x, y] }; room.items.push(room.cur); room.pts++;
-      return broadcastDraw(room, { t: 'd', op: 'b', c, w, x, y }, pl.id);
-    }
-    case 'p': { // další body tahu
-      if (!room.cur || !Array.isArray(m.pts)) return;
-      const pts = [];
-      for (let i = 0; i + 1 < m.pts.length && pts.length < 120; i += 2) {
-        const x = int(m.pts[i], 0, W), y = int(m.pts[i + 1], 0, H);
-        if (x === null || y === null) return;
-        pts.push(x, y);
-      }
-      if (!pts.length || room.pts + pts.length / 2 > MAX_POINTS) return;
-      room.cur.pts.push(...pts); room.pts += pts.length / 2;
-      return broadcastDraw(room, { t: 'd', op: 'p', pts }, pl.id);
-    }
-    case 'f': { // vyplnění plochy
-      const c = col(m.c), x = int(m.x, 0, W), y = int(m.y, 0, H);
-      if (c === null || x === null || y === null || room.items.length >= MAX_ITEMS) return;
-      room.cur = null; room.items.push({ k: 'f', c, x, y });
-      return broadcastDraw(room, { t: 'd', op: 'f', c, x, y }, pl.id);
-    }
-    case 's': { // tvar: čára / obdélník / elipsa mezi dvěma body, volitelně vyplněný
-      const c = col(m.c), w = idx(m.w, WIDTHS);
-      const x1 = int(m.x1, 0, W), y1 = int(m.y1, 0, H), x2 = int(m.x2, 0, W), y2 = int(m.y2, 0, H);
-      if (typeof m.s !== 'string' || !Object.hasOwn(SHAPES, m.s) || c === null || w === null || [x1, y1, x2, y2].includes(null)) return;
-      if (room.items.length >= MAX_ITEMS || room.pts >= MAX_POINTS) return;
-      const fl = m.s !== 'l' && m.fl ? 1 : 0;
-      room.cur = null; room.pts += 2; room.items.push({ k: 'g', s: m.s, c, w, x1, y1, x2, y2, fl });
-      return broadcastDraw(room, { t: 'd', op: 's', s: m.s, c, w, x1, y1, x2, y2, fl }, pl.id);
-    }
-    case 'u': { // zpět
-      room.cur = null;
-      if (!room.items.length) return;
-      room.items.pop();
-      return broadcastDraw(room, { t: 'draw', items: room.items }, pl.id);
-    }
-    case 'x': { // smazat vše
-      room.cur = null; room.items = []; room.pts = 0;
-      return broadcastDraw(room, { t: 'draw', items: [] }, pl.id);
-    }
-    default:
+  // ---------------- lobby
+  function renderLobby() {
+    $('roomCode').textContent = st.code;
+    const host = st.hostId === me;
+    const n = st.players.length;
+    $('lobbyCount').textContent = `${n} / 8`;
+    $('lobbyPlayers').innerHTML = st.players.map((p) => `<li class="${p.id === me ? 'me' : ''}">${avatarHtml(p)}<b>${esc(p.name)}</b><small>${p.id === st.hostId ? 'zakladatel' : p.connected ? '' : 'odpojen'}</small></li>`).join('')
+      + Array.from({ length: Math.max(0, Math.min(8, Math.max(4, n + 1)) - n) }, () => '<li class="empty">čeká se…</li>').join('');
+    $('hostCfg').hidden = !host;
+    $('cfgView').hidden = host;
+    $('cfgView').innerHTML = `Slova: <b>${LV[st.level].name}</b> · ${st.rounds} ${st.rounds === 1 ? 'kolo' : st.rounds < 5 ? 'kola' : 'kol'} · ${st.drawSec} s na kreslení`;
+    $('levels').innerHTML = LEVELS.map((l) => `<button type="button" class="lvl${l.id === st.level ? ' on' : ''}" data-lv="${l.id}"><b>${l.name}</b><span>${l.desc}</span></button>`).join('');
+    $('levels').querySelectorAll('[data-lv]').forEach((b) => { b.onclick = () => send({ t: 'config', level: b.dataset.lv }); });
+    if (document.activeElement !== $('cfgRounds')) $('cfgRounds').value = String(st.rounds);
+    if (document.activeElement !== $('cfgDraw')) $('cfgDraw').value = String(st.drawSec);
+    $('startBtn').hidden = !host; $('startBtn').disabled = n < 2;
+    $('lobbyHint').textContent = n < 2 ? 'Na hru jsou potřeba aspoň 2 hráči – pošli kamarádům kód nebo odkaz (hraje se 2–8 lidí).' : (host ? 'Až budete všichni, spusť hru.' : 'Čekáme, až zakladatel spustí hru.');
+    history.replaceState(null, '', `?room=${st.code}`);
   }
-}
 
-// ---------------------------------------------------------------- spojení
-function leave(ws, voluntary) {
-  const ctx = ws.ctx; if (!ctx) return;
-  ws.ctx = null;
-  const room = rooms.get(ctx.code); if (!room) return;
-  const pl = byId(room, ctx.pid);
-  if (!pl || (pl.ws && pl.ws !== ws)) return;
-  pl.ws = null; pl.connected = false;
-  if (room.hostId === pl.id) { const n = live(room)[0]; if (n) room.hostId = n.id; }
-  if (room.phase === 'lobby') {
-    if (voluntary) removeFromLobby(room, pl);
-    else { pl.dropTimer = setTimeout(() => { if (!pl.connected && rooms.has(room.code)) removeFromLobby(room, pl); }, LOBBY_GRACE_MS); publish(room, null); }
-  } else {
-    if (voluntary) { pl.left = true; pl.token = null; }
-    if (!active(room).length) return destroy(room);
-    if (room.phase === 'over') { publish(room, null); }
-    else if (live(room).length < MIN_PLAYERS) {
-      if (voluntary || !live(room).length) { // odešel schválně → konec; spadlo spojení všem → čeká se na návrat
-        if (live(room).length) { sys(room, `${pl.name} odešel(a) – nezbyl dost hráčů.`); finishGame(room, true); } else { pauseGame(room); }
-      } else { sys(room, `${pl.name} se odpojil(a) – čekáme na návrat…`); pauseGame(room); }
-    } else if ((room.phase === 'draw' || room.phase === 'choose') && room.drawer === pl.id) { publish(room, null); endTurn(room, 'left'); }
-    else {
-      publish(room, null);
-      if (room.phase === 'draw') { // odešel poslední, kdo ještě hádal → tah končí
-        const waiting = live(room).filter((p) => p.id !== room.drawer && !room.guessed.has(p.id));
-        if (!waiting.length && room.guessed.size) endTurn(room, 'all');
+  // ---------------- plátno
+  const cv = $('cv'); const ctx = cv.getContext('2d', { willReadFrequently: true });
+  let items = []; // zrcadlo kresby ze serveru: {k:'s',c,w,pts} (tah), {k:'f',c,x,y} (výplň), {k:'g',s,c,w,x1,y1,x2,y2,fl} (tvar)
+  let cur = null; // rozkreslený tah (příjemce i kreslíř)
+  function clearCanvas() { ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, CW, CH); }
+  function strokeStyle(c, w) { ctx.strokeStyle = colorOf(c); ctx.fillStyle = colorOf(c); ctx.lineWidth = SIZES[w]; ctx.lineCap = 'round'; ctx.lineJoin = 'round'; }
+  function segs(it, from) { // vykreslí body tahu od indexu from (index bodu)
+    strokeStyle(it.c, it.w);
+    const p = it.pts;
+    if (p.length === 2 && from === 0) { ctx.beginPath(); ctx.arc(p[0], p[1], SIZES[it.w] / 2, 0, Math.PI * 2); ctx.fill(); return; }
+    ctx.beginPath();
+    const i0 = Math.max(0, from - 1);
+    ctx.moveTo(p[i0 * 2], p[i0 * 2 + 1]);
+    for (let i = i0 + 1; i < p.length / 2; i++) ctx.lineTo(p[i * 2], p[i * 2 + 1]);
+    ctx.stroke();
+  }
+  /** Tvar mezi dvěma rohy/konci: s = 'l' čára, 'r' obdélník, 'o' elipsa; fl = vyplněný. Kreslí se do ctx (nebo do náhledu). */
+  function drawShape(g, c2 = ctx) {
+    const col = colorOf(g.c);
+    c2.strokeStyle = col; c2.fillStyle = col; c2.lineWidth = SIZES[g.w]; c2.lineCap = 'round'; c2.lineJoin = 'round';
+    const x0 = Math.min(g.x1, g.x2), y0 = Math.min(g.y1, g.y2), dx = Math.abs(g.x2 - g.x1), dy = Math.abs(g.y2 - g.y1);
+    c2.beginPath();
+    if (g.s === 'l') { c2.moveTo(g.x1, g.y1); c2.lineTo(g.x2, g.y2); }
+    else if (g.s === 'r') c2.rect(x0, y0, dx, dy);
+    else c2.ellipse(x0 + dx / 2, y0 + dy / 2, Math.max(0.5, dx / 2), Math.max(0.5, dy / 2), 0, 0, Math.PI * 2);
+    if (g.fl && g.s !== 'l') c2.fill();
+    c2.stroke();
+  }
+  function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
+  function floodFill(sx, sy, c) {
+    sx = Math.max(0, Math.min(CW - 1, sx)); sy = Math.max(0, Math.min(CH - 1, sy));
+    const img = ctx.getImageData(0, 0, CW, CH), d = img.data;
+    const i0 = (sy * CW + sx) * 4; const tr = d[i0], tg = d[i0 + 1], tb = d[i0 + 2];
+    const [fr, fg, fb] = hexRgb(colorOf(c));
+    const TOL = 90;
+    const same = (i) => Math.abs(d[i] - tr) + Math.abs(d[i + 1] - tg) + Math.abs(d[i + 2] - tb) <= TOL;
+    if (Math.abs(fr - tr) + Math.abs(fg - tg) + Math.abs(fb - tb) <= 6) return;
+    const seen = new Uint8Array(CW * CH);
+    const stack = [sx, sy];
+    while (stack.length) {
+      const y = stack.pop(), x0 = stack.pop();
+      let x = x0;
+      while (x >= 0 && !seen[y * CW + x] && same((y * CW + x) * 4)) x--;
+      x++;
+      let up = false, down = false;
+      while (x < CW && !seen[y * CW + x] && same((y * CW + x) * 4)) {
+        const k = y * CW + x; seen[k] = 1; const i = k * 4; d[i] = fr; d[i + 1] = fg; d[i + 2] = fb; d[i + 3] = 255;
+        if (y > 0) { const u = same(((y - 1) * CW + x) * 4) && !seen[(y - 1) * CW + x]; if (u && !up) stack.push(x, y - 1); up = u; }
+        if (y < CH - 1) { const dn = same(((y + 1) * CW + x) * 4) && !seen[(y + 1) * CW + x]; if (dn && !down) stack.push(x, y + 1); down = dn; }
+        x++;
       }
     }
+    ctx.putImageData(img, 0, 0);
   }
-  if (live(room).length === 0) room.emptySince = now();
-}
-
-function handle(ws, msg) {
-  if (msg.t === 'ping') return send(ws, { t: 'pong' });
-  if (msg.t === 'create' || msg.t === 'join') {
-    if (ws.ctx) return;
-    let room;
-    if (msg.t === 'create') {
-      room = newRoom();
-      if (!room) return send(ws, { t: 'err', msg: 'Server je plný, zkus to později.' });
-    } else {
-      room = rooms.get(String(msg.code || '').toUpperCase().trim());
-      if (!room) return send(ws, { t: 'err', fatal: true, msg: 'Místnost s tímhle kódem neexistuje.' });
-      if (room.phase === 'over') return send(ws, { t: 'err', fatal: true, msg: 'Tahle hra už skončila.' });
-      if (active(room).length >= MAX_PLAYERS) return send(ws, { t: 'err', fatal: true, msg: `Místnost je plná (max. ${MAX_PLAYERS} hráčů).` });
-    }
-    const r = addPlayer(room, ws, msg);
-    if (r.err) { if (msg.t === 'create') destroy(room); return send(ws, { t: 'err', fatal: true, msg: r.err }); }
-    if (room.phase !== 'lobby') sys(room, `👋 ${r.pl.name} se připojil(a)`);
-    return publish(room, null);
+  function redraw() {
+    clearCanvas(); cur = null;
+    for (const it of items) { if (it.k === 's') segs(it, 0); else if (it.k === 'f') floodFill(it.x, it.y, it.c); else if (it.k === 'g') drawShape(it); }
   }
-  if (msg.t === 'resume') {
-    if (ws.ctx) return;
-    const room = rooms.get(String(msg.code || '').toUpperCase());
-    const pl = room && room.players.find((p) => p.token && p.token === msg.token && !p.left);
-    if (!pl) return send(ws, { t: 'err', fatal: true, gone: true, msg: 'Místnost už neexistuje.' });
-    bind(ws, room, pl);
-    return publish(room, null);
+  /** Operace od kreslíře (pro hádající): začátek tahu, další body, vyplnění. */
+  function onOp(m) {
+    if (m.op === 'b') { cur = { k: 's', c: m.c, w: m.w, pts: [m.x, m.y] }; items.push(cur); segs(cur, 0); }
+    else if (m.op === 'p' && cur && Array.isArray(m.pts)) { const from = cur.pts.length / 2; cur.pts.push(...m.pts); segs(cur, from); }
+    else if (m.op === 's') { cur = null; const g = { k: 'g', s: m.s, c: m.c, w: m.w, x1: m.x1, y1: m.y1, x2: m.x2, y2: m.y2, fl: m.fl ? 1 : 0 }; items.push(g); drawShape(g); }
+    else if (m.op === 'f') { redraw(); items.push({ k: 'f', c: m.c, x: m.x, y: m.y }); floodFill(m.x, m.y, m.c); } // před výplní se plátno překreslí „načisto“, aby všichni dostali stejný výsledek
   }
-  const ctx = ws.ctx; if (!ctx) return;
-  const room = rooms.get(ctx.code); if (!room) return;
-  const pl = byId(room, ctx.pid); if (!pl) return;
 
-  if (room.paused && (msg.t === 'd' || msg.t === 'pick' || msg.t === 'chat')) return; // hra čeká na návrat hráče
-  switch (msg.t) {
-    case 'config': {
-      if (room.phase !== 'lobby' || room.hostId !== pl.id) return;
-      if (LEVELS.includes(msg.level)) room.level = msg.level;
-      if (ROUND_CHOICES.includes(Number(msg.rounds))) room.rounds = Number(msg.rounds);
-      if (DRAW_CHOICES.includes(Number(msg.drawSec))) room.drawSec = Number(msg.drawSec);
-      return publish(room, null);
-    }
-    case 'start': {
-      if (room.phase !== 'lobby' || room.hostId !== pl.id) return;
-      if (live(room).length < MIN_PLAYERS) return send(ws, { t: 'err', msg: 'Na hru jsou potřeba aspoň 2 hráči.' });
-      return startGame(room);
-    }
-    case 'pick': {
-      if (room.phase !== 'choose' || room.drawer !== pl.id) return;
-      const i = Number(msg.i);
-      if (!Number.isInteger(i) || i < 0 || i >= room.options.length) return;
-      return pick(room, i);
-    }
-    case 'd': return handleDraw(room, pl, msg);
-    case 'hint': return giveHint(room, pl);
-    case 'chat': return handleChat(room, pl, msg.text);
-    case 'again': {
-      if (room.phase !== 'over' || room.hostId !== pl.id) return;
-      room.players = room.players.filter((p) => !p.left && p.connected);
-      clearTimers(room);
-      room.phase = 'lobby'; room.round = 0; room.entry = null; room.drawer = null; room.items = []; room.result = null; room.turns = []; room.order = []; room.guessed = new Map(); room.chat = [];
-      for (const p of room.players) p.score = 0;
-      broadcastDraw(room, { t: 'draw', items: [] });
-      return publish(room, { type: 'lobby' });
-    }
-    case 'leave': return leave(ws, true);
-    default:
+  // ---- kreslení myší/prstem (jen kreslíř v tahu)
+  let tool = 'pen', colorIdx = 1, sizeIdx = 1, shapeFill = false, shape = null, down = false, buf = [], flushT = null, drawPtr = null;   // drawPtr = prst / ukazatel, který právě kreslí (druhý prst se ignoruje)
+  const SHAPE_TOOLS = { line: 'l', rect: 'r', oval: 'o' };
+  const pv = $('pv'), pctx = pv.getContext('2d');
+  const clearPreview = () => pctx.clearRect(0, 0, CW, CH);
+  const canDraw = () => !!st && st.phase === 'draw' && st.drawer === me && !st.paused;
+  function pos(e) { const r = cv.getBoundingClientRect(); return [Math.max(0, Math.min(CW, Math.round(((e.clientX - r.left) * CW) / r.width))), Math.max(0, Math.min(CH, Math.round(((e.clientY - r.top) * CH) / r.height)))]; }
+  const penColor = () => (tool === 'eraser' ? 0 : colorIdx);
+  function flush() {
+    flushT = null;
+    if (buf.length) { send({ t: 'd', op: 'p', pts: buf.slice(0, 100) }); buf = buf.slice(100); if (buf.length) flushT = setTimeout(flush, 30); }
   }
-}
-
-/** Pro HTTP: kdo se právě hlásí (jméno, profilovka) – menu hry ukáže přihlášeného hráče. */
-export function me(body) {
-  const ident = identify(body || {});
-  if (!ident) return { status: 200, json: { account: false } };
-  return { status: 200, json: { account: true, linked: !!ident.linked, name: ident.acc.name, avatar: ident.acc.avatar } };
-}
-
-const clients = new Set();
-export function handleConnection(ws) {
-  clients.add(ws);
-  ws.isAlive = true; ws.ctx = null;
-  ws.bucket = { n: 80, t: now() }; // kreslení posílá hodně malých zpráv
-  ws.on('pong', () => { ws.isAlive = true; });
-  ws.on('message', (data) => {
-    const t = now();
-    ws.bucket.n = Math.min(80, ws.bucket.n + ((t - ws.bucket.t) / 1000) * 50);
-    ws.bucket.t = t;
-    if (ws.bucket.n < 1) return;
-    ws.bucket.n -= 1;
-    let msg; try { msg = JSON.parse(data.toString()); } catch { return; }
-    if (!msg || typeof msg.t !== 'string') return;
-    try { handle(ws, msg); } catch (e) { console.error('kresleni: chyba obsluhy', e); }
+  cv.addEventListener('pointerdown', (e) => {
+    if (!canDraw()) return;
+    e.preventDefault(); audio();
+    if (down || drawPtr !== null || (e.pointerType === 'touch' && !e.isPrimary)) return;   // druhý prst na plátně nic nedělá: tah prvního pokračuje
+    const [x, y] = pos(e);
+    if (tool === 'fill') { send({ t: 'd', op: 'f', c: colorIdx, x, y }); redraw(); items.push({ k: 'f', c: colorIdx, x, y }); floodFill(x, y, colorIdx); return; }
+    down = true; drawPtr = e.pointerId; try { cv.setPointerCapture(e.pointerId); } catch (err) { /* nic */ }
+    if (SHAPE_TOOLS[tool]) { shape = { k: 'g', s: SHAPE_TOOLS[tool], c: colorIdx, w: sizeIdx, x1: x, y1: y, x2: x, y2: y, fl: shapeFill && tool !== 'line' ? 1 : 0 }; return; }
+    cur = { k: 's', c: penColor(), w: sizeIdx, pts: [x, y] }; items.push(cur); segs(cur, 0);
+    send({ t: 'd', op: 'b', c: cur.c, w: cur.w, x, y });
   });
-  ws.on('close', () => { clients.delete(ws); leave(ws, false); });
-  ws.on('error', () => {});
-}
+  /** Při držené klávese Shift: čtverec/kruh, u čáry svislá/vodorovná/úhlopříčná. */
+  function constrain(g, shift) {
+    if (!shift) return;
+    let dx = g.x2 - g.x1, dy = g.y2 - g.y1;
+    if (g.s === 'l') {
+      const a = Math.round(Math.atan2(dy, dx) / (Math.PI / 4)) * (Math.PI / 4), len = Math.hypot(dx, dy);
+      dx = Math.cos(a) * len; dy = Math.sin(a) * len;
+    } else { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * m; dy = Math.sign(dy || 1) * m; }
+    g.x2 = Math.max(0, Math.min(CW, Math.round(g.x1 + dx))); g.y2 = Math.max(0, Math.min(CH, Math.round(g.y1 + dy)));
+  }
+  cv.addEventListener('pointermove', (e) => {
+    if (e.pointerId !== drawPtr) return;
+    if (down && shape) { e.preventDefault(); [shape.x2, shape.y2] = pos(e); constrain(shape, e.shiftKey); clearPreview(); drawShape(shape, pctx); return; }
+    if (!down || !cur) return;
+    e.preventDefault();
+    const evs = e.getCoalescedEvents ? e.getCoalescedEvents() : [e];
+    for (const ev of (evs.length ? evs : [e])) {
+      const [x, y] = pos(ev);
+      const n = cur.pts.length;
+      if (cur.pts[n - 2] === x && cur.pts[n - 1] === y) continue;
+      const from = n / 2; cur.pts.push(x, y); segs(cur, from); buf.push(x, y);
+    }
+    if (!flushT) flushT = setTimeout(flush, 40);
+  });
+  const up = (e) => {
+    if (!down || e.pointerId !== drawPtr) return;
+    drawPtr = null;
+    if (shape) { // puštění: tvar se definitivně nakreslí a odešle (kliknutí bez tažení se zahodí)
+      down = false; try { cv.releasePointerCapture(e.pointerId); } catch (err) { /* nic */ }
+      const g = shape; shape = null; clearPreview();
+      if (e.type === 'pointercancel' || !canDraw() || (g.x1 === g.x2 && g.y1 === g.y2)) return;
+      items.push(g); drawShape(g);
+      send({ t: 'd', op: 's', s: g.s, c: g.c, w: g.w, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2, fl: g.fl });
+      return;
+    }
+    down = false; try { cv.releasePointerCapture(e.pointerId); } catch (err) { /* nic */ } clearTimeout(flushT); while (buf.length) { send({ t: 'd', op: 'p', pts: buf.slice(0, 100) }); buf = buf.slice(100); } flushT = null; cur = null; };
+  cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+  for (const g of ['gesturestart', 'gesturechange', 'gestureend']) document.addEventListener(g, (e) => e.preventDefault());   // iOS: pinch dvěma prsty nezoomuje stránku
+  cv.addEventListener('touchmove', (e) => { if (e.touches.length > 1) e.preventDefault(); }, { passive: false });
 
-setInterval(() => { for (const ws of clients) { if (!ws.isAlive) { ws.terminate(); continue; } ws.isAlive = false; try { ws.ping(); } catch { /* nic */ } } }, 25_000).unref();
-setInterval(() => { for (const r of rooms.values()) if (live(r).length === 0 && r.emptySince && now() - r.emptySince > EMPTY_ROOM_MS) destroy(r); }, 15_000).unref();
+  // ---- barevné kolo (vlastní barva): odstín = úhel, sytost = vzdálenost od středu, jas = posuvník
+  const hsv2hex = (h, sat, v) => {
+    const f = (n) => { const k = (n + h * 6) % 6; return v - v * sat * Math.max(0, Math.min(k, 4 - k, 1)); };
+    return '#' + [f(5), f(3), f(1)].map((x) => Math.round(x * 255).toString(16).padStart(2, '0')).join('');
+  };
+  const WS = 168, WR = WS / 2;
+  let wH = 0.75, wS = 0.8, wV = 1, customHex = hsv2hex(wH, wS, wV), wDown = false;
+  const wheel = $('wheel'), wctx = wheel.getContext('2d', { willReadFrequently: true });
+  function drawWheel() {
+    const img = wctx.createImageData(WS, WS), d = img.data;
+    for (let y = 0; y < WS; y++) {
+      for (let x = 0; x < WS; x++) {
+        const dx = x + 0.5 - WR, dy = y + 0.5 - WR, r = Math.hypot(dx, dy);
+        if (r > WR) continue;
+        const [R, G, B] = hexRgb(hsv2hex((Math.atan2(dy, dx) / (Math.PI * 2) + 1) % 1, Math.min(1, r / (WR - 1)), wV));
+        const i = (y * WS + x) * 4; d[i] = R; d[i + 1] = G; d[i + 2] = B; d[i + 3] = 255;
+      }
+    }
+    wctx.putImageData(img, 0, 0);
+    const a = wH * Math.PI * 2, px = WR + Math.cos(a) * wS * (WR - 1), py = WR + Math.sin(a) * wS * (WR - 1);
+    wctx.lineWidth = 3; wctx.strokeStyle = '#000'; wctx.beginPath(); wctx.arc(px, py, 8, 0, Math.PI * 2); wctx.stroke();
+    wctx.lineWidth = 2; wctx.strokeStyle = '#fff'; wctx.beginPath(); wctx.arc(px, py, 8, 0, Math.PI * 2); wctx.stroke();
+  }
+  function setCustom(pick) { // pick: vybrat ji i jako aktuální barvu
+    customHex = hsv2hex(wH, wS, wV);
+    drawWheel();
+    $('cval').style.setProperty('--c', hsv2hex(wH, wS, 1));
+    const sw = $('swCustom'); sw.style.background = customHex; sw.dataset.hex = customHex;
+    $('chex').textContent = customHex.toUpperCase();
+    if (pick) { colorIdx = customHex; if (tool === 'eraser') tool = 'pen'; }
+    syncTools();
+  }
+  function wheelPick(e) {
+    const r = wheel.getBoundingClientRect();
+    const dx = ((e.clientX - r.left) / r.width) * WS - WR, dy = ((e.clientY - r.top) / r.height) * WS - WR;
+    wH = (Math.atan2(dy, dx) / (Math.PI * 2) + 1) % 1; wS = Math.min(1, Math.hypot(dx, dy) / (WR - 1));
+    setCustom(true);
+  }
+  wheel.addEventListener('pointerdown', (e) => { e.preventDefault(); wDown = true; try { wheel.setPointerCapture(e.pointerId); } catch (err) { /* nic */ } wheelPick(e); });
+  wheel.addEventListener('pointermove', (e) => { if (wDown) { e.preventDefault(); wheelPick(e); } });
+  const wUp = () => { wDown = false; };
+  wheel.addEventListener('pointerup', wUp); wheel.addEventListener('pointercancel', wUp);
+  $('cval').addEventListener('input', (e) => { wV = Math.max(0.05, Math.min(1, Number(e.target.value) / 100)); setCustom(true); });
 
-export const stats = () => ({ rooms: rooms.size, clients: clients.size });
-export { rooms };
+  const TOOL_BTNS = { pen: 'tPen', eraser: 'tEraser', fill: 'tFill', line: 'tLine', rect: 'tRect', oval: 'tOval' };
+  function buildTools() {
+    const sws = PAL.map((c, i) => `<button type="button" class="sw${i === colorIdx ? ' on' : ''}" data-c="${i}" style="background:${c}" aria-label="Barva ${i + 1}"></button>`).join('');
+    $('pal').innerHTML = sws + '<button type="button" class="sw custom" id="swCustom" aria-label="Vlastní barva"></button><button type="button" class="sw wheelbtn" id="swWheel" aria-label="Barevné kolo" title="Barevné kolo"></button>';
+    $('pal').querySelectorAll('.sw[data-c]').forEach((b) => { b.onclick = () => { colorIdx = Number(b.dataset.c); if (tool === 'eraser') tool = 'pen'; syncTools(); }; });
+    $('swCustom').onclick = () => { colorIdx = customHex; if (tool === 'eraser') tool = 'pen'; syncTools(); };
+    $('swWheel').onclick = () => { const p = $('cpanel'); p.hidden = !p.hidden; $('swWheel').classList.toggle('open', !p.hidden); if (!p.hidden) setCustom(true); };
+    $('sizes').innerHTML = SIZES.map((s, i) => `<button type="button" class="sz${i === sizeIdx ? ' on' : ''}" data-s="${i}" aria-label="Tloušťka ${i + 1}"><i style="width:${Math.min(26, s + 4)}px;height:${Math.min(26, s + 4)}px"></i></button>`).join('');
+    $('sizes').querySelectorAll('.sz').forEach((b) => { b.onclick = () => { sizeIdx = Number(b.dataset.s); syncTools(); }; });
+    for (const [t, id] of Object.entries(TOOL_BTNS)) $(id).onclick = () => { tool = t; syncTools(); };
+    $('tShapeFill').onclick = () => { shapeFill = !shapeFill; syncTools(); };
+    $('tUndo').onclick = () => { if (!canDraw() || !items.length) return; send({ t: 'd', op: 'u' }); items.pop(); redraw(); };
+    $('tClear').onclick = () => { if (!canDraw() || !items.length) return; send({ t: 'd', op: 'x' }); items = []; redraw(); };
+    setCustom(false);
+  }
+  function syncTools() {
+    $('pal').querySelectorAll('.sw[data-c]').forEach((b) => b.classList.toggle('on', colorIdx === Number(b.dataset.c) && tool !== 'eraser'));
+    $('swCustom').classList.toggle('on', colorIdx === customHex && tool !== 'eraser');
+    $('sizes').querySelectorAll('.sz').forEach((b) => b.classList.toggle('on', Number(b.dataset.s) === sizeIdx));
+    for (const [t, id] of Object.entries(TOOL_BTNS)) $(id).classList.toggle('on', tool === t);
+    $('tShapeFill').classList.toggle('on', shapeFill);
+    $('tShapeFill').hidden = !(tool === 'rect' || tool === 'oval');
+    $('tShapeFill').textContent = shapeFill ? '◼' : '◻';
+    $('tShapeFill').title = shapeFill ? 'Tvar vyplněný (klikni pro obrys)' : 'Tvar jen obrys (klikni pro vyplnění)';
+  }
+
+  // ---------------- hra
+  function fit() { /* plátno má poměr stran 4:3 z CSS, nic dalšího není potřeba */ }
+  function renderGame(prev) {
+    const imDrawer = st.drawer === me, ph = st.phase;
+    $('roundInfo').innerHTML = `Kolo ${st.round}/${st.rounds}<br>Tah ${Math.min(st.turnNo, st.turnsTotal)}/${st.turnsTotal}`;
+    // slovo
+    const wb = $('wordBox'); wb.className = 'wordbox';
+    const knows = st.word !== null;
+    if (ph === 'choose') wb.textContent = imDrawer ? 'Vyber slovo' : `${nameOf(st.drawer)} vybírá slovo…`;
+    else if (ph === 'reveal') { wb.classList.add('ok'); wb.innerHTML = `Slovo: <b>${esc(st.word || '')}</b>`; }
+    else if (imDrawer) { wb.classList.add('mine'); wb.innerHTML = `Kresli: <b>${esc(st.word || '')}</b>`; }
+    else if (knows) { wb.classList.add('ok'); wb.innerHTML = `✔ ${esc(st.word)}`; }
+    else if (!st.mask) wb.innerHTML = '<span class="nohint">Hádej, co kreslí…</span>';
+    else wb.innerHTML = (st.mask || []).map((ch) => (ch === ' ' ? '<span class="ch sp"></span>' : `<span class="ch${ch !== '_' ? ' got' : ''}">${ch === '_' ? '' : esc(ch)}</span>`)).join('') + `<small>${st.wordLen} písmen</small>`;
+
+    // hráči
+    const order = st.players.map((p, i) => ({ p, i })).sort((a, b) => b.p.score - a.p.score || a.i - b.i).map((x) => x.p);
+    $('players').innerHTML = order.map((p) => `<div class="pl${p.id === st.drawer && ph !== 'over' ? ' drawing' : ''}${st.guessed.includes(p.id) ? ' ok' : ''}${p.id === me ? ' me' : ''}${p.connected ? '' : ' off'}">${avatarHtml(p)}<span class="info"><span class="nm">${esc(p.name)}</span><span class="sc">${p.score} b.</span></span>${p.id === st.drawer && (ph === 'draw' || ph === 'choose') ? '<span class="bd">✏️</span>' : st.guessed.includes(p.id) ? '<span class="bd">✅</span>' : ''}</div>`).join('');
+
+    // plátno a nástroje
+    $('cwrap').classList.toggle('draw', canDraw());
+    $('tools').hidden = !(ph === 'draw' && imDrawer);
+    const hb = $('hintBtn'), hi = st.hint;
+    hb.hidden = !(ph === 'draw' && imDrawer && hi);
+    if (!hb.hidden) {
+      const next = hi.level >= hi.max ? 'Víc nápověd není' : hi.level === 0 ? 'Prozradit počet písmen' : 'Prozradit náhodné písmeno';
+      hb.innerHTML = `💡<small>${hi.level}/${hi.max}</small>`; hb.disabled = hi.level >= hi.max; hb.title = hb.ariaLabel = 'Nápověda: ' + next;
+    }
+    const ov = $('ov'); ov.className = 'ov';
+    if (st.paused) { ov.hidden = false; ov.innerHTML = '<div><h3>⏸ Hra čeká</h3><div class="sub">Někomu spadlo spojení. Hra pokračuje, jakmile se vrátí.</div></div>'; }
+    else if (ph === 'choose') {
+      ov.hidden = false;
+      ov.innerHTML = imDrawer
+        ? `<div><h3>Co budeš kreslit?</h3><div class="opts">${(st.options || []).map((o, i) => `<button type="button" class="opt" data-i="${i}">${esc(o)}</button>`).join('')}</div><div class="sub" id="chooseLeft"></div></div>`
+        : `<div><h3>✏️ ${esc(nameOf(st.drawer))} vybírá slovo…</h3><div class="sub">Připrav se na hádání!</div></div>`;
+      ov.querySelectorAll('.opt').forEach((b) => { b.onclick = () => { send({ t: 'pick', i: Number(b.dataset.i) }); }; });
+    } else if (ph === 'reveal' && st.reveal) {
+      const r = st.reveal; ov.hidden = false; ov.classList.add('bottom');
+      const gains = r.gains.filter((g) => g.pts > 0).sort((a, b) => b.pts - a.pts);
+      ov.innerHTML = `<div><div class="sub">${r.reason === 'time' ? 'Čas vypršel' : r.reason === 'all' ? 'Všichni uhádli!' : r.reason === 'left' ? 'Kreslíř odešel' : 'Konec tahu'}</div><div class="big">${esc(r.word)}</div>${gains.length ? `<div class="gains">${gains.map((g) => `<span>${esc(nameOf(g.id))} <b>+${g.pts}</b></span>`).join('')}</div>` : '<div class="sub">Nikdo neuhádl 😢</div>'}</div>`;
+    } else ov.hidden = true;
+
+    // chat
+    const inp = $('chatInput');
+    inp.placeholder = ph === 'draw' && (imDrawer || knows) ? 'Chat (vidí ho jen ti, kdo znají slovo)' : ph === 'draw' ? 'Piš tip…' : 'Napiš do chatu…';
+    // mobil: kreslíř při kreslení nepíše (klávesnice by mu zakryla plátno a nástroje); hádající a ostatní píšou normálně
+    const lockChat = ph === 'draw' && imDrawer && window.matchMedia('(max-width:899px)').matches;
+    if (lockChat) inp.placeholder = 'Kreslíš – chat je vypnutý';
+    if (inp.disabled !== lockChat) { inp.disabled = lockChat; $('chatForm').querySelector('button').disabled = lockChat; if (lockChat) { inp.blur(); syncVV(); } }
+
+    // události při změně tahu
+    const key = st.code + ':' + st.round + ':' + st.turnNo + ':' + ph;
+    if (key !== lastTurnKey) { lastTurnKey = key; if (ph === 'draw' && imDrawer) { sfx.turn(); tool = 'pen'; syncTools(); } }
+    $('clock').classList.toggle('low', ph === 'draw' && st.turnMs - (performance.now() - stateAt) < 10000 && st.turnMs > 0);
+  }
+
+  // odpočet (hodiny, pruh) a výběr slova
+  let lastTick = -1;
+  setInterval(() => {
+    if (!st) return;
+    const el = performance.now() - stateAt;
+    if (st.phase === 'draw' && !st.paused) {
+      const left = Math.max(0, st.turnMs - el), total = st.drawSec * 1000;
+      const sec = Math.ceil(left / 1000);
+      $('clockNum').textContent = sec;
+      $('timeFill').style.width = Math.min(100, (left / Math.max(total, left)) * 100) + '%';
+      $('clock').classList.toggle('low', left < 10000);
+      if (sec <= 5 && sec > 0 && sec !== lastTick) { lastTick = sec; sfx.tick(); }
+    } else {
+      $('clockNum').textContent = st.phase === 'choose' ? '✏️' : '--'; $('timeFill').style.width = st.phase === 'draw' ? $('timeFill').style.width : '0'; $('clock').classList.remove('low');
+      const cl = $('chooseLeft'); if (cl && st.phase === 'choose') cl.textContent = `Zbývá ${Math.max(0, Math.ceil((st.chooseMs - el) / 1000))} s – jinak se vybere samo`;
+    }
+  }, 150);
+
+  function onEvent(ev) {
+    if (ev.type === 'guess') { if (ev.by === me) sfx.win(); else sfx.pop(); }
+    else if (ev.type === 'turnEnd') sfx.end();
+    else if (ev.type === 'hint') sfx.hint();
+  }
+
+  // ---------------- chat
+  function addChat(m) { chat.push(m); if (chat.length > 80) chat.shift(); renderChat(); }
+  function renderChat() {
+    const log = $('chatLog');
+    const near = log.scrollHeight - log.scrollTop - log.clientHeight < 60;
+    log.innerHTML = chat.map((m) => {
+      const cls = ['m', m.kind === 'chat' ? '' : m.kind, m.vis === 'know' ? 'know' : '', m.pid === me && m.kind === 'chat' ? 'mine' : ''].filter(Boolean).join(' ');
+      return m.kind === 'chat' ? `<div class="${cls}"><b>${esc(m.name)}</b>${esc(m.text)}</div>` : `<div class="${cls}">${esc(m.text)}</div>`;
+    }).join('');
+    if (near) log.scrollTop = log.scrollHeight;
+  }
+
+  // ---------------- konec
+  function renderOver() {
+    const r = st.result;
+    const sorted = st.players.slice().sort((a, b) => b.score - a.score);
+    $('overTitle').textContent = r.abandoned ? 'Hra skončila' : r.best.length === 1 ? `Vítězí ${nameOf(r.best[0])} 🏆` : r.best.length > 1 ? 'Remíza! 🤝' : 'Konec hry';
+    $('overSub').textContent = r.abandoned ? 'Ostatním dlouho nešlo spojení, tak se hra ukončila.' : `Odkreslilo se ${r.turns} obrázků`;
+    const top = r.best.length ? sorted.slice(0, 3) : []; // bez bodů se stupně vítězů neukazují
+    $('podium').hidden = !top.length;
+    const order = top.length === 3 ? [1, 0, 2] : top.length === 2 ? [1, 0] : [0];
+    $('podium').innerHTML = order.map((i) => { const p = top[i]; return `<div class="pod p${i + 1}">${avatarHtml(p)}<div class="nm">${esc(p.name)}</div><div class="pt">${p.score} b.</div><div class="bar">${i + 1}</div></div>`; }).join('');
+    $('board').innerHTML = sorted.map((p, i) => `<li class="${r.best.includes(p.id) ? 'win' : ''}"><span class="rk">${i + 1}.</span>${avatarHtml(p)}<b>${esc(p.name)}${p.id === me ? ' (ty)' : ''}</b><span class="pts">${p.score} b.</span></li>`).join('');
+    const host = st.hostId === me;
+    $('again').hidden = !host;
+    $('overHint').textContent = host ? 'Hrajeme znovu?' : 'Čekáme, až zakladatel pustí další hru.';
+  }
+
+  // Profil (jméno a profilovka z Google účtu). Render po nečinnosti usíná a první dotaz selže, proto se zkouší znovu, dokud server neodpoví.
+  let meTries = 0, meTimer = null, meBusy = false;
+  async function loadMe() {
+    if (meBusy) return; meBusy = true; clearTimeout(meTimer);
+    try {
+      const r = await fetch(API + '/api/kresleni/me', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(ident()), signal: AbortSignal.timeout ? AbortSignal.timeout(20000) : undefined });
+      if (!r.ok) throw new Error('http ' + r.status);
+      const j = await r.json();
+      meTries = 0;
+      if (!j || !j.account) return;
+      const box = $('acct');
+      box.innerHTML = `${avatarHtml({ avatar: j.avatar, name: j.name, id: 'p1' })}<div><b>${esc(j.name)}</b><small>${j.linked ? 'přihlášen přes Google' : 'bez přihlášení'}</small></div>`;
+      box.hidden = false;
+      if (j.linked) { $('nameField').hidden = true; $('acctHint').textContent = 'Hraješ pod jménem a profilovkou ze svého účtu.'; }
+      else { $('nameField').hidden = false; $('acctHint').textContent = 'Přihlas se přes Google na hlavní stránce a ve hře budeš mít své jméno a profilovku.'; }
+    } catch (e) { // server se probouzí: zkusit znovu
+      if (++meTries <= 20) meTimer = setTimeout(loadMe, Math.min(5000, 1200 * meTries));
+    } finally { meBusy = false; }
+  }
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) loadMe(); }); // třeba po přihlášení v jiné záložce
+
+  // ---------------- ovládání
+  $('mute').textContent = muted ? '🔇' : '🔊';
+  $('mute').onclick = () => { muted = !muted; LS.set('kres_mute', muted ? '1' : '0'); $('mute').textContent = muted ? '🔇' : '🔊'; if (!muted) sfx.pop(); };
+  if (CFG.BACK_URL) $('back').href = CFG.BACK_URL;
+  clearCanvas(); buildTools();
+  $('name').value = LS.get('kres_name') || '';
+  const params = new URLSearchParams(location.search);
+  if (params.get('room')) $('code').value = params.get('room').toUpperCase().slice(0, 4);
+  const getName = () => { const n = $('name').value.trim(); LS.set('kres_name', n); return n || 'Hráč'; };
+
+  $('create').onclick = () => { audio(); setStatus('Připojuji…'); pending = { t: 'create', name: getName(), ...ident() }; connect(); };
+  $('joinForm').onsubmit = (e) => {
+    e.preventDefault(); audio();
+    const code = $('code').value.trim().toUpperCase();
+    if (code.length !== 4) { setStatus('Kód má 4 písmena.', true); return; }
+    setStatus('Připojuji…'); pending = { t: 'join', code, name: getName(), ...ident() }; connect();
+  };
+  $('copyLink').onclick = () => {
+    const url = location.origin + location.pathname + '?room=' + st.code;
+    (navigator.clipboard ? navigator.clipboard.writeText(url) : Promise.reject()).then(() => toast('Odkaz zkopírován'), () => toast(url));
+  };
+  $('cfgRounds').onchange = () => send({ t: 'config', rounds: Number($('cfgRounds').value) });
+  $('cfgDraw').onchange = () => send({ t: 'config', drawSec: Number($('cfgDraw').value) });
+  $('hintBtn').onclick = () => { if (canDraw()) { audio(); send({ t: 'hint' }); } };
+  $('startBtn').onclick = () => { audio(); send({ t: 'start' }); };
+  $('again').onclick = () => send({ t: 'again' });
+  const leave = () => { send({ t: 'leave' }); wantOpen = false; setTimeout(() => { if (ws) ws.close(); }, 100); leaveLocal(); };
+  $('leaveLobby').onclick = leave; $('leaveOver').onclick = leave;
+  $('chatForm').onsubmit = (e) => {
+    e.preventDefault();
+    const t = $('chatInput').value.trim(); if (!t) return;
+    send({ t: 'chat', text: t }); $('chatInput').value = '';
+  };
+
+  // ---------------- start: obnova relace po obnovení stránky
+  loadMe();
+  try { const s = JSON.parse(LS.get('kres_session') || 'null'); if (s && s.code && s.token) { session = s; connect(); } else wake(); } catch (e) { wake(); }
+})();
