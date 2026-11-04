@@ -27,7 +27,8 @@ assert.equal(fs.readFileSync('./tanks/physics.js', 'utf8'), fs.readFileSync('./p
       while (dir > 0 ? px < 1000 : px > 600) { const nx = px + dir * stp; assert.ok(-(P.groundAt(h, nx) - P.groundAt(h, px)) <= Math.max(P.SLOPE_MAX * stp, P.STEP_UP), 'kráter ' + r + ' se dá přejet'); px = nx; }
     }
   }
-  for (const id of P.ORDER) { const w = P.WEAPONS[id]; assert.ok(w.inf || (w.price > 0 && w.pack > 0 && w.lvl >= 1 && w.lvl <= P.MAX_LEVEL), id); }
+  for (const id of P.ORDER) { const w = P.WEAPONS[id]; assert.ok(w.inf || (w.price > 0 && w.pack > 0 && w.lvl >= 1 && w.lvl <= P.MAX_LEVEL && w.max >= w.pack && w.max <= 20), id); }
+  assert.equal(P.WEAPONS.nuke.max, 1); assert.equal(P.WEAPONS.doom.max, 1);
   assert.equal(P.MAX_LEVEL, 30); assert.equal(P.levelOf(P.xpFor(30)), 30); assert.ok(P.COLORS.every((c) => c.lvl <= P.MAX_LEVEL));
   { const cnt = (id) => P.simulate({ h: P.genTerrain(9), tanks: [{ x: 200, hp: 100 }, { x: 1400, hp: 100 }], wind: 0 }, 0, 55, 70, id);
     assert.equal(cnt('five').paths.length, 5, 'pětisalva = 5 střel'); assert.ok(cnt('napalm').ex.filter((e) => e.r > 0).length >= 6, 'napalm se rozstříkne'); assert.ok(cnt('airstrike').ex.filter((e) => e.r > 0).length >= 5, 'nálet = déšť bomb');
@@ -56,13 +57,13 @@ const until = async (f, ms = 8000) => { const t0 = Date.now(); while (Date.now()
   assert.equal(T.api('buy', { token: T1, id: 'triple' }).status, 403, 'trojitá salva se odemyká na úrovni 2');
   assert.equal(T.api('buy', { token: T1, id: 'std' }).status, 400);
   assert.equal(T.api('buy', { token: TX, id: 'big' }).status, 401);
-  for (let i = 0; i < 5; i++) assert.equal(T.api('buy', { token: T1, id: 'big' }).status, 200);
-  assert.equal(T.api('buy', { token: T1, id: 'big' }).status, 409, 'strop 20 kusů');
+  for (let i = 0; i < 2; i++) assert.equal(T.api('buy', { token: T1, id: 'big' }).status, 200);
+  assert.equal(T.api('buy', { token: T1, id: 'big' }).status, 409, 'strop 9 kusů u těžké bomby');
   assert.equal(T.api('buy', { token: T3, id: 'big' }).status, 402, 'nedostatek coinů');
   assert.equal(T.api('color', { token: T1, c: 3 }).status, 403); assert.equal(T.api('color', { token: T1, c: 99 }).status, 400);
   assert.equal(T.api('color', { token: T1, c: 2 }).json.tank.color, 2);
   T.tankOf(accs[T1]).xp = P.xpFor(6);
-  assert.equal(T.api('buy', { token: T1, id: 'nuke' }).status, 200);
+  assert.equal(T.api('buy', { token: T1, id: 'nuke' }).status, 200); assert.equal(T.api('buy', { token: T1, id: 'nuke' }).status, 409, 'atomovku máš u sebe nejvíc 1×');
   assert.equal(T.api('color', { token: T1, c: 5 }).status, 200);
   assert.ok(dirty > 0 && notified.includes('Honza'));
   accs[T1] = mk('Honza', 5000); accs[T2] = mk('Eva', 5000); accs[T3] = mk('Chudák', 150);
@@ -172,6 +173,19 @@ function findHit(room, i, w = 'std') {
   room.tanks[i].hp = 4; room.tanks[i].crate.five = 1; cu.say({ t: 'fire', a: 85, p: 8, w: 'five' }); const sh2 = await until(() => cu.all('shot').length >= 3 && cu.last('shot'));
   assert.ok(sh2.hpBefore[i] === 4 && sh2.self === 3, 'ze 4 životů zbyde aspoň 1');
   a.say({ t: 'leave' }); b.say({ t: 'leave' }); void ot;
+}
+
+// --- strop zbraní u sebe platí i pro bedny
+{
+  accs[T1] = mk('Honza', 5000); T.tankOf(accs[T1]).ammo = { nuke: 1 };
+  const m = online(); const { a, b, room } = m; const s = a.last('state'); const i = s.turn, me = s.you; 
+  const idx = accs[T1] && (i === me ? me : me);
+  const mine = a.last('state').you; const cu = room.turn === mine ? a : null;
+  if (!cu) { b.say({ t: 'fire', a: 45, p: 10, w: 'std' }); await until(() => a.last('state').turn === mine); }
+  const x1 = room.tanks[mine].x, dd = mine === 0 ? 1 : -1; room.crates.push({ id: 77, x: x1 + dd * 40, kind: 'nuke' });
+  a.say({ t: 'drive', d: dd }); await until(() => a.all('note').some((n) => /nejvíc 1/.test(n.msg))); a.say({ t: 'drive', d: 0 });
+  assert.ok(room.crates.some((c) => c.id === 77), 'bedna zůstane, když nemůžeš nést víc'); assert.ok(!room.tanks[mine].crate.nuke);
+  a.say({ t: 'leave' }); b.say({ t: 'leave' });
 }
 
 // --- výhra online: +900 / −300, XP, výhry; podlaha zůstatku

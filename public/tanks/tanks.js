@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js';
+import * as P from './physics.js?v=2';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -150,9 +150,9 @@ function renderShop() {
   $('shopLvl').innerHTML = `<div class="plvl">${t.lvl}</div><div class="pinfo"><div class="pname">Úroveň ${t.lvl}</div><div class="xpbar"><i style="width:${t.next ? clamp((t.xp - t.from) / (t.next - t.from), 0, 1) * 100 : 100}%"></i></div><div class="psub"><span>${t.next ? `${t.xp - t.from} / ${t.next - t.from} XP` : 'maximum'}</span><span>${t.wins} výher</span></div></div>`;
   $('shopColors').innerHTML = COLORS.map((c, i) => `<button type="button" data-c="${i}" style="background:${c.c}" class="${t.color === i ? 'on' : ''} ${t.lvl < c.lvl ? 'lock' : ''}" data-l="Lv ${c.lvl}" aria-label="${c.name}" title="${c.name}${t.lvl < c.lvl ? ' (od úrovně ' + c.lvl + ')' : ''}"></button>`).join('');
   $('shopWeapons').innerHTML = ORDER.filter((id) => id !== 'std').map((id) => {
-    const w = WEAPONS[id]; const own = t.ammo[id] | 0; const lock = t.lvl < w.lvl; const full = own + w.pack > prof.maxOwned; const poor = prof.balance < w.price;
+    const w = WEAPONS[id]; const own = t.ammo[id] | 0; const lock = t.lvl < w.lvl; const full = own + w.pack > w.max; const poor = prof.balance < w.price;
     const label = lock ? `Úroveň ${w.lvl}` : full ? 'Plno' : `Koupit ${w.pack}×<br><span class="coin"></span> ${w.price}`;
-    return `<div class="wi${lock ? ' lock' : ''}"><div class="ic" style="background:${w.col}">${ICON[id]}</div><div><div class="nm">${w.name} <span class="own">${own ? '· máš ' + own : ''}</span></div><div class="ds">${w.desc}${P.consOf(w) ? `<br><u>Nevýhoda: ${esc(P.consOf(w))}</u>` : ''}</div></div><button class="buy" type="button" data-b="${id}" ${lock || full || poor ? 'disabled' : ''}>${label}</button></div>`;
+    return `<div class="wi${lock ? ' lock' : ''}"><div class="ic" style="background:${w.col}">${ICON[id]}</div><div><div class="nm">${w.name} <span class="own">· máš ${own}/${w.max}</span></div><div class="ds">${w.desc}${P.consOf(w) ? `<br><u>Nevýhoda: ${esc(P.consOf(w))}</u>` : ''}</div></div><button class="buy" type="button" data-b="${id}" ${lock || full || poor ? 'disabled' : ''}>${label}</button></div>`;
   }).join('');
 }
 $('shopColors').addEventListener('click', async (e) => {
@@ -664,7 +664,7 @@ $('oMenu').onclick = leaveGame;
 function pauseHelp() {
   const own = (id) => (WEAPONS[id].inf ? '' : ((S && S.ammo && S.ammo[id]) | 0));
   $('pauseHelp').innerHTML = ORDER.map((id) => { const w = WEAPONS[id]; const n = own(id);
-    return `<div class="wr"><i style="color:${w.col}"></i><div><b>${esc(w.name)}</b>${n ? `<em>máš ${n}×</em>` : ''}<br><span>${esc(w.desc)}${w.util ? '' : ` Poškození až ${w.shots ? w.shots + '×' : ''}${w.split ? w.split.n + '×' + w.split.dmg : w.dmg}.`}${P.consOf(w) ? ` <u>Nevýhoda: ${esc(P.consOf(w))}</u>` : ''}</span></div></div>`; }).join('');
+    return `<div class="wr"><i style="color:${w.col}"></i><div><b>${esc(w.name)}</b>${n ? `<em>máš ${n}×</em>` : ''}${w.max ? `<small> (max ${w.max})</small>` : ''}<br><span>${esc(w.desc)}${w.util ? '' : ` Poškození až ${w.shots ? w.shots + '×' : ''}${w.split ? w.split.n + '×' + w.split.dmg : w.dmg}.`}${P.consOf(w) ? ` <u>Nevýhoda: ${esc(P.consOf(w))}</u>` : ''}</span></div></div>`; }).join('');
 }
 $('menuBtn').onclick = () => { pauseHelp(); $('pauseModal').hidden = false; $('pLeave').innerHTML = '<b>Vzdát se a odejít</b>'; };
 let leaveArmed = false;

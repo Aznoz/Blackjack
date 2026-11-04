@@ -19,7 +19,6 @@ const DROP_GRACE_MS = Number(process.env.TANKS_DROP_MS) || 60_000;
 const MAX_IDLE_TURNS = 3;                             // tolikrát za sebou propásnutý tah = prohra
 const EMPTY_ROOM_MS = 120_000;
 const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVXYZ';
-const MAX_OWNED = 20;
 const MAX_CRATES = 4;
 
 const rooms = new Map();
@@ -47,7 +46,7 @@ function profileOf(acc, linked) {
   return {
     account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, balance: acc.balance,
     tank: { xp: t.xp, lvl, from: P.xpFor(lvl), next: lvl >= P.MAX_LEVEL ? null : P.xpFor(lvl + 1), wins: t.wins, losses: t.losses, color: t.color, ammo: { ...t.ammo } },
-    win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS, maxOwned: MAX_OWNED,
+    win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS,
   };
 }
 function identify(msg) {
@@ -66,7 +65,7 @@ export function api(action, body) {
     const w = WEAPONS[String(body.id)];
     if (!w || !w.price) return bad(400, 'Tohle se nedá koupit.');
     if (levelOfAcc(acc) < w.lvl) return bad(403, `Odemkne se na úrovni ${w.lvl}.`);
-    if ((t.ammo[w.id] | 0) + w.pack > MAX_OWNED) return bad(409, `Víc než ${MAX_OWNED} kusů nepotáhneš.`);
+    if ((t.ammo[w.id] | 0) + w.pack > w.max) return bad(409, `${w.name}: u sebe smíš mít nejvíc ${w.max} ks.`);
     if (acc.balance < w.price) return bad(402, 'Nemáš dost coinů.');
     acc.balance -= w.price; t.ammo[w.id] = (t.ammo[w.id] | 0) + w.pack; acc.lastSeen = now();
     dirty(); notify(acc);
@@ -229,8 +228,10 @@ function driveTick(room) {
   for (let k = room.crates.length - 1; k >= 0; k--) {
     const c = room.crates[k];
     if (Math.abs(c.x - tk.x) < 30) {
+      const wp = WEAPONS[c.kind]; const have = (tk.crate[c.kind] | 0) + owned(room.players[i].acc, c.kind);
+      const n = Math.min(wp.max - have, (wp.pack || 2) <= 1 ? 1 : 1 + (Math.random() < 0.45 ? 1 : 0));   // víc, než uneseš, se nesebere
+      if (n <= 0) { if (!tk.full) tk.full = new Set(); if (!tk.full.has(c.id)) { tk.full.add(c.id); const w = room.players[i].ws; if (w) send(w, { t: 'note', msg: `${wp.name}: u sebe smíš mít nejvíc ${wp.max} ks, bedna zůstává.` }); } continue; }
       room.crates.splice(k, 1);
-      const n = (WEAPONS[c.kind].pack || 2) <= 1 ? 1 : 1 + (Math.random() < 0.45 ? 1 : 0);
       tk.crate[c.kind] = (tk.crate[c.kind] | 0) + n; got.push({ id: c.id, w: c.kind, n });
     }
   }
