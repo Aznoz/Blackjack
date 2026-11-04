@@ -244,6 +244,23 @@ function findHit(room, i, w = 'std') {
   cu.say({ t: 'leave' }); ot.say({ t: 'leave' });
 }
 
+// --- zdravotní bedna: +25 životů (nejvýš do 100); s plnými životy zůstane na poli
+{
+  const m = online(); const { a, b, room } = m; const s = a.last('state'); const i = s.turn; const cu = i === s.you ? a : b; const ot = cu === a ? b : a;
+  const dd = i === 0 ? 1 : -1; const x0 = room.tanks[i].x;
+  room.crates.length = 0; room.crates.push({ id: 801, x: x0 + dd * 35, kind: 'hp' });
+  cu.say({ t: 'drive', d: dd }); await until(() => cu.all('note').some((n) => /plné životy/.test(n.msg))); cu.say({ t: 'drive', d: 0 });
+  assert.ok(room.crates.some((c) => c.id === 801), 'při plných životech zůstává'); assert.equal(room.tanks[i].hp, 100);
+  assert.ok(cu.last('state').crates.every((c) => c.id !== 801 || c.hp === 1), 'stav říká, že je zdravotní');
+  room.tanks[i].hp = 60; cu.say({ t: 'drive', d: -dd }); await until(() => Math.abs(room.tanks[i].x - x0) < 20 || !room.crates.length); cu.say({ t: 'drive', d: 0 });
+  cu.say({ t: 'drive', d: dd });
+  const hl = await until(() => cu.last('heal')); cu.say({ t: 'drive', d: 0 });
+  assert.equal(hl.amount, 25); assert.equal(room.tanks[i].hp, 85); assert.ok(!room.crates.some((c) => c.id === 801), 'bedna zmizela');
+  room.crates.push({ id: 802, x: room.tanks[i].x + dd * 25, kind: 'hp' }); room.tanks[i].hp = 90; cu.say({ t: 'drive', d: dd });
+  await until(() => !room.crates.some((c) => c.id === 802)); cu.say({ t: 'drive', d: 0 }); assert.equal(room.tanks[i].hp, 100, 'léčí jen do 100');
+  cu.say({ t: 'leave' }); ot.say({ t: 'leave' });
+}
+
 // --- výhra online: +900 / −300, XP, výhry; podlaha zůstatku
 {
   accs[T1] = mk('Honza', 5000); accs[T2] = mk('Eva', 150);

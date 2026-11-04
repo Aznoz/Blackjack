@@ -25,6 +25,7 @@ const MAX_IDLE_TURNS = 3;                             // tolikrát za sebou prop
 const EMPTY_ROOM_MS = 120_000;
 const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVXYZ';
 const MAX_CRATES = 4;
+const HEAL_CRATE = 25;                                   // zdravotní bedna: po sebrání vyléčí tolik životů
 
 const rooms = new Map();
 const now = () => Date.now();
@@ -143,7 +144,7 @@ function view(room, pid) {
     players: room.players.map((p, i) => playerView(room, p, i)),
     hp: room.tanks.map((k) => k.hp), x: room.tanks.map((k) => r1(k.x)), fuel: room.tanks.map((k) => Math.round(k.fuel)),
     turn: room.turn, turnNo: room.turnNo, turnMs: room.phase === 'play' && room.turnEnd ? Math.max(0, room.turnEnd - now()) : 0, turnTotal: TURN_MS,
-    wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x })), mines: (room.mines || []).map((q) => ({ id: q.id, x: q.x, o: q.o })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {}, lock: you >= 0 && room.tanks[you] ? { ...room.tanks[you].lock } : {},
+    wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x, hp: c.kind === 'hp' ? 1 : 0 })), mines: (room.mines || []).map((q) => ({ id: q.id, x: q.x, o: q.o })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {}, lock: you >= 0 && room.tanks[you] ? { ...room.tanks[you].lock } : {},
     th: P.checksum(room.h), shots: room.tanks.map((k) => k.shots), result: room.result || null, rematch: [...room.rematch],
     dropIn: room.dropAt ? Math.max(0, room.dropAt - now()) : null, dropFor: room.dropFor, at: now(),
     rewards: REWARDS,
@@ -172,7 +173,7 @@ function startMatch(room) {
 }
 
 function pickCrateKind() {
-  const t = [['big', 18], ['triple', 16], ['bounce', 13], ['roller', 12], ['laser', 10], ['trap', 9], ['cluster', 11], ['sniper', 11], ['repair', 9], ['five', 8], ['mega', 7], ['napalm', 7], ['airstrike', 5], ['bounce4', 4], ['megacluster', 3], ['repair2', 4], ['nuke', 3], ['doom', 1]];
+  const t = [['big', 18], ['triple', 16], ['bounce', 13], ['roller', 12], ['laser', 10], ['trap', 9], ['cluster', 11], ['sniper', 11], ['repair', 9], ['five', 8], ['mega', 7], ['napalm', 7], ['airstrike', 5], ['bounce4', 4], ['megacluster', 3], ['repair2', 4], ['nuke', 3], ['doom', 1], ['hp', 20]];
   let r = Math.random() * t.reduce((a, b) => a + b[1], 0);
   for (const [k, w] of t) { r -= w; if (r < 0) return k; }
   return 'big';
@@ -195,12 +196,12 @@ function beginTurn(room, first) {
   for (const k of Object.keys(cur.lock)) { if (--cur.lock[k] <= 0) delete cur.lock[k]; }   // nabíjení zbraní se odpočítává po vlastních tazích
   const pen = cur.fuelNext; cur.fuelNext = 0; cur.fuel = Math.round(FUEL_MAX * (1 - pen));
   const added = [];
-  if (room.turnNo % 2 === 0 && room.crates.length < MAX_CRATES && Math.random() < 0.75) { const c = spawnCrate(room); if (c) added.push({ id: c.id, x: c.x }); }
+  if (room.turnNo % 2 === 0 && room.crates.length < MAX_CRATES && Math.random() < 0.75) { const c = spawnCrate(room); if (c) added.push({ id: c.id, x: c.x, hp: c.kind === 'hp' ? 1 : 0 }); }
   room.turnEnd = now() + TURN_MS; room.phase = 'play';
   room.turnT = setTimeout(() => onTimeout(room), TURN_MS);
   publish(room);
   if (pen > 0 && room.players[room.turn].ws) send(room.players[room.turn].ws, { t: 'note', msg: `Zpětný ráz: palivo −${Math.round(pen * 100)} %` });
-  for (const c of added) bcast(room, { t: 'crate', op: 'spawn', id: c.id, x: c.x });
+  for (const c of added) bcast(room, { t: 'crate', op: 'spawn', id: c.id, x: c.x, hp: c.hp });
   if (room.players[room.turn].bot) botTurn(room);
 }
 
@@ -231,10 +232,14 @@ function driveTick(room) {
   if (!ok && !room.players[i].bot && tk.fuel >= step * 0.5) return;   // člověk drží tlačítko: překážka ho jen zdrží, nic se nespotřebuje
   if (!ok) { stopDrive(room); bcast(room, { t: 'mv', i, x: r1(tk.x), f: Math.round(tk.fuel), stop: 1 }); if (room.onDriveEnd) { const f = room.onDriveEnd; room.onDriveEnd = null; f(); } return; }
   tk.x = nx; tk.fuel = Math.max(0, tk.fuel - step); tk.idle = 0;
-  const got = [];
+  const got = [], healed = [];
   for (let k = room.crates.length - 1; k >= 0; k--) {
     const c = room.crates[k];
     if (Math.abs(c.x - tk.x) < 30) {
+      if (c.kind === 'hp') { // zdravotní bedna: +25 životů; s plnými životy se nesebere (zůstane na poli)
+        if (tk.hp >= MAX_HP) { if (!tk.full) tk.full = new Set(); if (!tk.full.has(c.id)) { tk.full.add(c.id); const w = room.players[i].ws; if (w) send(w, { t: 'note', msg: 'Máš plné životy, zdravotní bedna zůstává.' }); } continue; }
+        const amt = Math.min(HEAL_CRATE, MAX_HP - tk.hp); tk.hp += amt; room.crates.splice(k, 1); healed.push({ id: c.id, amt }); continue;
+      }
       const wp = WEAPONS[c.kind]; const have = (tk.crate[c.kind] | 0) + owned(room.players[i].acc, c.kind);
       const n = Math.min(wp.max - have, (wp.pack || 2) <= 1 ? 1 : 1 + (Math.random() < 0.45 ? 1 : 0));   // víc, než uneseš, se nesebere
       if (n <= 0) { if (!tk.full) tk.full = new Set(); if (!tk.full.has(c.id)) { tk.full.add(c.id); const w = room.players[i].ws; if (w) send(w, { t: 'note', msg: `${wp.name}: u sebe smíš mít nejvíc ${wp.max} ks, bedna zůstává.` }); } continue; }
@@ -250,6 +255,7 @@ function driveTick(room) {
     if (tk.hp <= 0) { stopDrive(room); finish(room, { winner: q.o, reason: `${room.players[i].name} najel na past` }); return; }
   }
   for (const g of got) { bcast(room, { t: 'crate', op: 'pick', id: g.id, i, w: g.w, n: g.n }); }
+  for (const hh of healed) { bcast(room, { t: 'crate', op: 'pick', id: hh.id, i, w: 'hp', n: hh.amt }); bcast(room, { t: 'heal', i, hp: tk.hp, amount: hh.amt }); }
   if (got.length) { for (const p of room.players) if (p.ws) send(p.ws, { t: 'ammo', ammo: ammoOf(room, room.players.indexOf(p)) }); }
   if (tk.fuel <= 0.5) { stopDrive(room); if (room.onDriveEnd) { const f = room.onDriveEnd; room.onDriveEnd = null; f(); } }
 }

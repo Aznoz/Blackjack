@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=10';
+import * as P from './physics.js?v=11';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -254,7 +254,7 @@ function onState(s) {
   // crates
   const ids = new Set(s.crates.map((c) => c.id));
   R.crates = R.crates.filter((c) => ids.has(c.id));
-  for (const c of s.crates) if (!R.crates.some((o) => o.id === c.id)) R.crates.push(mkCrate(c.id, c.x, s.turnNo <= 1 && fresh));
+  for (const c of s.crates) if (!R.crates.some((o) => o.id === c.id)) R.crates.push(mkCrate(c.id, c.x, s.turnNo <= 1 && fresh, c.hp));
   if (!ammoHas(sel) || isLocked(sel)) sel = 'std';
   renderTray(); updateHud(true);
   if (s.phase === 'over' && s.result) { finishShot(); if (!overTimer) overTimer = setTimeout(() => { overTimer = null; showOver(); }, 700); } else { $('over').hidden = true; }
@@ -262,11 +262,12 @@ function onState(s) {
 const ammoHas = (id) => id === 'std' || (S && S.ammo && S.ammo[id] > 0);
 const isLocked = (id) => !!(S && S.lock && S.lock[id] > 0);
 const myTurn = () => !!S && S.phase === 'play' && S.turn === me && !fireSent && !R.shot && screen === 'game';
-const mkCrate = (id, x, fall) => ({ id, x, y: fall ? -80 - Math.random() * 260 : P.groundAt(R.h, x) - 12, vy: 0, landed: !fall, t: Math.random() * 6 });
+const mkCrate = (id, x, fall, hp) => ({ id, hp: !!hp, x, y: fall ? -80 - Math.random() * 260 : P.groundAt(R.h, x) - 12, vy: 0, landed: !fall, t: Math.random() * 6 });
 function onCrate(m) {
-  if (m.op === 'spawn') { if (!R.crates.some((c) => c.id === m.id)) R.crates.push(mkCrate(m.id, m.x, true)); }
+  if (m.op === 'spawn') { if (!R.crates.some((c) => c.id === m.id)) R.crates.push(mkCrate(m.id, m.x, true, m.hp)); }
   else if (m.op === 'pick') {
     R.crates = R.crates.filter((c) => c.id !== m.id); const t = R.tk[m.i]; sfx.pick();
+    if (m.w === 'hp') return;   // zdravotní bedna: efekt a čísla přijdou ve zprávě `heal`
     floatText(t.dx, t.y - 70, `+${m.n}× ${WEAPONS[m.w].name}`, WEAPONS[m.w].col);
     for (let k = 0; k < 16; k++) R.fx.push({ k: 'spark', x: t.dx, y: t.y - 30, vx: (Math.random() - .5) * 220, vy: -80 - Math.random() * 160, life: 0, max: .7, size: 3, col: WEAPONS[m.w].col, g: 400 });
   }
@@ -442,6 +443,12 @@ function drawCrate(c, k) {
   c.save(); c.translate(k.x, k.y); const bob = k.landed ? Math.sin(k.t * 3) * 1.2 : 0; c.translate(0, bob);
   if (!k.landed) { c.strokeStyle = 'rgba(255,255,255,.7)'; c.lineWidth = 1.4; c.beginPath(); c.moveTo(-12, -10); c.lineTo(-26, -42); c.moveTo(12, -10); c.lineTo(26, -42); c.moveTo(0, -12); c.lineTo(0, -46); c.stroke(); c.fillStyle = '#ff5a52'; c.beginPath(); c.arc(0, -46, 30, Math.PI, 0); c.quadraticCurveTo(24, -38, 12, -40); c.quadraticCurveTo(0, -32, -12, -40); c.quadraticCurveTo(-24, -38, -30, -46); c.closePath(); c.fill(); c.fillStyle = '#fff'; c.fillRect(-12, -70, 8, 24); c.fillRect(4, -70, 8, 24); }
   c.globalAlpha = .16 + .12 * Math.sin(k.t * 4); c.fillStyle = '#ffd21f'; c.globalCompositeOperation = 'lighter'; c.beginPath(); c.arc(0, 0, 26, 0, 6.283); c.fill(); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+  if (k.hp) { // zdravotní bedna: bílá se zeleným křížem
+    c.globalAlpha = .2 + .12 * Math.sin(k.t * 4); c.fillStyle = '#4dff7a'; c.globalCompositeOperation = 'lighter'; c.beginPath(); c.arc(0, 0, 28, 0, 6.283); c.fill(); c.globalCompositeOperation = 'source-over'; c.globalAlpha = 1;
+    rr(c, -13, -12, 26, 24, 3); const gh = c.createLinearGradient(0, -12, 0, 12); gh.addColorStop(0, '#ffffff'); gh.addColorStop(1, '#cfd8e6'); c.fillStyle = gh; c.fill(); c.strokeStyle = '#1e7a3c'; c.lineWidth = 2; c.stroke();
+    c.fillStyle = '#25c25a'; c.fillRect(-3.5, -8, 7, 16); c.fillRect(-8, -3.5, 16, 7);
+    c.restore(); return;
+  }
   rr(c, -13, -12, 26, 24, 3); const gr = c.createLinearGradient(0, -12, 0, 12); gr.addColorStop(0, '#6aa0ff'); gr.addColorStop(1, '#2a4fb0'); c.fillStyle = gr; c.fill(); c.strokeStyle = '#13276b'; c.lineWidth = 2; c.stroke();
   c.fillStyle = '#ffd21f'; c.fillRect(-13, -3, 26, 6); c.fillStyle = '#3a2400'; c.font = '900 14px sans-serif'; c.textAlign = 'center'; c.textBaseline = 'middle'; c.fillText('?', 0, 0.5);
   c.restore();
