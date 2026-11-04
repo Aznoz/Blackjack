@@ -4,13 +4,15 @@
  * Hra sama (klíč jezdí po patře, hráč ho zastaví nad zámkem) běží v prohlížeči; server hlídá:
  *  - cenu pokusu (100 žetonů, strhne se při startu),
  *  - postup po patrech: patro N lze potvrdit jen po patře N-1 a nejdřív po minimální době,
- *  - odměnu: určuje ji server podle nejvyššího potvrzeného patra (1 = coiny, 2 = malá věc, 3 = velká věc).
+ *  - odměnu: určuje ji server podle nejvyššího potvrzeného patra (1 = coiny, 2 = malá věc, 3 = velká věc),
+ *  - „rigování“ jako na skutečném automatu: i dobrý zásah může sklouznout (malá šance podle patra, a čím méně přesný zásah, tím větší).
  * Věcné odměny jsou stejné jako ve Stackeru a ukládají se do stejného inventáře (acc.items),
  * takže se prodávají ve stejném Obchodu.
  */
 const SC = Number(process.env.TIME_SCALE) > 0 ? Number(process.env.TIME_SCALE) : 1;
 const { ITEMS } = require('./stacker');
 
+const RIG_OFF = process.env.KM_RIG === '0'; // jen pro testy
 const KEYMASTER = Object.freeze({
   PRICE: 100,
   TIERS: 3,
@@ -23,11 +25,13 @@ const KEYMASTER = Object.freeze({
   MIN_TIER_MS: [0, Math.max(30, Math.round(700 * SC)), Math.max(30, Math.round(1100 * SC)), Math.max(30, Math.round(1100 * SC))],
   MIN_CLAIM_MS: Math.max(20, Math.round(350 * SC)),  // po poslední výhře chvíli trvá, než zámek cvakne
   MAX_PLAY_MS: 10 * 60 * 1000,
+  // šance, že zásah, který prohlížeč nahlásil, klíč nakonec sklouzne z hrany dírky: base[patro] + (1 - přesnost) * edge (přesnost q 0..1, 1 = střed dírky)
+  RIG: Object.freeze({ base: Object.freeze(RIG_OFF ? [0, 0, 0, 0] : [0, 0.06, 0.10, 0.14]), edge: RIG_OFF ? 0 : 0.2 }),
 });
 
 const POOL = { small: ITEMS.map((_, i) => i).filter((i) => ITEMS[i].pool === 'small'), big: ITEMS.map((_, i) => i).filter((i) => ITEMS[i].pool === 'big') };
 
-module.exports = function createKeymaster({ resolveAccount, markDirty, notifyBalance, TOKEN_RE, FLOOR = 200, rand = Math.random }) {
+module.exports = function createKeymaster({ resolveAccount, markDirty, notifyBalance, TOKEN_RE, FLOOR = 200, rand = Math.random, rig = KEYMASTER.RIG }) {
   const active = new Map(); // acc.key -> { id, at, level, stageAt }
   let seq = 0;
 
@@ -109,10 +113,16 @@ module.exports = function createKeymaster({ resolveAccount, markDirty, notifyBal
       const now = Date.now();
       if (now - play.at > KEYMASTER.MAX_PLAY_MS) { active.delete(acc.key); return bad(409, 'Hra vypršela.'); }
       if (now - play.stageAt < KEYMASTER.MIN_TIER_MS[tier]) return bad(409, 'Hra neproběhla v pořádku.');
-      if (!body.hit) { // netrefil: o všechno, co v tomhle pokusu nevybral, přichází
+      let slip = false;
+      if (body.hit) { // „rigování“: zásah občas sklouzne (víc, když nebyl přesně do středu; starý prohlížeč bez přesnosti se bere jako přesný)
+        const qn = Number(body.q), q = Number.isFinite(qn) ? Math.min(1, Math.max(0, qn)) : 1;
+        const p = (rig.base[tier] || 0) + (1 - q) * (rig.edge || 0);
+        slip = p > 0 && rand() < p;
+      }
+      if (!body.hit || slip) { // netrefil (nebo klíč sklouzl): o všechno, co v tomhle pokusu nevybral, přichází
         active.delete(acc.key);
         const refilled = topUp(acc);
-        return { status: 200, json: state(acc, { lost: true, level: play.level, refilled }) };
+        return { status: 200, json: state(acc, { lost: true, slip, level: play.level, refilled }) };
       }
       play.level = tier; play.stageAt = now;
       return { status: 200, json: state(acc, { hit: true, level: tier }) };

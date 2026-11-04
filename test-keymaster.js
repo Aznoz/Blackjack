@@ -1,6 +1,6 @@
 'use strict';
 /** Test serverové části Key Master: start za 100, postup po patrech, odměny, ochrany, obnova kreditu. */
-process.env.TIME_SCALE = '0.04';
+process.env.TIME_SCALE = '0.04'; process.env.KM_RIG = '0'; // ostatní kontroly běží bez rigování, to se testuje zvlášť
 const { spawn } = require('child_process');
 const fs = require('fs'); const os = require('os'); const path = require('path'); const crypto = require('crypto');
 const PORT = 4600 + Math.floor(Math.random() * 300);
@@ -70,6 +70,29 @@ const call = async (a, body) => { const r = await fetch(`http://127.0.0.1:${PORT
     check(s.handle('stage', { token: 'x', playId: pb, tier: 1, hit: true }).status === 200, 'nová hra');
     // chudý hráč
     acc.balance = 50; check(s.handle('start', { token: 'x' }).status === 402, 'málo žetonů');
+  }
+
+  // --- rigování: dobrý zásah občas sklouzne, přesnější zásah méně
+  {
+    const mk = (rv) => { const acc = { key: 'rg', balance: 100000, lastSeen: 0 }; return { acc, s: createKeymaster({ resolveAccount: () => ({ acc }), markDirty() {}, notifyBalance() {}, TOKEN_RE: /.+/, rand: () => rv, rig: { base: [0, 0.5, 0.5, 0.5], edge: 0.2 } }) }; };
+    const stage = async (rv, extra) => { const { s } = mk(rv); const pid = s.handle('start', { token: 'x' }).json.playId; await sleep(60); return s.handle('stage', { token: 'x', playId: pid, tier: 1, hit: true, ...extra }); };
+    let q = await stage(0.4, { q: 1 }); check(q.json.lost && q.json.slip, 'rig: rand 0.4 < 0.5 sklouzne: ' + JSON.stringify(q.json.lost));
+    q = await stage(0.6, { q: 1 }); check(q.json.hit && !q.json.slip, 'rig: rand 0.6 projde');
+    q = await stage(0.6, { q: 0 }); check(q.json.lost && q.json.slip, 'rig: nepřesný zásah (q=0) má šanci 0,7: rand 0.6 sklouzne');
+    q = await stage(0.6, {}); check(q.json.hit, 'rig: bez q se bere jako přesný zásah');
+    q = await stage(0.99, { q: 0 }); check(q.json.hit, 'rig: rand 0.99 vždy projde');
+    q = await stage(0.0, { q: 'x' }); check(q.json.lost && q.json.slip, 'rig: q nečíslo = přesný zásah, rand 0 stejně sklouzne (base 0,5)');
+    // netrefa z prohlížeče zůstává netrefou a nikdy nevyplácí
+    const { s, acc } = mk(0.99); const pid = s.handle('start', { token: 'x' }).json.playId; await sleep(60); const b = acc.balance;
+    q = s.handle('stage', { token: 'x', playId: pid, tier: 1, hit: false }); check(q.json.lost && !q.json.slip && acc.balance === b, 'netrefa: bez slip');
+    // statistika: tier 1, přesný zásah (q=1) sklouzne přibližně v base (6 %) případů, na hraně (q=0) v 26 %
+    const cnt = async (qv, n) => { // n účtů začne najednou, po minimální době se u všech potvrdí patro
+      const run = []; for (let i = 0; i < n; i++) { const accx = { key: 'st' + qv + '_' + i, balance: 1e6, lastSeen: 0 }; const sx = createKeymaster({ resolveAccount: () => ({ acc: accx }), markDirty() {}, notifyBalance() {}, TOKEN_RE: /.+/, rig: { base: [0, 0.06, 0.1, 0.14], edge: 0.2 } }); run.push([sx, sx.handle('start', { token: 'x' }).json.playId]); }
+      await sleep(60); let slips = 0; for (const [sx, p] of run) { const sp = sx.handle('stage', { token: 'x', playId: p, tier: 1, hit: true, q: qv }); if (sp.status !== 200) check(false, 'stage ' + sp.status); if (sp.json.slip) slips++; } return slips / n;
+    };
+    const a1 = await cnt(1, 3000), a0 = await cnt(0, 3000);
+    check(a1 > 0.02 && a1 < 0.11, 'rig: střed dírky sklouzne zhruba 6 %: ' + a1);
+    check(a0 > 0.19 && a0 < 0.33, 'rig: hrana dírky sklouzne zhruba 26 %: ' + a0);
   }
 
   // --- HTTP
