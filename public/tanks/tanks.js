@@ -631,7 +631,7 @@ window.addEventListener('keydown', (e) => {
   if (screen !== 'game' || e.target.tagName === 'INPUT' || !$('pauseModal').hidden) return;
   const k = e.key;
   if (k === ' ' || k === 'Enter') { e.preventDefault(); if (!e.repeat) doFire(); return; }
-  if (k === 'Escape') { $('pauseModal').hidden = false; return; }
+  if (k === 'Escape') { pauseHelp(); $('pauseModal').hidden = false; return; }
   if (k === 'a' || k === 'A') { setDrive(-1); return; } if (k === 'd' || k === 'D') { setDrive(1); return; }
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) { e.preventDefault(); if (!held.has(k)) { held.add(k); keyStep(); } if (!keyIv) keyIv = setInterval(keyStep, 55); return; }
   if (/^[1-9]$/.test(k) && myTurn()) { const id = ORDER.filter(ammoHas)[+k - 1]; if (id) selectWeapon(id); }
@@ -659,7 +659,12 @@ function showOver() {
 }
 $('oAgain').onclick = () => { sendMsg({ t: 'rematch' }); const bot = S && S.players.some((p) => p.bot); if (!bot) { $('oHint').textContent = 'Čekám na soupeře…'; $('oAgain').disabled = true; } };
 $('oMenu').onclick = leaveGame;
-$('menuBtn').onclick = () => { $('pauseModal').hidden = false; $('pLeave').innerHTML = '<b>Vzdát se a odejít</b>'; };
+function pauseHelp() {
+  const own = (id) => (WEAPONS[id].inf ? '' : ((S && S.ammo && S.ammo[id]) | 0));
+  $('pauseHelp').innerHTML = ORDER.map((id) => { const w = WEAPONS[id]; const n = own(id);
+    return `<div class="wr"><i style="color:${w.col}"></i><div><b>${esc(w.name)}</b>${n ? `<em>máš ${n}×</em>` : ''}<br><span>${esc(w.desc)}${w.util ? '' : ` Poškození až ${w.shots ? w.shots + '×' : ''}${w.split ? w.split.n + '×' + w.split.dmg : w.dmg}.`}</span></div></div>`; }).join('');
+}
+$('menuBtn').onclick = () => { pauseHelp(); $('pauseModal').hidden = false; $('pLeave').innerHTML = '<b>Vzdát se a odejít</b>'; };
 let leaveArmed = false;
 $('pLeave').onclick = () => { if (!leaveArmed) { leaveArmed = true; $('pLeave').innerHTML = '<b>Opravdu? Klepni znovu</b>'; setTimeout(() => { leaveArmed = false; $('pLeave').innerHTML = '<b>Vzdát se a odejít</b>'; }, 3000); return; } leaveArmed = false; $('pauseModal').hidden = true; leaveGame(); };
 $('leaveLobby').onclick = leaveGame;

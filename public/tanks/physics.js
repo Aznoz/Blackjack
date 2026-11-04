@@ -83,13 +83,14 @@ export function genTerrain(seed) {
   return h;
 }
 
-/** Kráter: ubere zem v kruhu (jen když kruh zasahuje povrch). Čistá celočíselná aritmetika kvůli shodě server/klient. */
+/** Kráter: z každého sloupce ubere část, kterou zasahuje kruh (zem nad kruhem se propadne dolů), takže vznikne kulatá jáma bez svislých stěn. Hlídá shodu server/klient. */
 export function applyCrater(h, cx, cy, r) {
   const x0 = Math.max(0, cx - r), x1 = Math.min(W - 1, cx + r);
   for (let x = x0; x <= x1; x++) {
     const dx = x - cx, dy = Math.sqrt(r * r - dx * dx);
     const top = cy - dy, bottom = Math.ceil(cy + dy);
-    if (top <= h[x] && bottom > h[x]) h[x] = Math.min(bottom, H - 26);
+    const from = top > h[x] ? top : h[x];                                  // z kruhu se počítá jen to, co leží v zemi
+    if (bottom > from) h[x] = Math.min(H - 26, h[x] + Math.ceil(bottom - from));   // zem nad kruhem se propadne o odebranou výšku
   }
 }
 
