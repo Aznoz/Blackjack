@@ -4,7 +4,7 @@
 // WebSocket obsluhuje hlavní server na cestě /tanks; účty, coiny a ukládání dodává server přes init().
 import crypto from 'node:crypto';
 import * as P from './physics.js';
-const { W, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX, DRIVE_SPEED, SLOPE_MAX, MIN_GAP, EDGE, TANK_HY, groundAt } = P;
+const { W, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX, DRIVE_SPEED, SLOPE_MAX, STEP_UP, MIN_GAP, EDGE, TANK_HY, groundAt } = P;
 
 const S = Number(process.env.TANKS_SCALE) > 0 ? Number(process.env.TANKS_SCALE) : 1;   // jen pro testy: zrychlení časovačů
 const ms = (n) => Math.max(5, Math.round(n * S));
@@ -216,8 +216,9 @@ function driveTick(room) {
   const i = room.turn, tk = room.tanks[i], other = room.tanks[1 - i], d = room.driveDir;
   if (!d) return stopDrive(room);
   const step = DRIVE_SPEED * 0.05; let nx = tk.x + d * step;
-  const ok = tk.fuel >= step * 0.5 && nx >= EDGE && nx <= W - EDGE && Math.abs(nx - other.x) >= MIN_GAP
-    && Math.abs(groundAt(room.h, nx) - groundAt(room.h, tk.x)) <= SLOPE_MAX * step;
+  const dy = groundAt(room.h, nx) - groundAt(room.h, tk.x);       // kladné = z kopce (tank sjede libovolně), záporné = do kopce
+  const ok = tk.fuel >= step * 0.5 && nx >= EDGE && nx <= W - EDGE && Math.abs(nx - other.x) >= MIN_GAP && -dy <= Math.max(SLOPE_MAX * step, STEP_UP);
+  if (!ok && !room.players[i].bot && tk.fuel >= step * 0.5) return;   // člověk drží tlačítko: překážka ho jen zdrží, nic se nespotřebuje
   if (!ok) { stopDrive(room); bcast(room, { t: 'mv', i, x: r1(tk.x), f: Math.round(tk.fuel), stop: 1 }); if (room.onDriveEnd) { const f = room.onDriveEnd; room.onDriveEnd = null; f(); } return; }
   tk.x = nx; tk.fuel = Math.max(0, tk.fuel - step); tk.idle = 0;
   const got = [];

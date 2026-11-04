@@ -208,7 +208,7 @@ function onMsg(m) {
     case 'terrain': R.h = Int16Array.from(m.h); terrDirty = true; if (S) R.tk.forEach((t, i) => { t.y = P.groundAt(R.h, t.dx); }); return;
     case 'shot': return startShot(m);
     case 'aim': if (m.i !== me && R.aim[m.i]) R.aim[m.i] = { a: clamp(m.a, 0, 180), p: clamp(m.p, 8, 100) }; return;
-    case 'mv': { if (!S) return; S.x[m.i] = m.x; S.fuel[m.i] = m.f; R.tk[m.i].x = m.x; if (m.stop && m.i === me) driveDir = 0; return; }
+    case 'mv': { if (!S) return; S.x[m.i] = m.x; S.fuel[m.i] = m.f; R.tk[m.i].x = m.x; if (m.i === me) $('fuelFill').style.height = clamp(m.f / FUEL_MAX, 0, 1) * 100 + '%'; if (m.stop && m.i === me) driveDir = 0; return; }
     case 'ammo': if (S) { S.ammo = m.ammo; renderTray(); } return;
     case 'crate': return onCrate(m);
     case 'heal': { const t = R.tk[m.i]; t.hp = m.hp; floatText(t.dx, t.y - 60, '+' + m.amount, '#6cff6c'); for (let k = 0; k < 14; k++) R.fx.push({ k: 'spark', x: t.dx + (Math.random() - .5) * 40, y: t.y - 10, vx: (Math.random() - .5) * 30, vy: -60 - Math.random() * 60, life: 0, max: .9, size: 3, col: '#8cff8c', g: -20 }); sfx.heal(); return; }

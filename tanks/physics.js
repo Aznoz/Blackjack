@@ -12,7 +12,8 @@ export const TANK_HY = 18;        // střed tanku je takhle vysoko nad zemí
 export const MAX_HP = 100;
 export const FUEL_MAX = 190;      // kolik pixelů smí tank za tah ujet
 export const DRIVE_SPEED = 72;    // px/s
-export const SLOPE_MAX = 1.15;    // nejstrmější svah, který tank vyjede (změna výšky / vodorovná vzdálenost)
+export const SLOPE_MAX = 1.7;     // nejstrmější svah, který tank vyjede (změna výšky / vodorovná vzdálenost)
+export const STEP_UP = 26;        // drobný schod / hrana, kterou tank přejede vždy (px na jeden krok jízdy)
 export const MIN_GAP = 70;        // nejmenší vzdálenost mezi tanky
 export const EDGE = 46;           // tank nezajede blíž k okraji
 

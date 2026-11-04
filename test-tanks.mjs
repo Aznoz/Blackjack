@@ -20,6 +20,13 @@ assert.equal(fs.readFileSync('./tanks/physics.js', 'utf8'), fs.readFileSync('./p
   for (const id of P.ORDER) { const rr = P.simulate({ h: P.genTerrain(7), tanks: [{ x: 200, hp: 100 }, { x: 1400, hp: 100 }], wind: 3 }, 1, 120, 80, id); assert.ok(rr.dur >= 0, id); }
   let worst = 0; for (let sd = 1; sd <= 600; sd++) { const h = P.genTerrain(sd * 7919); for (const px of [170, 200, 230, 1370, 1400, 1430]) worst = Math.max(worst, Math.abs(h[px + 15] - h[px - 15]) / 30); }
   assert.ok(worst < 1.0, 'tanky začínají na rovině (' + worst.toFixed(2) + ')');
+  { // tank přejede kráter i atomovky (jízda dál od okraje do kráteru a ven)
+    const stp = P.DRIVE_SPEED * 0.05;
+    for (const r of [34, 68, 120]) for (const dir of [1, -1]) {
+      const h = P.genTerrain(5); P.applyCrater(h, 800, h[800] - 2, r); let px = dir > 0 ? 600 : 1000;
+      while (dir > 0 ? px < 1000 : px > 600) { const nx = px + dir * stp; assert.ok(-(P.groundAt(h, nx) - P.groundAt(h, px)) <= Math.max(P.SLOPE_MAX * stp, P.STEP_UP), 'kráter ' + r + ' se dá přejet'); px = nx; }
+    }
+  }
   assert.equal(P.levelOf(0), 1); assert.ok(P.levelOf(P.xpFor(5)) === 5); assert.equal(P.levelOf(1e9), P.MAX_LEVEL);
 }
 
