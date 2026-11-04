@@ -182,12 +182,12 @@ function findHit(room, i, w = 'std') {
   const m = online(); const { a, b, room } = m; const s = a.last('state'); const i = s.turn; const cu = i === s.you ? a : b; const ot = cu === a ? b : a;
   room.tanks[i].crate.nuke = 2; room.tanks[i].hp = 100;
   cu.say({ t: 'fire', a: 60, p: 40, w: 'nuke' });
-  const shot = await until(() => cu.last('shot')); assert.equal(shot.self, 10, 'atomovka ubere střelci 10 životů'); assert.ok(room.tanks[i].hp <= 90);
+  const shot = await until(() => cu.last('shot')); assert.equal(shot.self, 12, 'atomovka ubere střelci 12 životů'); assert.ok(room.tanks[i].hp <= 88);
   assert.equal(shot.hpBefore[i], 100);
   await until(() => { const st = cu.last('state'); return st.turn === 1 - i && st.phase === 'play'; });
   await until(() => { const st = cu.last('state'); return st.turn === i && st.phase === 'play'; }, 8000);   // soupeř nestihne tah, zase jsem na řadě
   const st = cu.last('state');
-  assert.equal(st.fuel[i], Math.round(P.FUEL_MAX * 0.5), 'palivo −50 % po atomovce'); assert.ok(cu.all('note').some((n) => /palivo/.test(n.msg)));
+  assert.equal(st.fuel[i], Math.round(P.FUEL_MAX * 0.4), 'palivo −60 % po atomovce'); assert.ok(cu.all('note').some((n) => /palivo/.test(n.msg)));
   assert.ok(st.lock.nuke > 0, 'atomovka se nabíjí'); cu.say({ t: 'fire', a: 60, p: 40, w: 'nuke' });
   assert.match(cu.last('rej').msg, /nabíjí/); assert.equal(room.tanks[i].crate.nuke, 1, 'zamítnutý výstřel munici nespotřebuje');
   cu.say({ t: 'fire', a: 60, p: 40, w: 'std' });   // obyčejný granát jde

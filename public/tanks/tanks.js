@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=6';
+import * as P from './physics.js?v=7';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
