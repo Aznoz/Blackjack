@@ -33,15 +33,15 @@ assert.equal(fs.readFileSync('./tanks/physics.js', 'utf8'), fs.readFileSync('./p
   { const cnt = (id) => P.simulate({ h: P.genTerrain(9), tanks: [{ x: 200, hp: 100 }, { x: 1400, hp: 100 }], wind: 0 }, 0, 55, 70, id);
     assert.equal(cnt('five').paths.length, 5, 'pětisalva = 5 střel'); assert.ok(cnt('napalm').ex.filter((e) => e.r > 0).length >= 6, 'napalm se rozstříkne'); assert.ok(cnt('airstrike').ex.filter((e) => e.r > 0).length >= 5, 'nálet = déšť bomb');
     assert.ok(cnt('megacluster').paths.length >= 10, 'mega kazeta'); }
-  { // kutálející granát: dopadne, kutálí se po zemi, vybuchne přesně 5 s po výstřelu, na rovině se zastaví, z kopce ujede dál
+  { // kutálející granát: dopadne, kutálí se po zemi, vybuchne přesně 3 s po výstřelu, na rovině se zastaví, z kopce ujede dál
     const flat = new Int16Array(P.W).fill(500);
     const r = P.simulate({ h: flat.slice(), tanks: [{ x: 200, hp: 100 }, { x: 1500, hp: 100 }], wind: 0 }, 0, 45, 40, 'roller');
-    assert.equal(r.ex.length, 1); assert.ok(Math.abs(r.ex[0].t - 5000) <= 10, 'výbuch po 5 s: ' + r.ex[0].t);
-    const pts = r.paths[0].pts; assert.ok(pts.length > 250, 'kutálí se, ne jen letí'); const last = pts[pts.length - 1];
+    assert.equal(r.ex.length, 1); assert.ok(Math.abs(r.ex[0].t - 3000) <= 10, 'výbuch po 3 s: ' + r.ex[0].t);
+    const pts = r.paths[0].pts; assert.ok(pts.length > 150, 'kutálí se, ne jen letí'); const last = pts[pts.length - 1];
     assert.ok(Math.abs(last[1] - 494) <= 1, 'jede po zemi');
     const slope = new Int16Array(P.W); for (let i = 0; i < P.W; i++) slope[i] = Math.round(300 + i * 0.35);
     const r2 = P.simulate({ h: slope, tanks: [{ x: 100, hp: 100 }, { x: 1500, hp: 100 }], wind: 0 }, 0, 70, 30, 'roller');
-    const l1 = r.ex[0].x, l2 = r2.ex[0].x; assert.ok(Math.abs(r2.ex[0].t - 5000) <= 10); assert.ok(l2 > 200, 'z kopce se rozjede (' + l2 + ')');
+    const l1 = r.ex[0].x, l2 = r2.ex[0].x; assert.ok(Math.abs(r2.ex[0].t - 3000) <= 10); assert.ok(l2 > 200, 'z kopce se rozjede (' + l2 + ')');
     // u tanku se zastaví a vybuchne u něj
     const r3 = P.simulate({ h: flat.slice(), tanks: [{ x: 200, hp: 100 }, { x: 560, hp: 100 }], wind: 0 }, 0, 40, 40, 'roller');
     assert.ok(r3.ex[0].hits.some((q) => q[0] === 1), 'granát se zastavil u soupeře a zranil ho');
