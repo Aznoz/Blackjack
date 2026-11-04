@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=2';
+import * as P from './physics.js?v=3';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -9,7 +9,7 @@ const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const API = String(CFG.SERVER_URL || '').replace(/^wss:/, 'https:').replace(/^ws:/, 'http:').replace(/\/tanks\/?$/, '');
-const ICON = { std: '🎯', big: '💣', triple: '🔱', bounce: '🏀', cluster: '🎆', sniper: '🔭', nuke: '☢️', five: '🌠', mega: '💥', napalm: '🔥', airstrike: '✈️', bounce4: '🪀', megacluster: '🎇', doom: '🌋', repair: '🔧', repair2: '🧰' };
+const ICON = { std: '🎯', big: '💣', triple: '🔱', bounce: '🏀', roller: '🟢', cluster: '🎆', sniper: '🔭', nuke: '☢️', five: '🌠', mega: '💥', napalm: '🔥', airstrike: '✈️', bounce4: '🪀', megacluster: '🎇', doom: '🌋', repair: '🔧', repair2: '🧰' };
 
 // ------------------------------------------------------------------ identita
 let memToken = null;
@@ -507,7 +507,14 @@ function render() {
       const idx = (sh.t - p.t0) / (1000 / 60); if (idx < 0 || idx >= p.pts.length - 1) continue;
       const i = Math.floor(idx), f = idx - i, a = p.pts[i], b = p.pts[i + 1]; const x = a[0] + (b[0] - a[0]) * f, y = a[1] + (b[1] - a[1]) * f; const col = WEAPONS[sh.m.w].col;
       g.globalCompositeOperation = 'lighter'; const gr = g.createRadialGradient(x, y, 0, x, y, 14); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, 14, 0, 6.283); g.fill(); g.globalCompositeOperation = 'source-over';
-      g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, 3.6, 0, 6.283); g.fill();
+      const wr = WEAPONS[sh.m.w];
+      if (wr.roll) { // kulatý granát: tmavé tělo, otáčející se pruh a odpočet do výbuchu
+        g.save(); g.translate(x, y); g.rotate(x / 6);
+        g.fillStyle = '#2b3a1f'; g.strokeStyle = wr.col; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, 7, 0, 6.283); g.fill(); g.stroke();
+        g.fillStyle = wr.col; g.fillRect(-7, -1.5, 14, 3); g.restore();
+        const left = Math.max(0, Math.ceil((wr.fuse * 1000 - sh.t) / 1000));
+        g.font = '800 15px system-ui, sans-serif'; g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(left, x, y - 15); g.fillStyle = left <= 1 ? '#ff6a5a' : '#fff'; g.fillText(left, x, y - 15);
+      } else { g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, 3.6, 0, 6.283); g.fill(); }
     }
   }
   drawFx(g);

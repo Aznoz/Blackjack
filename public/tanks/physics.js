@@ -23,6 +23,7 @@ export const WEAPONS = {
   big:     { id: 'big',     name: 'Těžká bomba',       desc: 'Velký kráter a velká rána.',                                       r: 68,  dmg: 48, col: '#ff7a3d', price: 240,  pack: 3, max: 9, lvl: 1, fuelPen: 0.4 },
   triple:  { id: 'triple',  name: 'Trojitá salva',     desc: 'Tři střely vedle sebe, hodí se na vzdálené cíle.',                  r: 34,  dmg: 24, col: '#5ee1ff', price: 240,  pack: 3, max: 9, lvl: 2, shots: 3, spread: 6, fuelPen: 0.2 },
   bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',                         r: 44,  dmg: 34, col: '#7dff9a', price: 300,  pack: 3, max: 6, lvl: 3, bounces: 2, selfDmg: 3 },
+  roller:  { id: 'roller',  name: 'Kutálející granát', desc: 'Po dopadu se kutálí po zemi (z kopce rychleji) a vybuchne přesně 5 s po výstřelu. Zastaví se u tanku.', r: 56, dmg: 42, col: '#9be15d', price: 340, pack: 3, max: 6, lvl: 4, roll: true, fuse: 5, selfDmg: 2 },
   cluster: { id: 'cluster', name: 'Kazeta',            desc: 'Ve vrcholu dráhy se rozpadne na 5 menších bomb.',                  r: 0,   dmg: 0,  col: '#d58cff', price: 360,  pack: 3, max: 6, lvl: 4, split: { n: 5, r: 30, dmg: 20 }, selfDmg: 4 },
   sniper:  { id: 'sniper',  name: 'Odstřelovač',       desc: 'Rychlá, skoro přímá střela, vítr ji sotva ovlivní. Malý kráter, silný zásah.', r: 24, dmg: 58, col: '#f2f2f2', price: 320, pack: 3, max: 6, lvl: 5, vmul: 1.25, gmul: 0.55, wmul: 0.3, fuelPen: 0.5 },
   nuke:    { id: 'nuke',    name: 'Atomovka',          desc: 'Obrovský výbuch. Dej si pozor, ať nezasáhne i tebe.',              r: 120, dmg: 80, col: '#ff3b3b', price: 900,  pack: 1, max: 1, lvl: 6, selfDmg: 10, fuelPen: 0.5, cd: 1 },
@@ -45,7 +46,7 @@ export function consOf(w) {
   if (w.cd) out.push(w.cd === 1 ? 'další tah se zbraň nabíjí' : `další ${w.cd} tahy se zbraň nabíjí`);
   return out.length ? out.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.' : '';
 }
-export const ORDER = ['std', 'big', 'triple', 'bounce', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
+export const ORDER = ['std', 'big', 'triple', 'bounce', 'roller', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
 export const COLORS = [
   { c: '#f5c518', name: 'Žlutá', lvl: 1 }, { c: '#4fd8ff', name: 'Azurová', lvl: 1 }, { c: '#6ee06a', name: 'Zelená', lvl: 1 },
   { c: '#ff5a52', name: 'Červená', lvl: 2 }, { c: '#b07cff', name: 'Fialová', lvl: 3 }, { c: '#ff7bc0', name: 'Růžová', lvl: 4 },
@@ -139,7 +140,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
   const a0 = ang * Math.PI / 180, v = pw * VSCALE * (wp.vmul || 1);
   const [px, py] = muzzleOf(h, me.x, ang);
   const ns = wp.shots || 1; const offs = ns > 1 ? Array.from({ length: ns }, (_, i) => (i - (ns - 1) / 2) * wp.spread) : [0];
-  let live = offs.map((o) => { const a = a0 + o * Math.PI / 180; return { x: px, y: py, vx: Math.cos(a) * v, vy: -Math.sin(a) * v, bounces: wp.bounces || 0, split: wp.split || null, r: wp.r, dmg: wp.dmg, gm: wp.gmul || 1, wm: wp.wmul ?? 1, t0: 0, age: 0, pts: dry ? null : [[Math.round(px), Math.round(py)]] }; });
+  let live = offs.map((o) => { const a = a0 + o * Math.PI / 180; return { x: px, y: py, vx: Math.cos(a) * v, vy: -Math.sin(a) * v, bounces: wp.bounces || 0, split: wp.split || null, roll: !!wp.roll, fuse: wp.fuse ? Math.round(wp.fuse * 120) : 0, r: wp.r, dmg: wp.dmg, gm: wp.gmul || 1, wm: wp.wmul ?? 1, t0: 0, age: 0, pts: dry ? null : [[Math.round(px), Math.round(py)]] }; });
   const paths = [], ex = [], dmg = new Array(tanks.length).fill(0);
   let tick = 0; const MAXT = 120 * 14;
   const tms = () => Math.round(tick * 1000 / 120);
@@ -173,11 +174,28 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
     tick++;
     const next = [];
     for (const p of live) {
-      p.age++; p.vy += GRAV * p.gm * DT; p.vx += wind * p.wm * WIND_K * DT; p.x += p.vx * DT; p.y += p.vy * DT;
+      p.age++;
+      if (p.fuse && tick >= p.fuse) { finish(p, 'boom', p.x, p.y); explode(p, p.x, p.y); continue; }   // zápalná šňůra: výbuch přesně po 5 s, ať je granát kdekoli
+      if (p.rolling) { // kutálí se po zemi: z kopce zrychluje, tření ho brzdí, u tanku se zastaví
+        if (!p.halt) {
+          const gx = (h[xi(p.x + 3)] - h[xi(p.x - 3)]) / 6;
+          p.s += gx * 330 * DT;
+          const fr = 70 * DT; p.s = Math.abs(p.s) <= fr ? 0 : p.s - Math.sign(p.s) * fr;
+          p.s = Math.max(-380, Math.min(380, p.s));
+          p.x += p.s * DT;
+          if (p.x < 4) { p.x = 4; p.s = -p.s * 0.4; } else if (p.x > W - 5) { p.x = W - 5; p.s = -p.s * 0.4; }
+        }
+        p.y = h[xi(p.x)] - 6;
+        if (!dry && (tick - p.t0) % 2 === 0) p.pts.push([Math.round(p.x), Math.round(p.y)]);
+        if (!p.halt) for (let i = 0; i < tanks.length; i++) { const tk = tanks[i]; if (tk.hp > 0 && Math.hypot(p.x - tk.x, p.y - (groundAt(h, tk.x) - TANK_HY)) < TANK_R - 4) { p.halt = true; p.s = 0; break; } }
+        next.push(p); continue;
+      }
+      p.vy += GRAV * p.gm * DT; p.vx += wind * p.wm * WIND_K * DT; p.x += p.vx * DT; p.y += p.vy * DT;
       if (!dry && (tick - p.t0) % 2 === 0) p.pts.push([Math.round(p.x), Math.round(p.y)]);
       if (p.bounces > 0 && (p.x < 0 || p.x > W - 1)) { p.x = p.x < 0 ? 0 : W - 1; p.vx = -p.vx * 0.6; }   // odrážeč se odráží i od krajů světa
       if (p.x < -250 || p.x > W + 250 || p.y > H + 400) { finish(p, 'out', p.x, p.y); continue; }
       if (p.x >= 0 && p.x < W && p.y >= h[xi(p.x)]) {
+        if (p.roll) { p.rolling = true; p.s = Math.max(-300, Math.min(300, p.vx * 0.5)); p.y = h[xi(p.x)] - 6; next.push(p); continue; }
         if (p.bounces > 0) { // odraz od svahu
           const gy = h[xi(p.x)], gx = (h[xi(p.x + 3)] - h[xi(p.x - 3)]) / 6, ln = Math.hypot(gx, 1), nx = gx / ln, ny = -1 / ln;
           const dot = p.vx * nx + p.vy * ny;
@@ -191,9 +209,11 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
       let hit = false;
       for (let i = 0; i < tanks.length; i++) {
         const tk = tanks[i]; if (tk.hp <= 0) continue;
-        if (i === si && p.age < 40) continue;                       // vlastní tank hned po výstřelu nepočítáme
+        if (i === si && p.age < 40) continue;
+        if (p.tcool && tick < p.tcool) continue;                       // vlastní tank hned po výstřelu nepočítáme
         if (Math.hypot(p.x - tk.x, p.y - (groundAt(h, tk.x) - TANK_HY)) < TANK_R) { hit = true; break; }
       }
+      if (hit && p.roll) { p.vx *= -0.25; p.vy = -Math.abs(p.vy) * 0.2 - 40; p.tcool = tick + 24; hit = false; }   // v letu se od tanku jen odrazí
       if (hit) { if (p.split) { doSplit(p, next); continue; } finish(p, 'boom', p.x, p.y); explode(p, p.x, p.y); continue; }
       if (p.split && !p.split.impact && p.vy > 0 && p.age > 14) { doSplit(p, next); continue; }   // kazeta se rozpadne ve vrcholu
       next.push(p);
