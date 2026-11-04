@@ -20,22 +20,31 @@ export const EDGE = 46;           // tank nezajede blíž k okraji
 /** Zbraně. `price`/`pack`/`lvl` = obchod (cena za balíček kusů, od které úrovně); `std` je neomezená. */
 export const WEAPONS = {
   std:     { id: 'std',     name: 'Granát',            desc: 'Základní náboj, neomezený.',                                       r: 38,  dmg: 30, col: '#ffd23f', inf: true },
-  big:     { id: 'big',     name: 'Těžká bomba',       desc: 'Velký kráter a velká rána.',                                       r: 68,  dmg: 48, col: '#ff7a3d', price: 240,  pack: 3, lvl: 1 },
-  triple:  { id: 'triple',  name: 'Trojitá salva',     desc: 'Tři střely vedle sebe, hodí se na vzdálené cíle.',                  r: 34,  dmg: 24, col: '#5ee1ff', price: 240,  pack: 3, lvl: 2, shots: 3, spread: 6 },
-  bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',                         r: 44,  dmg: 34, col: '#7dff9a', price: 300,  pack: 3, lvl: 3, bounces: 2 },
-  cluster: { id: 'cluster', name: 'Kazeta',            desc: 'Ve vrcholu dráhy se rozpadne na 5 menších bomb.',                  r: 0,   dmg: 0,  col: '#d58cff', price: 360,  pack: 3, lvl: 4, split: { n: 5, r: 30, dmg: 20 } },
-  sniper:  { id: 'sniper',  name: 'Odstřelovač',       desc: 'Rychlá, skoro přímá střela, vítr ji sotva ovlivní. Malý kráter, silný zásah.', r: 24, dmg: 58, col: '#f2f2f2', price: 320, pack: 3, lvl: 5, vmul: 1.25, gmul: 0.55, wmul: 0.3 },
-  nuke:    { id: 'nuke',    name: 'Atomovka',          desc: 'Obrovský výbuch. Dej si pozor, ať nezasáhne i tebe.',              r: 120, dmg: 80, col: '#ff3b3b', price: 900,  pack: 1, lvl: 6 },
-  five:    { id: 'five',    name: 'Pětisalva',         desc: 'Pět střel vedle sebe, skoro vždycky něco trefí.',                  r: 30,  dmg: 20, col: '#4fd8ff', price: 480,  pack: 3, lvl: 8, shots: 5, spread: 4.5 },
-  mega:    { id: 'mega',    name: 'Mega bomba',        desc: 'Obří kráter a těžká rána.',                                        r: 95,  dmg: 62, col: '#ff5a2a', price: 560,  pack: 2, lvl: 10 },
-  napalm:  { id: 'napalm',  name: 'Napalm',            desc: 'Po dopadu se rozstříkne na 8 malých výbuchů kolem.',               r: 0,   dmg: 0,  col: '#ff9a1f', price: 520,  pack: 3, lvl: 12, split: { n: 8, r: 26, dmg: 15, impact: true } },
-  airstrike: { id: 'airstrike', name: 'Letecký nálet', desc: 'Na místě dopadu zavolá déšť 6 bomb z nebe.',                      r: 0,   dmg: 0,  col: '#9fb4ff', price: 720,  pack: 2, lvl: 16, split: { n: 6, r: 36, dmg: 26, impact: true, rain: true, gap: 56 } },
-  bounce4: { id: 'bounce4', name: 'Super odrážeč',     desc: 'Čtyřikrát se odrazí, než vybuchne.',                               r: 54,  dmg: 40, col: '#5dffb0', price: 640,  pack: 3, lvl: 19, bounces: 4 },
-  megacluster: { id: 'megacluster', name: 'Mega kazeta', desc: 'Ve vrcholu se rozpadne na 9 bomb.',                              r: 0,   dmg: 0,  col: '#e6a0ff', price: 900,  pack: 3, lvl: 22, split: { n: 9, r: 38, dmg: 24 } },
-  doom:    { id: 'doom',    name: 'Soudný den',        desc: 'Gigantický výbuch, který smete skoro všechno. Opatrně.',           r: 160, dmg: 100, col: '#ff2a2a', price: 2200, pack: 1, lvl: 26 },
-  repair:  { id: 'repair',  name: 'Opravárenská sada', desc: 'Vyléčí 35 životů a ukončí tah. Nestřílí.',                         r: 0,   dmg: 0,  col: '#6cff6c', price: 200,  pack: 2, lvl: 2,  util: 'heal', heal: 35 },
-  repair2: { id: 'repair2', name: 'Generální oprava',  desc: 'Vyléčí 70 životů a ukončí tah. Nestřílí.',                         r: 0,   dmg: 0,  col: '#3dff9a', price: 420,  pack: 2, lvl: 14, util: 'heal', heal: 70 },
+  big:     { id: 'big',     name: 'Těžká bomba',       desc: 'Velký kráter a velká rána.',                                       r: 68,  dmg: 48, col: '#ff7a3d', price: 240,  pack: 3, lvl: 1, fuelPen: 0.4 },
+  triple:  { id: 'triple',  name: 'Trojitá salva',     desc: 'Tři střely vedle sebe, hodí se na vzdálené cíle.',                  r: 34,  dmg: 24, col: '#5ee1ff', price: 240,  pack: 3, lvl: 2, shots: 3, spread: 6, fuelPen: 0.2 },
+  bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',                         r: 44,  dmg: 34, col: '#7dff9a', price: 300,  pack: 3, lvl: 3, bounces: 2, selfDmg: 3 },
+  cluster: { id: 'cluster', name: 'Kazeta',            desc: 'Ve vrcholu dráhy se rozpadne na 5 menších bomb.',                  r: 0,   dmg: 0,  col: '#d58cff', price: 360,  pack: 3, lvl: 4, split: { n: 5, r: 30, dmg: 20 }, selfDmg: 4 },
+  sniper:  { id: 'sniper',  name: 'Odstřelovač',       desc: 'Rychlá, skoro přímá střela, vítr ji sotva ovlivní. Malý kráter, silný zásah.', r: 24, dmg: 58, col: '#f2f2f2', price: 320, pack: 3, lvl: 5, vmul: 1.25, gmul: 0.55, wmul: 0.3, fuelPen: 0.5 },
+  nuke:    { id: 'nuke',    name: 'Atomovka',          desc: 'Obrovský výbuch. Dej si pozor, ať nezasáhne i tebe.',              r: 120, dmg: 80, col: '#ff3b3b', price: 900,  pack: 1, lvl: 6, selfDmg: 10, fuelPen: 0.5, cd: 1 },
+  five:    { id: 'five',    name: 'Pětisalva',         desc: 'Pět střel vedle sebe, skoro vždycky něco trefí.',                  r: 30,  dmg: 20, col: '#4fd8ff', price: 480,  pack: 3, lvl: 8, shots: 5, spread: 4.5, selfDmg: 5 },
+  mega:    { id: 'mega',    name: 'Mega bomba',        desc: 'Obří kráter a těžká rána.',                                        r: 95,  dmg: 62, col: '#ff5a2a', price: 560,  pack: 2, lvl: 10, selfDmg: 6, fuelPen: 0.3 },
+  napalm:  { id: 'napalm',  name: 'Napalm',            desc: 'Po dopadu se rozstříkne na 8 malých výbuchů kolem.',               r: 0,   dmg: 0,  col: '#ff9a1f', price: 520,  pack: 3, lvl: 12, split: { n: 8, r: 26, dmg: 15, impact: true }, selfDmg: 5, fuelPen: 0.2 },
+  airstrike: { id: 'airstrike', name: 'Letecký nálet', desc: 'Na místě dopadu zavolá déšť 6 bomb z nebe.',                      r: 0,   dmg: 0,  col: '#9fb4ff', price: 720,  pack: 2, lvl: 16, split: { n: 6, r: 36, dmg: 26, impact: true, rain: true, gap: 56 }, fuelPen: 0.4, cd: 1 },
+  bounce4: { id: 'bounce4', name: 'Super odrážeč',     desc: 'Čtyřikrát se odrazí, než vybuchne.',                               r: 54,  dmg: 40, col: '#5dffb0', price: 640,  pack: 3, lvl: 19, bounces: 4, selfDmg: 6 },
+  megacluster: { id: 'megacluster', name: 'Mega kazeta', desc: 'Ve vrcholu se rozpadne na 9 bomb.',                              r: 0,   dmg: 0,  col: '#e6a0ff', price: 900,  pack: 3, lvl: 22, split: { n: 9, r: 38, dmg: 24 }, selfDmg: 8, fuelPen: 0.3 },
+  doom:    { id: 'doom',    name: 'Soudný den',        desc: 'Gigantický výbuch, který smete skoro všechno. Opatrně.',           r: 160, dmg: 100, col: '#ff2a2a', price: 2200, pack: 1, lvl: 26, selfDmg: 15, fuelPen: 0.7, cd: 1 },
+  repair:  { id: 'repair',  name: 'Opravárenská sada', desc: 'Vyléčí 35 životů a ukončí tah. Nestřílí.',                         r: 0,   dmg: 0,  col: '#6cff6c', price: 200,  pack: 2, lvl: 2,  util: 'heal', heal: 35, fuelPen: 0.3 },
+  repair2: { id: 'repair2', name: 'Generální oprava',  desc: 'Vyléčí 70 životů a ukončí tah. Nestřílí.',                         r: 0,   dmg: 0,  col: '#3dff9a', price: 420,  pack: 2, lvl: 14, util: 'heal', heal: 70, fuelPen: 0.5 },
 };
+/** Nevýhody zbraní (text pro hráče): vlastní ztráta životů při výstřelu, méně paliva v příštím tahu, nabíjení (zbraň nejde použít v dalších tazích). */
+const CZ_LIFE = (n) => (n === 1 ? '1 život' : n >= 2 && n <= 4 ? n + ' životy' : n + ' životů');
+export function consOf(w) {
+  const out = [];
+  if (w.selfDmg) out.push(`výstřel tě stojí ${CZ_LIFE(w.selfDmg)}`);
+  if (w.fuelPen) out.push(`příští tah máš o ${Math.round(w.fuelPen * 100)} % míň paliva`);
+  if (w.cd) out.push(w.cd === 1 ? 'další tah se zbraň nabíjí' : `další ${w.cd} tahy se zbraň nabíjí`);
+  return out.length ? out.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.' : '';
+}
 export const ORDER = ['std', 'big', 'triple', 'bounce', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
 export const COLORS = [
   { c: '#f5c518', name: 'Žlutá', lvl: 1 }, { c: '#4fd8ff', name: 'Azurová', lvl: 1 }, { c: '#6ee06a', name: 'Zelená', lvl: 1 },

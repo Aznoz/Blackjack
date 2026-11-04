@@ -152,7 +152,7 @@ function renderShop() {
   $('shopWeapons').innerHTML = ORDER.filter((id) => id !== 'std').map((id) => {
     const w = WEAPONS[id]; const own = t.ammo[id] | 0; const lock = t.lvl < w.lvl; const full = own + w.pack > prof.maxOwned; const poor = prof.balance < w.price;
     const label = lock ? `Úroveň ${w.lvl}` : full ? 'Plno' : `Koupit ${w.pack}×<br><span class="coin"></span> ${w.price}`;
-    return `<div class="wi${lock ? ' lock' : ''}"><div class="ic" style="background:${w.col}">${ICON[id]}</div><div><div class="nm">${w.name} <span class="own">${own ? '· máš ' + own : ''}</span></div><div class="ds">${w.desc}</div></div><button class="buy" type="button" data-b="${id}" ${lock || full || poor ? 'disabled' : ''}>${label}</button></div>`;
+    return `<div class="wi${lock ? ' lock' : ''}"><div class="ic" style="background:${w.col}">${ICON[id]}</div><div><div class="nm">${w.name} <span class="own">${own ? '· máš ' + own : ''}</span></div><div class="ds">${w.desc}${P.consOf(w) ? `<br><u>Nevýhoda: ${esc(P.consOf(w))}</u>` : ''}</div></div><button class="buy" type="button" data-b="${id}" ${lock || full || poor ? 'disabled' : ''}>${label}</button></div>`;
   }).join('');
 }
 $('shopColors').addEventListener('click', async (e) => {
@@ -248,11 +248,12 @@ function onState(s) {
   const ids = new Set(s.crates.map((c) => c.id));
   R.crates = R.crates.filter((c) => ids.has(c.id));
   for (const c of s.crates) if (!R.crates.some((o) => o.id === c.id)) R.crates.push(mkCrate(c.id, c.x, s.turnNo <= 1 && fresh));
-  if (!ammoHas(sel)) sel = 'std';
+  if (!ammoHas(sel) || isLocked(sel)) sel = 'std';
   renderTray(); updateHud(true);
   if (s.phase === 'over' && s.result) { finishShot(); if (!overTimer) overTimer = setTimeout(() => { overTimer = null; showOver(); }, 700); } else { $('over').hidden = true; }
 }
 const ammoHas = (id) => id === 'std' || (S && S.ammo && S.ammo[id] > 0);
+const isLocked = (id) => !!(S && S.lock && S.lock[id] > 0);
 const myTurn = () => !!S && S.phase === 'play' && S.turn === me && !fireSent && !R.shot && screen === 'game';
 const mkCrate = (id, x, fall) => ({ id, x, y: fall ? -80 - Math.random() * 260 : P.groundAt(R.h, x) - 12, vy: 0, landed: !fall, t: Math.random() * 6 });
 function onCrate(m) {
@@ -269,6 +270,7 @@ function startShot(m) {
   finishShot();
   const by = m.by, t = R.tk[by]; R.aim[by] = { a: m.a, p: m.p }; t.face = m.a <= 90 ? 1 : -1; t.ang = m.a;
   t.hp = m.hpBefore[by]; R.tk[1 - by].hp = m.hpBefore[1 - by];
+  if (m.self) { t.hp = Math.max(1, t.hp - m.self); t.flash = .3; floatText(t.dx, t.y - 66, '−' + m.self, '#ff9a5a'); }
   R.shot = { m, t: 0, ei: 0 };
   const [mx, my] = P.muzzleOf(R.h, t.x, m.a);
   t.recoil = 9; sfx.fire(); R.shake = Math.max(R.shake, 2.5);
@@ -563,10 +565,10 @@ function renderWbtn() {
 function renderTray() {
   if (!S) return;
   const items = ORDER.filter(ammoHas);
-  $('tray').innerHTML = items.map((id, ix) => { const w = WEAPONS[id]; const n = w.inf ? '∞' : S.ammo[id]; return `<button type="button" data-w="${id}" class="${id === sel ? 'on' : ''}"><span class="dot" style="color:${w.col}"></span>${w.name}<small>${n}</small><kbd>${ix < 9 ? ix + 1 : ''}</kbd></button>`; }).join('');
+  $('tray').innerHTML = items.map((id, ix) => { const w = WEAPONS[id]; const n = w.inf ? '∞' : S.ammo[id]; const lk = isLocked(id); return `<button type="button" data-w="${id}" class="${id === sel ? 'on' : ''}${lk ? ' lk' : ''}" ${lk ? 'aria-disabled="true"' : ''}><span class="dot" style="color:${w.col}"></span>${w.name}<small>${lk ? '🔒 nabíjí' : n}</small><kbd>${ix < 9 ? ix + 1 : ''}</kbd></button>`; }).join('');
   renderWbtn();
 }
-function selectWeapon(id) { if (!ammoHas(id)) return; sel = id; $('tray').hidden = true; renderTray(); sfx.click(); }
+function selectWeapon(id) { if (!ammoHas(id)) return; if (isLocked(id)) { toast('Tahle zbraň se ještě nabíjí.'); return; } sel = id; $('tray').hidden = true; renderTray(); sfx.click(); }
 $('wbtn').onclick = () => { if (!myTurn()) return; $('tray').hidden = !$('tray').hidden; };
 $('tray').addEventListener('click', (e) => { const b = e.target.closest('[data-w]'); if (b) selectWeapon(b.dataset.w); });
 
@@ -662,7 +664,7 @@ $('oMenu').onclick = leaveGame;
 function pauseHelp() {
   const own = (id) => (WEAPONS[id].inf ? '' : ((S && S.ammo && S.ammo[id]) | 0));
   $('pauseHelp').innerHTML = ORDER.map((id) => { const w = WEAPONS[id]; const n = own(id);
-    return `<div class="wr"><i style="color:${w.col}"></i><div><b>${esc(w.name)}</b>${n ? `<em>máš ${n}×</em>` : ''}<br><span>${esc(w.desc)}${w.util ? '' : ` Poškození až ${w.shots ? w.shots + '×' : ''}${w.split ? w.split.n + '×' + w.split.dmg : w.dmg}.`}</span></div></div>`; }).join('');
+    return `<div class="wr"><i style="color:${w.col}"></i><div><b>${esc(w.name)}</b>${n ? `<em>máš ${n}×</em>` : ''}<br><span>${esc(w.desc)}${w.util ? '' : ` Poškození až ${w.shots ? w.shots + '×' : ''}${w.split ? w.split.n + '×' + w.split.dmg : w.dmg}.`}${P.consOf(w) ? ` <u>Nevýhoda: ${esc(P.consOf(w))}</u>` : ''}</span></div></div>`; }).join('');
 }
 $('menuBtn').onclick = () => { pauseHelp(); $('pauseModal').hidden = false; $('pLeave').innerHTML = '<b>Vzdát se a odejít</b>'; };
 let leaveArmed = false;

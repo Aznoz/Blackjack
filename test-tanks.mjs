@@ -151,6 +151,29 @@ function findHit(room, i, w = 'std') {
   a.say({ t: 'leave' }); b.say({ t: 'leave' });
 }
 
+// --- nevýhody zbraní: vlastní ztráta životů, méně paliva v příštím tahu, nabíjení
+{
+  const m = online(); const { a, b, room } = m; const s = a.last('state'); const i = s.turn; const cu = i === s.you ? a : b; const ot = cu === a ? b : a;
+  room.tanks[i].crate.nuke = 2; room.tanks[i].hp = 100;
+  cu.say({ t: 'fire', a: 60, p: 40, w: 'nuke' });
+  const shot = await until(() => cu.last('shot')); assert.equal(shot.self, 10, 'atomovka ubere střelci 10 životů'); assert.ok(room.tanks[i].hp <= 90);
+  assert.equal(shot.hpBefore[i], 100);
+  await until(() => { const st = cu.last('state'); return st.turn === 1 - i && st.phase === 'play'; });
+  await until(() => { const st = cu.last('state'); return st.turn === i && st.phase === 'play'; }, 8000);   // soupeř nestihne tah, zase jsem na řadě
+  const st = cu.last('state');
+  assert.equal(st.fuel[i], Math.round(P.FUEL_MAX * 0.5), 'palivo −50 % po atomovce'); assert.ok(cu.all('note').some((n) => /palivo/.test(n.msg)));
+  assert.ok(st.lock.nuke > 0, 'atomovka se nabíjí'); cu.say({ t: 'fire', a: 60, p: 40, w: 'nuke' });
+  assert.match(cu.last('rej').msg, /nabíjí/); assert.equal(room.tanks[i].crate.nuke, 1, 'zamítnutý výstřel munici nespotřebuje');
+  cu.say({ t: 'fire', a: 60, p: 40, w: 'std' });   // obyčejný granát jde
+  await until(() => cu.all('shot').length >= 2);
+  await until(() => { const q = cu.last('state'); return q.turn === i && q.phase === 'play' && q.turnNo > st.turnNo + 1; }, 8000);
+  const st2 = cu.last('state'); assert.equal(st2.fuel[i], P.FUEL_MAX, 'další tah už je palivo plné'); assert.ok(!st2.lock.nuke, 'po jednom tahu je zbraň zase nabitá');
+  // výstřel nezabije střelce
+  room.tanks[i].hp = 4; room.tanks[i].crate.five = 1; cu.say({ t: 'fire', a: 85, p: 8, w: 'five' }); const sh2 = await until(() => cu.all('shot').length >= 3 && cu.last('shot'));
+  assert.ok(sh2.hpBefore[i] === 4 && sh2.self === 3, 'ze 4 životů zbyde aspoň 1');
+  a.say({ t: 'leave' }); b.say({ t: 'leave' }); void ot;
+}
+
 // --- výhra online: +900 / −300, XP, výhry; podlaha zůstatku
 {
   accs[T1] = mk('Honza', 5000); accs[T2] = mk('Eva', 150);

@@ -137,7 +137,7 @@ function view(room, pid) {
     players: room.players.map((p, i) => playerView(room, p, i)),
     hp: room.tanks.map((k) => k.hp), x: room.tanks.map((k) => r1(k.x)), fuel: room.tanks.map((k) => Math.round(k.fuel)),
     turn: room.turn, turnNo: room.turnNo, turnMs: room.phase === 'play' && room.turnEnd ? Math.max(0, room.turnEnd - now()) : 0, turnTotal: TURN_MS,
-    wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {},
+    wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {}, lock: you >= 0 && room.tanks[you] ? { ...room.tanks[you].lock } : {},
     th: P.checksum(room.h), shots: room.tanks.map((k) => k.shots), result: room.result || null, rematch: [...room.rematch],
     dropIn: room.dropAt ? Math.max(0, room.dropAt - now()) : null, dropFor: room.dropFor, at: now(),
     win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS,
@@ -155,7 +155,7 @@ function startMatch(room) {
   room.seed = crypto.randomInt(1, 2 ** 31);
   room.h = P.genTerrain(room.seed);
   const xl = 190 + Math.round(Math.random() * 40), xr = W - 190 - Math.round(Math.random() * 40);
-  room.tanks = [xl, xr].map((x) => ({ x, hp: MAX_HP, fuel: FUEL_MAX, crate: {}, shots: 0, dmg: 0, idle: 0 }));
+  room.tanks = [xl, xr].map((x) => ({ x, hp: MAX_HP, fuel: FUEL_MAX, crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 }));
   room.crates = []; room.crateSeq = 0;
   for (let i = 0; i < 2; i++) spawnCrate(room);
   room.wind = Math.round((Math.random() * 2 - 1) * 6);
@@ -185,12 +185,15 @@ function beginTurn(room, first) {
   clearTimers(room);
   if (!first) { room.turn = 1 - room.turn; room.wind = clamp(room.wind + Math.round((Math.random() * 2 - 1) * 4), -8, 8); }
   room.turnNo++; room.driveDir = 0;
-  room.tanks[room.turn].fuel = FUEL_MAX;
+  const cur = room.tanks[room.turn];
+  for (const k of Object.keys(cur.lock)) { if (--cur.lock[k] <= 0) delete cur.lock[k]; }   // nabíjení zbraní se odpočítává po vlastních tazích
+  const pen = cur.fuelNext; cur.fuelNext = 0; cur.fuel = Math.round(FUEL_MAX * (1 - pen));
   const added = [];
   if (room.turnNo % 2 === 0 && room.crates.length < MAX_CRATES && Math.random() < 0.75) { const c = spawnCrate(room); if (c) added.push({ id: c.id, x: c.x }); }
   room.turnEnd = now() + TURN_MS; room.phase = 'play';
   room.turnT = setTimeout(() => onTimeout(room), TURN_MS);
   publish(room);
+  if (pen > 0 && room.players[room.turn].ws) send(room.players[room.turn].ws, { t: 'note', msg: `Zpětný ráz: palivo −${Math.round(pen * 100)} %` });
   for (const c of added) bcast(room, { t: 'crate', op: 'spawn', id: c.id, x: c.x });
   if (room.players[room.turn].bot) botTurn(room);
 }
@@ -244,9 +247,12 @@ function doFire(room, i, a, pw, wid) {
   const tk = room.tanks[i];
   if (!Number.isFinite(a) || !Number.isFinite(pw)) return 'Špatné zaměření.';
   a = clamp(a, 0, 180); pw = clamp(pw, 8, 100);
+  if ((tk.lock[wid] | 0) > 0) return 'Tahle zbraň se ještě nabíjí.';
   if (!takeAmmo(room, i, wid)) return 'Tuhle munici nemáš.';
   stopDrive(room); clearTimers(room);
   tk.idle = 0;
+  if (wp.fuelPen) tk.fuelNext = Math.max(tk.fuelNext, wp.fuelPen);   // nevýhody zbraní (viz physics.js consOf)
+  if (wp.cd) tk.lock[wid] = wp.cd + 1;
   if (wp.util === 'heal') { // oprava: vyléčí a ukončí tah
     tk.hp = Math.min(MAX_HP, tk.hp + wp.heal);
     bcast(room, { t: 'heal', i, hp: tk.hp, amount: wp.heal });
@@ -255,11 +261,12 @@ function doFire(room, i, a, pw, wid) {
   }
   tk.shots++;
   const hpBefore = room.tanks.map((k) => k.hp);
+  let self = 0; if (wp.selfDmg) { self = Math.min(wp.selfDmg, Math.max(0, tk.hp - 1)); tk.hp -= self; }   // výstřel nikdy nezabije střelce
   const res = P.simulate({ h: room.h, tanks: room.tanks, wind: room.wind, crates: room.crates }, i, a, pw, wid);
   tk.dmg += res.dmg[1 - i] | 0;
   room.phase = 'resolve';
   const hp = room.tanks.map((k) => k.hp);
-  bcast(room, { t: 'shot', by: i, w: wid, a: r1(a), p: Math.round(pw), wind: room.wind, paths: res.paths, ex: res.ex, dur: res.dur, hp, hpBefore, th: P.checksum(room.h) });
+  bcast(room, { t: 'shot', by: i, w: wid, a: r1(a), p: Math.round(pw), wind: room.wind, paths: res.paths, ex: res.ex, dur: res.dur, hp, hpBefore, self, th: P.checksum(room.h) });
   room.resolveT = setTimeout(() => afterShot(room), ms(res.dur + 1600));
   return null;
 }
@@ -305,7 +312,7 @@ function finish(room, r) {
 // ------------------------------------------------------------------ bot
 function botWeapons(room, bi) {
   const a = ammoOf(room, bi); const list = ['std'];
-  const specials = Object.keys(a).filter((k) => k !== 'std' && a[k] > 0 && !WEAPONS[k].util);
+  const lk = room.tanks[bi].lock; const specials = Object.keys(a).filter((k) => k !== 'std' && a[k] > 0 && !WEAPONS[k].util && !(lk[k] > 0));
   for (let n = 0; n < 2 && specials.length; n++) list.push(specials.splice(Math.floor(Math.random() * specials.length), 1)[0]);
   return list;
 }
@@ -319,7 +326,7 @@ function botPlan(room, bi) {
   const evalShot = (a, pw, w) => {
     const r = P.simulate(env, bi, a, pw, w, { dry: true });
     let dist = 1e9; for (const e of r.ex) dist = Math.min(dist, Math.hypot(e.x - en.x, e.y - (groundAt(room.h, en.x) - TANK_HY)));
-    const score = Math.min(r.dmg[ei], en.hp + 10) * 1.0 - r.dmg[bi] * 2.2 - Math.min(dist, 900) * 0.04 + (w === 'std' ? 4 : 0) + (r.dmg[ei] >= en.hp ? 60 : 0);
+    const score = Math.min(r.dmg[ei], en.hp + 10) * 1.0 - r.dmg[bi] * 2.2 - (WEAPONS[w].selfDmg || 0) * 1.3 - (WEAPONS[w].fuelPen || 0) * 6 - Math.min(dist, 900) * 0.04 + (w === 'std' ? 4 : 0) + (r.dmg[ei] >= en.hp ? 60 : 0);
     return { a, pw, w, score, dmg: r.dmg[ei], self: r.dmg[bi] };
   };
   for (const w of weapons) {
@@ -370,7 +377,7 @@ function botTurn(room) {
 function newRoom() {
   const code = makeCode(); if (!code) return null;
   const room = {
-    code, players: [], nextId: 1, phase: 'lobby', quick: false, bot: 0, h: new Int16Array(W), tanks: [{ x: 200, hp: MAX_HP, fuel: 0, crate: {}, shots: 0, dmg: 0, idle: 0 }, { x: W - 200, hp: MAX_HP, fuel: 0, crate: {}, shots: 0, dmg: 0, idle: 0 }],
+    code, players: [], nextId: 1, phase: 'lobby', quick: false, bot: 0, h: new Int16Array(W), tanks: [{ x: 200, hp: MAX_HP, fuel: 0, crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 }, { x: W - 200, hp: MAX_HP, fuel: 0, crate: {}, shots: 0, dmg: 0, idle: 0 }],
     crates: [], crateSeq: 0, wind: 0, turn: 0, turnNo: 0, turnEnd: 0, result: null, rematch: new Set(), emptySince: now(), matchId: 0, driveDir: 0,
     dropTimer: null, dropAt: null, dropFor: null,
   };
