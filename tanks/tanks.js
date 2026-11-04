@@ -137,7 +137,7 @@ function view(room, pid) {
     players: room.players.map((p, i) => playerView(room, p, i)),
     hp: room.tanks.map((k) => k.hp), x: room.tanks.map((k) => r1(k.x)), fuel: room.tanks.map((k) => Math.round(k.fuel)),
     turn: room.turn, turnNo: room.turnNo, turnMs: room.phase === 'play' && room.turnEnd ? Math.max(0, room.turnEnd - now()) : 0, turnTotal: TURN_MS,
-    wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {}, lock: you >= 0 && room.tanks[you] ? { ...room.tanks[you].lock } : {},
+    wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x })), mines: (room.mines || []).map((q) => ({ id: q.id, x: q.x, o: q.o })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {}, lock: you >= 0 && room.tanks[you] ? { ...room.tanks[you].lock } : {},
     th: P.checksum(room.h), shots: room.tanks.map((k) => k.shots), result: room.result || null, rematch: [...room.rematch],
     dropIn: room.dropAt ? Math.max(0, room.dropAt - now()) : null, dropFor: room.dropFor, at: now(),
     win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS,
@@ -156,7 +156,7 @@ function startMatch(room) {
   room.h = P.genTerrain(room.seed);
   const xl = 190 + Math.round(Math.random() * 40), xr = W - 190 - Math.round(Math.random() * 40);
   room.tanks = [xl, xr].map((x) => ({ x, hp: MAX_HP, fuel: FUEL_MAX, crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 }));
-  room.crates = []; room.crateSeq = 0;
+  room.crates = []; room.crateSeq = 0; room.mines = []; room.mineSeq = 0;
   for (let i = 0; i < 2; i++) spawnCrate(room);
   room.wind = Math.round((Math.random() * 2 - 1) * 6);
   room.turn = Math.random() < 0.5 ? 0 : 1; room.turnNo = 0; room.result = null; room.rematch = new Set();
@@ -166,7 +166,7 @@ function startMatch(room) {
 }
 
 function pickCrateKind() {
-  const t = [['big', 18], ['triple', 16], ['bounce', 13], ['roller', 12], ['laser', 10], ['cluster', 11], ['sniper', 11], ['repair', 9], ['five', 8], ['mega', 7], ['napalm', 7], ['airstrike', 5], ['bounce4', 4], ['megacluster', 3], ['repair2', 4], ['nuke', 3], ['doom', 1]];
+  const t = [['big', 18], ['triple', 16], ['bounce', 13], ['roller', 12], ['laser', 10], ['trap', 9], ['cluster', 11], ['sniper', 11], ['repair', 9], ['five', 8], ['mega', 7], ['napalm', 7], ['airstrike', 5], ['bounce4', 4], ['megacluster', 3], ['repair2', 4], ['nuke', 3], ['doom', 1]];
   let r = Math.random() * t.reduce((a, b) => a + b[1], 0);
   for (const [k, w] of t) { r -= w; if (r < 0) return k; }
   return 'big';
@@ -237,6 +237,12 @@ function driveTick(room) {
     }
   }
   bcast(room, { t: 'mv', i, x: r1(tk.x), f: Math.round(tk.fuel) });
+  for (let k = room.mines.length - 1; k >= 0; k--) { // soupeřova past: ubere 25 životů a zmizí
+    const q = room.mines[k]; if (q.o === i || Math.abs(q.x - tk.x) >= P.TRAP_R) continue;
+    room.mines.splice(k, 1); const dm = WEAPONS.trap.dmg; tk.hp = Math.max(0, tk.hp - dm); room.tanks[q.o].dmg += dm;
+    bcast(room, { t: 'mine', id: q.id, i, x: q.x, dmg: dm, hp: tk.hp });
+    if (tk.hp <= 0) { stopDrive(room); finish(room, { winner: q.o, reason: `${room.players[i].name} najel na past` }); return; }
+  }
   for (const g of got) { bcast(room, { t: 'crate', op: 'pick', id: g.id, i, w: g.w, n: g.n }); }
   if (got.length) { for (const p of room.players) if (p.ws) send(p.ws, { t: 'ammo', ammo: ammoOf(room, room.players.indexOf(p)) }); }
   if (tk.fuel <= 0.5) { stopDrive(room); if (room.onDriveEnd) { const f = room.onDriveEnd; room.onDriveEnd = null; f(); } }
@@ -266,6 +272,11 @@ function doFire(room, i, a, pw, wid) {
   let self = 0; if (wp.selfDmg) { self = Math.min(wp.selfDmg, Math.max(0, tk.hp - 1)); tk.hp -= self; }   // výstřel nikdy nezabije střelce
   const res = P.simulate({ h: room.h, tanks: room.tanks, wind: room.wind, crates: room.crates }, i, a, pw, wid);
   tk.dmg += res.dmg[1 - i] | 0;
+  const tr = res.ex.find((e) => e.trap);
+  if (tr) { // past zůstává na poli; víc než `cap` kusů od jednoho hráče nejde, nejstarší zmizí
+    room.mines.push({ id: ++room.mineSeq, x: tr.x, o: i });
+    const own = room.mines.filter((q) => q.o === i); for (let k = 0; k < own.length - (wp.cap || 3); k++) room.mines.splice(room.mines.indexOf(own[k]), 1);
+  }
   room.phase = 'resolve';
   const hp = room.tanks.map((k) => k.hp);
   bcast(room, { t: 'shot', by: i, w: wid, a: r1(a), p: Math.round(pw), wind: room.wind, paths: res.paths, ex: res.ex, dur: res.dur, hp, hpBefore, self, th: P.checksum(room.h) });
@@ -380,7 +391,7 @@ function newRoom() {
   const code = makeCode(); if (!code) return null;
   const room = {
     code, players: [], nextId: 1, phase: 'lobby', quick: false, bot: 0, h: new Int16Array(W), tanks: [{ x: 200, hp: MAX_HP, fuel: 0, crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 }, { x: W - 200, hp: MAX_HP, fuel: 0, crate: {}, shots: 0, dmg: 0, idle: 0 }],
-    crates: [], crateSeq: 0, wind: 0, turn: 0, turnNo: 0, turnEnd: 0, result: null, rematch: new Set(), emptySince: now(), matchId: 0, driveDir: 0,
+    crates: [], crateSeq: 0, mines: [], mineSeq: 0, wind: 0, turn: 0, turnNo: 0, turnEnd: 0, result: null, rematch: new Set(), emptySince: now(), matchId: 0, driveDir: 0,
     dropTimer: null, dropAt: null, dropFor: null,
   };
   rooms.set(code, room); return room;

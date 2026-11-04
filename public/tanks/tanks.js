@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=7';
+import * as P from './physics.js?v=8';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -9,7 +9,7 @@ const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const API = String(CFG.SERVER_URL || '').replace(/^wss:/, 'https:').replace(/^ws:/, 'http:').replace(/\/tanks\/?$/, '');
-const ICON = { std: '🎯', big: '💣', triple: '🔱', bounce: '🏀', roller: '🟢', laser: '🔴', cluster: '🎆', sniper: '🔭', nuke: '☢️', five: '🌠', mega: '💥', napalm: '🔥', airstrike: '✈️', bounce4: '🪀', megacluster: '🎇', doom: '🌋', repair: '🔧', repair2: '🧰' };
+const ICON = { std: '🎯', big: '💣', triple: '🔱', bounce: '🏀', roller: '🟢', trap: '🪤', laser: '🔴', cluster: '🎆', sniper: '🔭', nuke: '☢️', five: '🌠', mega: '💥', napalm: '🔥', airstrike: '✈️', bounce4: '🪀', megacluster: '🎇', doom: '🌋', repair: '🔧', repair2: '🧰' };
 
 // ------------------------------------------------------------------ identita
 let memToken = null;
@@ -71,7 +71,7 @@ let screen = 'menu';
 let fireSent = false, sel = 'std', turnEndAt = 0, lastTurnNo = -1, overTimer = null, lastSyncAt = 0, lastTick = -1;
 let driveDir = 0, aimSentAt = 0, aimTimer = null;
 const R = {
-  demoH: P.genTerrain(4242), h: null, tk: [], crates: [], fx: [], shake: 0, aim: [{ a: 45, p: 60 }, { a: 135, p: 60 }], trace: null, shot: null, clouds: [], t: 0,
+  demoH: P.genTerrain(4242), h: null, tk: [], crates: [], mines: [], fx: [], shake: 0, aim: [{ a: 45, p: 60 }, { a: 135, p: 60 }], trace: null, shot: null, clouds: [], t: 0,
 };
 R.h = R.demoH;
 const newTk = (x, face) => ({ x, dx: x, y: 0, tilt: 0, hp: MAX_HP, face, ang: face > 0 ? 45 : 135, dead: false, flash: 0, recoil: 0, wheel: 0, col: 0, smokeT: 0 });
@@ -79,7 +79,7 @@ R.tk = [newTk(300, 1), newTk(W - 300, -1)];
 for (let i = 0; i < 6; i++) R.clouds.push({ x: Math.random() * W, y: 60 + Math.random() * 240, s: .6 + Math.random() * 1.1, v: 4 + Math.random() * 8 });
 
 function resetMatch() {
-  R.fx = []; R.crates = []; R.trace = null; R.shot = null; R.shake = 0;
+  R.fx = []; R.crates = []; R.mines = []; R.trace = null; R.shot = null; R.shake = 0;
   R.aim = [{ a: 45, p: 60 }, { a: 135, p: 60 }];
   R.tk = [newTk(S.x[0], 1), newTk(S.x[1], -1)];
   for (let i = 0; i < 2; i++) { R.tk[i].hp = S.hp[i]; R.tk[i].y = P.groundAt(R.h, R.tk[i].x); R.tk[i].col = S.players[i].color; }
@@ -211,6 +211,12 @@ function onMsg(m) {
     case 'mv': { if (!S) return; S.x[m.i] = m.x; S.fuel[m.i] = m.f; R.tk[m.i].x = m.x; if (m.i === me) $('fuelFill').style.height = clamp(m.f / FUEL_MAX, 0, 1) * 100 + '%'; if (m.stop && m.i === me) driveDir = 0; return; }
     case 'ammo': if (S) { S.ammo = m.ammo; renderTray(); } return;
     case 'crate': return onCrate(m);
+    case 'mine': { // past spuštěná jízdou
+      R.mines = R.mines.filter((q) => q.id !== m.id); const t = R.tk[m.i]; const gy = P.groundAt(R.h, m.x);
+      boom(m.x, gy - 6, 46); t.hp = m.hp; t.flash = .4; floatText(t.dx, t.y - 66, '−' + m.dmg + ' past', '#ffb020');
+      if (t.hp <= 0 && !t.dead) { t.dead = true; boom(t.dx, t.y - 18, 90); }
+      return;
+    }
     case 'heal': { const t = R.tk[m.i]; t.hp = m.hp; floatText(t.dx, t.y - 60, '+' + m.amount, '#6cff6c'); for (let k = 0; k < 14; k++) R.fx.push({ k: 'spark', x: t.dx + (Math.random() - .5) * 40, y: t.y - 10, vx: (Math.random() - .5) * 30, vy: -60 - Math.random() * 60, life: 0, max: .9, size: 3, col: '#8cff8c', g: -20 }); sfx.heal(); return; }
     case 'note': toast(m.msg); return;
     case 'rej': toast(m.msg); fireSent = false; return;
@@ -244,6 +250,7 @@ function onState(s) {
     }
   }
   if (!R.shot && s.th !== P.checksum(R.h) && performance.now() - lastSyncAt > 1500) { lastSyncAt = performance.now(); sendMsg({ t: 'sync' }); }
+  R.mines = (s.mines || []).map((q) => ({ id: q.id, x: q.x, o: q.o }));
   // crates
   const ids = new Set(s.crates.map((c) => c.id));
   R.crates = R.crates.filter((c) => ids.has(c.id));
@@ -295,6 +302,7 @@ function stepShot(dt) {
 function applyExplosion(e) {
   if (e.r > 0) { P.applyCrater(R.h, e.x, e.y, e.r); terrDirty = true; }
   for (const id of e.cr || []) { R.crates = R.crates.filter((c) => c.id !== id); for (let k = 0; k < 8; k++) R.fx.push({ k: 'spark', x: e.x, y: e.y, vx: (Math.random() - .5) * 200, vy: -Math.random() * 200, life: 0, max: .8, size: 3, col: '#c9a26a', g: 500 }); }
+  if (e.trap) { if (!R.mines.some((q) => Math.abs(q.x - e.x) < 1)) R.mines.push({ id: 0, x: e.x, o: R.shot ? R.shot.m.by : 0 }); sfx.tick(); for (let k = 0; k < 6; k++) R.fx.push({ k: 'spark', x: e.x, y: e.y - 4, vx: (Math.random() - .5) * 120, vy: -Math.random() * 100, life: 0, max: .5, size: 2.5, col: '#ffb020', g: 400 }); return; }
   if (e.split) { R.fx.push({ k: 'flash', x: e.x, y: e.y, r: 30, life: 0, max: .2 }); sfx.tick(); return; }
   boom(e.x, e.y, e.r);
   for (const [i, dmg] of e.hits) {
@@ -492,6 +500,13 @@ function render() {
   if (ox > 0) { const m = ox / sc + 1; g.drawImage(terrCv, 0, 0, 1 * terrK, H * terrK, -m, 0, m, H); g.drawImage(terrCv, (W - 1) * terrK, 0, 1 * terrK, H * terrK, W, 0, m, H); }
   g.drawImage(terrCv, 0, 0, W, H);
   for (const k of R.crates) drawCrate(g, k);
+  for (const q of R.mines) { // pasti: plochý disk s blikajícím světlem (tvoje zeleně, soupeřovy červeně)
+    const gy = P.groundAt(R.h, q.x), mineOwn = q.o === me, bl = .5 + .5 * Math.sin(R.t * 6 + q.x);
+    g.save(); g.translate(q.x, gy); g.scale(1.35, 1.35); g.fillStyle = '#3a3f4a'; g.strokeStyle = '#161922'; g.lineWidth = 2; g.beginPath(); g.ellipse(0, -3, 13, 6, 0, 0, 6.283); g.fill(); g.stroke();
+    g.fillStyle = '#5a6272'; g.beginPath(); g.ellipse(0, -5, 8, 3, 0, 0, 6.283); g.fill();
+    g.fillStyle = mineOwn ? `rgba(110,255,130,${.4 + .6 * bl})` : `rgba(255,70,60,${.4 + .6 * bl})`; g.beginPath(); g.arc(0, -8, 2.6, 0, 6.283); g.fill();
+    g.globalCompositeOperation = 'lighter'; g.globalAlpha = .35 * bl; g.beginPath(); g.arc(0, -8, 9, 0, 6.283); g.fill(); g.restore();
+  }
   for (let i = 0; i < 2; i++) if (R.tk[i].dead) drawTank(g, R.tk[i], i);
   for (let i = 0; i < 2; i++) if (!R.tk[i].dead) drawTank(g, R.tk[i], i);
   // značka aktivního hráče

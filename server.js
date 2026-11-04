@@ -116,7 +116,7 @@ function keyOf(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-const TANK_AMMO_IDS = ['big', 'triple', 'bounce', 'roller', 'laser', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
+const TANK_AMMO_IDS = ['big', 'triple', 'bounce', 'roller', 'laser', 'trap', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
 function cleanTank(t) {
   t = t && typeof t === 'object' ? t : {};
   const n = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);

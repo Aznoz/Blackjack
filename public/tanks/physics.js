@@ -10,6 +10,7 @@ export const DT = 1 / 120;        // krok simulace (s); do dráhy se ukládá ka
 export const TANK_R = 30;         // poloměr zásahu tanku
 export const TANK_HY = 18;        // střed tanku je takhle vysoko nad zemí
 export const MAX_HP = 100;
+export const TRAP_R = 22;          // soupeř, který se přiblíží k pasti na tuhle vzdálenost, ji spustí
 export const FUEL_MAX = 190;      // kolik pixelů smí tank za tah ujet
 export const DRIVE_SPEED = 72;    // px/s
 export const SLOPE_MAX = 1.7;     // nejstrmější svah, který tank vyjede (změna výšky / vodorovná vzdálenost)
@@ -25,6 +26,7 @@ export const WEAPONS = {
   bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',                         r: 44,  dmg: 34, col: '#7dff9a', price: 300,  pack: 3, max: 6, lvl: 3, bounces: 2, selfDmg: 3 },
   roller:  { id: 'roller',  name: 'Kutálející granát', desc: 'Po dopadu se kutálí po zemi (z kopce rychleji) a vybuchne přesně 3 s po výstřelu. Zastaví se u tanku.', r: 56, dmg: 42, col: '#9be15d', price: 340, pack: 3, max: 6, lvl: 4, roll: true, fuse: 3, selfDmg: 6, fuelPen: 0.5 },
   laser:   { id: 'laser',   name: 'Laser',             desc: 'Střílí úplně rovně skrz kopce i překážky (síla se ignoruje) a prvnímu tanku v cestě vždy dá pevných 20 životů. Terén neničí.', r: 0, dmg: 20, col: '#ff4de1', price: 420, pack: 3, max: 6, lvl: 7, laser: true, fuelPen: 0.3 },
+  trap:    { id: 'trap',    name: 'Past',              desc: 'Dopadne na zem a zůstane tam. Když přes ni přejede soupeř, ubere mu 25 životů a past zmizí. Na hřišti máš nejvíc 3 pasti.', r: 0, dmg: 25, col: '#ffb020', price: 300, pack: 3, max: 6, lvl: 9, trap: true, cap: 3, fuelPen: 0.2 },
   cluster: { id: 'cluster', name: 'Kazeta',            desc: 'Ve vrcholu dráhy se rozpadne na 5 menších bomb.',                  r: 0,   dmg: 0,  col: '#d58cff', price: 360,  pack: 3, max: 6, lvl: 4, split: { n: 5, r: 30, dmg: 20 }, selfDmg: 4 },
   sniper:  { id: 'sniper',  name: 'Odstřelovač',       desc: 'Rychlá, skoro přímá střela, vítr ji sotva ovlivní. Malý kráter, silný zásah.', r: 24, dmg: 58, col: '#f2f2f2', price: 320, pack: 3, max: 6, lvl: 5, vmul: 1.25, gmul: 0.55, wmul: 0.3, fuelPen: 0.5 },
   nuke:    { id: 'nuke',    name: 'Atomovka',          desc: 'Obrovský výbuch. Dej si pozor, ať nezasáhne i tebe.',              r: 120, dmg: 80, col: '#ff3b3b', price: 900,  pack: 1, max: 1, lvl: 6, selfDmg: 12, fuelPen: 0.6, cd: 1 },
@@ -47,7 +49,7 @@ export function consOf(w) {
   if (w.cd) out.push(w.cd === 1 ? 'další tah se zbraň nabíjí' : `další ${w.cd} tahy se zbraň nabíjí`);
   return out.length ? out.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.' : '';
 }
-export const ORDER = ['std', 'big', 'triple', 'bounce', 'roller', 'laser', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
+export const ORDER = ['std', 'big', 'triple', 'bounce', 'roller', 'laser', 'trap', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
 export const COLORS = [
   { c: '#f5c518', name: 'Žlutá', lvl: 1 }, { c: '#4fd8ff', name: 'Azurová', lvl: 1 }, { c: '#6ee06a', name: 'Zelená', lvl: 1 },
   { c: '#ff5a52', name: 'Červená', lvl: 2 }, { c: '#b07cff', name: 'Fialová', lvl: 3 }, { c: '#ff7bc0', name: 'Růžová', lvl: 4 },
@@ -169,7 +171,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
   const a0 = ang * Math.PI / 180, v = pw * VSCALE * (wp.vmul || 1);
   const [px, py] = muzzleOf(h, me.x, ang);
   const ns = wp.shots || 1; const offs = ns > 1 ? Array.from({ length: ns }, (_, i) => (i - (ns - 1) / 2) * wp.spread) : [0];
-  let live = offs.map((o) => { const a = a0 + o * Math.PI / 180; return { x: px, y: py, vx: Math.cos(a) * v, vy: -Math.sin(a) * v, bounces: wp.bounces || 0, split: wp.split || null, roll: !!wp.roll, fuse: wp.fuse ? Math.round(wp.fuse * 120) : 0, r: wp.r, dmg: wp.dmg, gm: wp.gmul || 1, wm: wp.wmul ?? 1, t0: 0, age: 0, pts: dry ? null : [[Math.round(px), Math.round(py)]] }; });
+  let live = offs.map((o) => { const a = a0 + o * Math.PI / 180; return { x: px, y: py, vx: Math.cos(a) * v, vy: -Math.sin(a) * v, bounces: wp.bounces || 0, split: wp.split || null, trap: !!wp.trap, roll: !!wp.roll, fuse: wp.fuse ? Math.round(wp.fuse * 120) : 0, r: wp.r, dmg: wp.dmg, gm: wp.gmul || 1, wm: wp.wmul ?? 1, t0: 0, age: 0, pts: dry ? null : [[Math.round(px), Math.round(py)]] }; });
   const paths = [], ex = [], dmg = new Array(tanks.length).fill(0);
   let tick = 0; const MAXT = 120 * 14;
   const tms = () => Math.round(tick * 1000 / 120);
@@ -224,6 +226,13 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
       if (p.bounces > 0 && (p.x < 0 || p.x > W - 1)) { p.x = p.x < 0 ? 0 : W - 1; p.vx = -p.vx * 0.6; }   // odrážeč se odráží i od krajů světa
       if (p.x < -250 || p.x > W + 250 || p.y > H + 400) { finish(p, 'out', p.x, p.y); continue; }
       if (p.x >= 0 && p.x < W && p.y >= h[xi(p.x)]) {
+        if (p.trap) { // past: zůstane ležet; když dopadne soupeři přímo pod nohy, spustí se hned
+          const gy = h[xi(p.x)], tx = Math.round(p.x); finish(p, 'trap', p.x, gy);
+          let vic = -1; for (let i = 0; i < tanks.length; i++) if (i !== si && tanks[i].hp > 0 && Math.abs(tanks[i].x - tx) < TRAP_R) vic = i;
+          const e = { t: tms(), x: tx, y: Math.round(gy), r: 0, hits: [], cr: [] };
+          if (vic >= 0) { e.hits.push([vic, p.dmg]); dmg[vic] += p.dmg; if (!dry) tanks[vic].hp = Math.max(0, tanks[vic].hp - p.dmg); } else e.trap = true;
+          ex.push(e); continue;
+        }
         if (p.roll) { p.rolling = true; p.s = Math.max(-300, Math.min(300, p.vx * 0.5)); p.y = h[xi(p.x)] - 6; next.push(p); continue; }
         if (p.bounces > 0) { // odraz od svahu
           const gy = h[xi(p.x)], gx = (h[xi(p.x + 3)] - h[xi(p.x - 3)]) / 6, ln = Math.hypot(gx, 1), nx = gx / ln, ny = -1 / ln;
@@ -239,6 +248,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
       for (let i = 0; i < tanks.length; i++) {
         const tk = tanks[i]; if (tk.hp <= 0) continue;
         if (i === si && p.age < 40) continue;
+        if (p.trap) continue;                                       // past v letu tanky ignoruje, dopadne až na zem
         if (p.tcool && tick < p.tcool) continue;                       // vlastní tank hned po výstřelu nepočítáme
         if (Math.hypot(p.x - tk.x, p.y - (groundAt(h, tk.x) - TANK_HY)) < TANK_R) { hit = true; break; }
       }

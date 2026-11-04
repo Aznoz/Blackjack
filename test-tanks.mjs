@@ -58,6 +58,13 @@ assert.equal(fs.readFileSync('./tanks/physics.js', 'utf8'), fs.readFileSync('./p
     const up = P.simulate({ h: flat.slice(), tanks: tk(), wind: 0 }, 0, 80, 50, 'laser'); assert.equal(up.ex.length, 0, 'do nebe nic netrefí');
     assert.ok(P.previewPath(flat, 200, 0, 50, 0, 40, 3, 'laser').length > 5);
   }
+  { // past: zůstane ležet; přímo pod soupeřem se spustí hned
+    const flat = new Int16Array(P.W).fill(500);
+    const r = P.simulate({ h: flat.slice(), tanks: [{ x: 200, hp: 100 }, { x: 1500, hp: 100 }], wind: 0 }, 0, 45, 40, 'trap');
+    assert.ok(r.ex.length === 1 && r.ex[0].trap && r.ex[0].hits.length === 0 && r.ex[0].r === 0, 'past jen leží');
+    const r2 = P.simulate({ h: flat.slice(), tanks: [{ x: 200, hp: 100 }, { x: r.ex[0].x + 5, hp: 100 }], wind: 0 }, 0, 45, 40, 'trap');
+    assert.deepEqual(r2.ex[0].hits, [[1, 25]]); assert.ok(!r2.ex[0].trap);
+  }
   assert.equal(P.levelOf(0), 1); assert.ok(P.levelOf(P.xpFor(5)) === 5); assert.equal(P.levelOf(1e9), P.MAX_LEVEL);
 }
 
@@ -217,6 +224,22 @@ function findHit(room, i, w = 'std') {
   a.say({ t: 'drive', d: dd }); await until(() => a.all('note').some((n) => /nejvíc 1/.test(n.msg))); a.say({ t: 'drive', d: 0 });
   assert.ok(room.crates.some((c) => c.id === 77), 'bedna zůstane, když nemůžeš nést víc'); assert.ok(!room.tanks[mine].crate.nuke);
   a.say({ t: 'leave' }); b.say({ t: 'leave' });
+}
+
+// --- past: zůstane ležet, soupeř na ni najede (−25), vlastní past nic nedělá
+{
+  const m = online(); const { a, b, room } = m; const s = a.last('state'); const i = s.turn; const cu = i === s.you ? a : b; const ot = cu === a ? b : a;
+  room.mines.length = 0; room.tanks[i].crate.trap = 3; room.tanks[i].lock = {};
+  cu.say({ t: 'fire', a: i === 0 ? 55 : 125, p: 40, w: 'trap' });
+  const sh = await until(() => cu.last('shot')); assert.ok(sh.ex.some((e) => e.trap), 'past dopadla na zem');
+  assert.equal(room.mines.length, 1); assert.equal(room.mines[0].o, i);
+  await until(() => { const st = ot.last('state'); return st.turn === 1 - i && st.phase === 'play' && st.mines.length === 1; });
+  const j = 1 - i, dd = j === 0 ? 1 : -1;
+  room.mines[0].x = room.tanks[j].x + dd * 70; room.mines.push({ id: 901, x: room.tanks[j].x + dd * 30, o: j });   // dvě pasti: první je soupeřova vlastní
+  const hp0 = room.tanks[j].hp; ot.say({ t: 'drive', d: dd });
+  const mm = await until(() => ot.last('mine')); ot.say({ t: 'drive', d: 0 });
+  assert.equal(mm.dmg, 25); assert.equal(room.tanks[j].hp, hp0 - 25); assert.deepEqual(room.mines.map((q) => q.id), [901], 'vlastní past zůstala, cizí zmizela');
+  cu.say({ t: 'leave' }); ot.say({ t: 'leave' });
 }
 
 // --- výhra online: +900 / −300, XP, výhry; podlaha zůstatku
