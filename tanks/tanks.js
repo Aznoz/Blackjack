@@ -8,9 +8,14 @@ const { W, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX, DRIVE_SPEED, SLOPE_MAX, STE
 
 const S = Number(process.env.TANKS_SCALE) > 0 ? Number(process.env.TANKS_SCALE) : 1;   // jen pro testy: zrychlení časovačů
 const ms = (n) => Math.max(5, Math.round(n * S));
-export const WIN_COINS = 900;                         // výhra online (oba hráči mají účet)
-export const LOSE_COINS = 300;                        // prohra online (zůstatek neklesne pod minimum serveru)
-export const BOT_REWARDS = { 1: 150, 2: 300, 3: 500 };   // výhra nad botem dané úrovně (prohra se neúčtuje)
+// Tankové souboje mají vlastní coiny (oddělené od coinů portálu), uložené v účtu u postupu (`tank.coins`).
+export const START_COINS = 300;                        // s tolika coiny hráč začíná
+export const WIN_COINS = 200;                          // výhra online
+export const LOSE_COINS = 60;                          // prohra online: menší odměna (útěcha), coiny se nikdy neodečítají
+export const BOT_REWARDS = { 1: 100, 2: 160, 3: 240 };   // výhra nad botem dané úrovně
+export const BOT_LOSE = { 1: 30, 2: 45, 3: 60 };       // prohra s botem
+export const STREAK_BONUS = 40, STREAK_CAP = 5;        // za každou další výhru v řadě +40 coinů navíc, nejvíc +200 (od 6. výhry v řadě)
+const REWARDS = { win: WIN_COINS, lose: LOSE_COINS, botWin: BOT_REWARDS, botLose: BOT_LOSE, streakBonus: STREAK_BONUS, streakCap: STREAK_CAP };
 export const BOT_NAMES = { 1: 'Bot Rekrut', 2: 'Bot Seržant', 3: 'Bot Generál' };
 const BOT_XP = { 1: 40, 2: 70, 3: 110 };
 const MIN_SHOTS = 2;                                  // coiny jen když každý hráč vystřelil aspoň 2×
@@ -32,6 +37,8 @@ export function tankOf(acc) {
   if (!t || typeof t !== 'object') t = acc.tank = {};
   t.xp = Math.max(0, Math.min(1e7, Math.floor(Number(t.xp) || 0)));
   t.wins = Math.max(0, Math.floor(Number(t.wins) || 0)); t.losses = Math.max(0, Math.floor(Number(t.losses) || 0));
+  t.coins = Number.isFinite(t.coins) ? Math.max(0, Math.min(1e9, Math.floor(t.coins))) : START_COINS;
+  t.streak = Math.max(0, Math.floor(Number(t.streak) || 0)); t.best = Math.max(t.streak, Math.floor(Number(t.best) || 0));
   t.color = Number.isInteger(t.color) && t.color >= 0 && t.color < COLORS.length ? t.color : 0;
   if (!t.ammo || typeof t.ammo !== 'object') t.ammo = {};
   for (const id of Object.keys(t.ammo)) { const w = WEAPONS[id]; if (!w || w.inf) { delete t.ammo[id]; continue; } if (t.ammo[id] > w.max) { t.ammo[id] = w.max; } } // starší účty s víc kusy než dnešní strop se srazí na max
@@ -40,14 +47,13 @@ export function tankOf(acc) {
 const owned = (acc, w) => (acc ? (tankOf(acc).ammo[w] | 0) : 0);
 const levelOfAcc = (acc) => (acc ? P.levelOf(tankOf(acc).xp) : 1);
 const dirty = () => { try { deps && deps.markDirty(); } catch { /* nic */ } };
-const notify = (acc) => { try { deps && deps.notifyBalance(acc); } catch { /* nic */ } };
 
 function profileOf(acc, linked) {
   const t = tankOf(acc); const lvl = P.levelOf(t.xp);
   return {
-    account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, balance: acc.balance,
+    account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, coins: t.coins, streak: t.streak, best: t.best,
     tank: { xp: t.xp, lvl, from: P.xpFor(lvl), next: lvl >= P.MAX_LEVEL ? null : P.xpFor(lvl + 1), wins: t.wins, losses: t.losses, color: t.color, ammo: { ...t.ammo } },
-    win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS,
+    rewards: REWARDS,
   };
 }
 function identify(msg) {
@@ -59,7 +65,7 @@ function identify(msg) {
 export function api(action, body) {
   const bad = (status, error) => ({ status, json: { error } });
   const ident = identify(body || {});
-  if (action === 'me') return { status: 200, json: ident ? profileOf(ident.acc, ident.linked) : { account: false, win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS } };
+  if (action === 'me') return { status: 200, json: ident ? profileOf(ident.acc, ident.linked) : { account: false, rewards: REWARDS } };
   if (!ident) return bad(401, 'Nejdřív se přihlas (účet se vytvoří sám při otevření portálu).');
   const acc = ident.acc; const t = tankOf(acc);
   if (action === 'buy') {
@@ -67,9 +73,9 @@ export function api(action, body) {
     if (!w || !w.price) return bad(400, 'Tohle se nedá koupit.');
     if (levelOfAcc(acc) < w.lvl) return bad(403, `Odemkne se na úrovni ${w.lvl}.`);
     if ((t.ammo[w.id] | 0) + w.pack > w.max) return bad(409, `${w.name}: u sebe smíš mít nejvíc ${w.max} ks.`);
-    if (acc.balance < w.price) return bad(402, 'Nemáš dost coinů.');
-    acc.balance -= w.price; t.ammo[w.id] = (t.ammo[w.id] | 0) + w.pack; acc.lastSeen = now();
-    dirty(); notify(acc);
+    if (t.coins < w.price) return bad(402, 'Nemáš dost tankových coinů.');
+    t.coins -= w.price; t.ammo[w.id] = (t.ammo[w.id] | 0) + w.pack; acc.lastSeen = now();
+    dirty();
     return { status: 200, json: profileOf(acc, ident.linked) };
   }
   if (action === 'color') {
@@ -140,7 +146,7 @@ function view(room, pid) {
     wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x })), mines: (room.mines || []).map((q) => ({ id: q.id, x: q.x, o: q.o })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {}, lock: you >= 0 && room.tanks[you] ? { ...room.tanks[you].lock } : {},
     th: P.checksum(room.h), shots: room.tanks.map((k) => k.shots), result: room.result || null, rematch: [...room.rematch],
     dropIn: room.dropAt ? Math.max(0, room.dropAt - now()) : null, dropFor: room.dropFor, at: now(),
-    win: WIN_COINS, lose: LOSE_COINS, botRewards: BOT_REWARDS,
+    rewards: REWARDS,
   };
 }
 function publish(room) { for (const p of room.players) if (p.ws) send(p.ws, view(room, p.id)); }
@@ -296,7 +302,7 @@ function finish(room, r) {
   if (room.phase === 'over') return;
   clearTimers(room);
   room.phase = 'over';
-  const out = { winner: r.winner, reason: r.reason, coins: {}, xp: {}, noCoins: null };
+  const out = { winner: r.winner, reason: r.reason, coins: {}, bonus: {}, streak: {}, xp: {}, noCoins: null };
   const enough = room.tanks.every((k, i) => room.players[i].bot || k.shots >= MIN_SHOTS);
   const humans = room.players.map((p, i) => ({ p, i })).filter((o) => !o.p.bot && o.p.acc);
   for (const { p, i } of humans) {
@@ -308,13 +314,18 @@ function finish(room, r) {
   }
   if (r.winner != null) {
     if (!enough) out.noCoins = 'Zápas byl moc krátký, coiny se neúčtují.';
-    else if (room.bot) {
-      const wi = r.winner; const w = room.players[wi];
-      if (!w.bot && w.acc) { const before = w.acc.balance; w.acc.balance += BOT_REWARDS[room.bot]; out.coins[wi] = w.acc.balance - before; w.acc.lastSeen = now(); notify(w.acc); }
-    } else if (room.players.every((p) => p.acc)) {
-      const w = room.players[r.winner].acc, l = room.players[1 - r.winner].acc;
-      const wb = w.balance, lb = l.balance; w.balance = wb + WIN_COINS; l.balance = Math.max(deps ? deps.FLOOR : 0, lb - LOSE_COINS);
-      out.coins[r.winner] = w.balance - wb; out.coins[1 - r.winner] = l.balance - lb; notify(w); notify(l);
+    else for (const { p, i } of humans) { // výhra i prohra dávají coiny (prohra méně), série výher přidává bonus
+      const t = tankOf(p.acc); const won = r.winner === i;
+      if (won) {
+        t.streak++; t.best = Math.max(t.best, t.streak);
+        const bonus = STREAK_BONUS * Math.min(t.streak - 1, STREAK_CAP);
+        const amount = (room.bot ? BOT_REWARDS[room.bot] : WIN_COINS) + bonus;
+        t.coins = Math.min(1e9, t.coins + amount); out.coins[i] = amount; out.bonus[i] = bonus;
+      } else {
+        t.streak = 0; const amount = room.bot ? BOT_LOSE[room.bot] : LOSE_COINS;
+        t.coins = Math.min(1e9, t.coins + amount); out.coins[i] = amount; out.bonus[i] = 0;
+      }
+      out.streak[i] = t.streak; p.acc.lastSeen = now();
     }
   }
   dirty();

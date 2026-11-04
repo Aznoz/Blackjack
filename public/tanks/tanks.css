@@ -69,7 +69,8 @@ button { cursor: pointer; }
 .levels { display: flex; flex-direction: column; gap: 8px; }
 .lv { display: flex; align-items: center; justify-content: space-between; gap: 10px; text-align: left; background: rgba(255, 255, 255, .06); border: 2px solid var(--line); border-radius: 14px; padding: 12px 14px; }
 .lv:hover { border-color: var(--or); } .lv b { font-size: 17px; } .lv small { display: block; color: var(--mut); }
-.lv .rw { font-weight: 800; color: var(--yl); white-space: nowrap; }
+.lv .rw { font-weight: 800; color: var(--yl); white-space: nowrap; text-align: right; }
+.lv .rw small { display: block; font-size: 11px; font-weight: 600; color: var(--mut); }
 .slvl { display: flex; align-items: center; gap: 12px; }
 .colors { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; }
 .colors button { aspect-ratio: 1; border-radius: 12px; border: 3px solid transparent; position: relative; }
@@ -150,7 +151,8 @@ button { cursor: pointer; }
 .otitle { font-weight: 900; font-size: clamp(34px, 8vw, 52px); letter-spacing: .06em; color: var(--yl); text-shadow: 0 4px 0 #6a2209; }
 .otitle.lose { color: #ff8d88; } .otitle.draw { color: #c9d4ff; }
 .oreason { color: var(--mut); }
-.orow { display: flex; justify-content: center; gap: 12px; font-weight: 900; font-size: 22px; }
+.orow { display: flex; flex-direction: column; align-items: center; gap: 4px; font-weight: 900; font-size: 22px; }
+.orow .streak { font-size: 14px; font-weight: 800; color: #ffb347; }
 .orow .pos { color: var(--yl); } .orow .neg { color: #ff8d88; } .orow .nc { font-size: 14px; font-weight: 600; color: var(--mut); }
 .oxtxt { font-size: 13px; color: var(--mut); }
 .obtns { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; }

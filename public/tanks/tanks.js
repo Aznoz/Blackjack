@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=9';
+import * as P from './physics.js?v=10';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -113,11 +113,11 @@ async function refreshProfile() {
 function renderProfile() {
   if (!prof) return;
   const t = prof.tank;
-  $('prof').hidden = false; $('coinChip').hidden = false; $('coinNum').textContent = prof.balance.toLocaleString('cs-CZ');
+  $('prof').hidden = false; $('coinChip').hidden = false; $('coinNum').textContent = prof.coins.toLocaleString('cs-CZ');
   $('pLvl').textContent = t.lvl; $('pName').textContent = prof.name;
   const span = t.next ? t.next - t.from : 1; $('pXp').style.width = (t.next ? clamp((t.xp - t.from) / span, 0, 1) * 100 : 100) + '%';
   $('pXpTxt').textContent = t.next ? `${t.xp - t.from} / ${span} XP do úrovně ${t.lvl + 1}` : 'Maximální úroveň';
-  $('pRec').textContent = `${t.wins} výher · ${t.losses} proher`;
+  $('pRec').textContent = `${t.wins} výher · ${t.losses} proher` + (prof.streak >= 2 ? ` · série ${prof.streak}🔥` : '');
   $('nameField').hidden = !!prof.linked;
   if (!prof.linked && !$('name').value) $('name').value = LS.get('tanks_name') || prof.name || '';
   if ($('shopModal') && !$('shopModal').hidden) renderShop();
@@ -126,9 +126,9 @@ let meTries = 0;
 async function bootProfile() { const j = await refreshProfile(); if (!j && ++meTries <= 20) setTimeout(bootProfile, Math.min(5000, 1200 * meTries)); }
 
 function botMenu() {
-  const rw = (prof && prof.botRewards) || { 1: 150, 2: 300, 3: 500 };
+  const RW = (prof && prof.rewards) || { botWin: { 1: 100, 2: 160, 3: 240 }, botLose: { 1: 30, 2: 45, 3: 60 } }; const rw = RW.botWin, rl = RW.botLose;
   const L = [[1, 'Rekrut', 'Občas se netrefí a míří nepřesně.'], [2, 'Seržant', 'Trefuje poměrně přesně a sbírá bedny.'], [3, 'Generál', 'Skoro vždycky trefí. Hodně štěstí.']];
-  $('botLevels').innerHTML = L.map(([n, nm, ds]) => `<button class="lv" type="button" data-lv="${n}"><span><b>${nm}</b><small>${ds}</small></span><span class="rw"><span class="coin"></span> +${rw[n]}</span></button>`).join('');
+  $('botLevels').innerHTML = L.map(([n, nm, ds]) => `<button class="lv" type="button" data-lv="${n}"><span><b>${nm}</b><small>${ds}</small></span><span class="rw"><span class="coin"></span> +${rw[n]}<small>prohra +${rl[n]}</small></span></button>`).join('');
   openModal('botModal');
 }
 $('botLevels').addEventListener('click', (e) => { const b = e.target.closest('[data-lv]'); if (!b) return; $('botModal').hidden = true; startGame({ t: 'bot', level: +b.dataset.lv }); });
@@ -146,11 +146,11 @@ $('name').addEventListener('change', () => LS.set('tanks_name', $('name').value.
 function renderShop() {
   if (!prof) { $('shopLvl').textContent = 'Načítám účet…'; return; }
   const t = prof.tank;
-  $('shopCoins').textContent = prof.balance.toLocaleString('cs-CZ');
+  $('shopCoins').textContent = prof.coins.toLocaleString('cs-CZ');
   $('shopLvl').innerHTML = `<div class="plvl">${t.lvl}</div><div class="pinfo"><div class="pname">Úroveň ${t.lvl}</div><div class="xpbar"><i style="width:${t.next ? clamp((t.xp - t.from) / (t.next - t.from), 0, 1) * 100 : 100}%"></i></div><div class="psub"><span>${t.next ? `${t.xp - t.from} / ${t.next - t.from} XP` : 'maximum'}</span><span>${t.wins} výher</span></div></div>`;
   $('shopColors').innerHTML = COLORS.map((c, i) => `<button type="button" data-c="${i}" style="background:${c.c}" class="${t.color === i ? 'on' : ''} ${t.lvl < c.lvl ? 'lock' : ''}" data-l="Lv ${c.lvl}" aria-label="${c.name}" title="${c.name}${t.lvl < c.lvl ? ' (od úrovně ' + c.lvl + ')' : ''}"></button>`).join('');
   $('shopWeapons').innerHTML = ORDER.filter((id) => id !== 'std').map((id) => {
-    const w = WEAPONS[id]; const own = t.ammo[id] | 0; const lock = t.lvl < w.lvl; const full = own + w.pack > w.max; const poor = prof.balance < w.price;
+    const w = WEAPONS[id]; const own = t.ammo[id] | 0; const lock = t.lvl < w.lvl; const full = own + w.pack > w.max; const poor = prof.coins < w.price;
     const label = lock ? `Úroveň ${w.lvl}` : full ? 'Plno' : `Koupit ${w.pack}×<br><span class="coin"></span> ${w.price}`;
     return `<div class="wi${lock ? ' lock' : ''}"><div class="ic" style="background:${w.col}">${ICON[id]}</div><div><div class="nm">${w.name} <span class="own">· máš ${own}/${w.max}</span></div><div class="ds">${w.desc}${P.consOf(w) ? `<br><u>Nevýhoda: ${esc(P.consOf(w))}</u>` : ''}</div></div><button class="buy" type="button" data-b="${id}" ${lock || full || poor ? 'disabled' : ''}>${label}</button></div>`;
   }).join('');
@@ -681,7 +681,7 @@ function showOver() {
   $('over').hidden = false; $('tray').hidden = true;
   const ti = $('oTitle'); ti.textContent = draw ? 'REMÍZA' : won ? 'VÝHRA!' : 'PROHRA'; ti.className = 'otitle' + (draw ? ' draw' : won ? '' : ' lose');
   $('oReason').textContent = r.reason || '';
-  const c = r.coins && r.coins[me]; $('oCoins').innerHTML = c ? `<span class="${c > 0 ? 'pos' : 'neg'}"><span class="coin"></span> ${c > 0 ? '+' : '−'}${Math.abs(c)}</span>` : (r.noCoins ? `<span class="nc">${esc(r.noCoins)}</span>` : '');
+  const c = r.coins && r.coins[me], bn = r.bonus && r.bonus[me], sk = r.streak && r.streak[me]; $('oCoins').innerHTML = c ? `<span class="pos"><span class="coin"></span> +${c}</span>${bn ? `<span class="streak">🔥 série ${sk} výher · bonus +${bn}</span>` : ''}` : (r.noCoins ? `<span class="nc">${esc(r.noCoins)}</span>` : '');
   const x = r.xp && r.xp[me]; $('oXpTxt').textContent = x ? `+${x.gain} XP${x.up ? ' · NOVÁ ÚROVEŇ ' + x.lvl + '!' : ''}` : '';
   $('oXpBar').style.width = '0%';
   if (draw) {} else if (won) sfx.win(); else sfx.lose();

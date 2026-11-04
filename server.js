@@ -122,7 +122,9 @@ function cleanTank(t) {
   const n = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);
   const ammo = {};
   for (const id of TANK_AMMO_IDS) { const c = n(t.ammo && t.ammo[id], 20); if (c) ammo[id] = c; }
-  return { xp: n(t.xp, 1e7), wins: n(t.wins, 1e6), losses: n(t.losses, 1e6), color: n(t.color, 15), ammo };
+  const out = { xp: n(t.xp, 1e7), wins: n(t.wins, 1e6), losses: n(t.losses, 1e6), color: n(t.color, 15), ammo, streak: n(t.streak, 1e5), best: n(t.best, 1e5) };
+  if (Number.isFinite(t.coins)) out.coins = n(t.coins, 1e9); // bez `coins` začíná hráč na startovních 300 (viz tanks/tanks.js)
+  return out;
 }
 
 function makeAccount(key, d = {}) {

@@ -84,20 +84,22 @@ const until = async (f, ms = 8000) => { const t0 = Date.now(); while (Date.now()
 
 {
   let r = T.api('me', { token: TX }); assert.equal(r.json.account, false);
-  r = T.api('me', { token: T1 }); assert.equal(r.status, 200); assert.equal(r.json.tank.lvl, 1); assert.equal(r.json.tank.xp, 0);
-  r = T.api('buy', { token: T1, id: 'big' }); assert.equal(r.status, 200); assert.equal(r.json.tank.ammo.big, 3); assert.equal(accs[T1].balance, 5000 - 240);
+  r = T.api('me', { token: T1 }); assert.equal(r.status, 200); assert.equal(r.json.tank.lvl, 1); assert.equal(r.json.tank.xp, 0); assert.equal(r.json.coins, 300, 'start na 300 tankových coinech'); assert.equal(r.json.streak, 0);
+  r = T.api('buy', { token: T1, id: 'big' }); assert.equal(r.status, 200); assert.equal(r.json.tank.ammo.big, 3); assert.equal(r.json.coins, 300 - 240); assert.equal(accs[T1].balance, 5000, 'portálový zůstatek se nemění');
   assert.equal(T.api('buy', { token: T1, id: 'triple' }).status, 403, 'trojitá salva se odemyká na úrovni 2');
   assert.equal(T.api('buy', { token: T1, id: 'std' }).status, 400);
   assert.equal(T.api('buy', { token: TX, id: 'big' }).status, 401);
+  assert.equal(T.api('buy', { token: T1, id: 'big' }).status, 402, 'po prvním nákupu zbývá 60 coinů');
+  T.tankOf(accs[T1]).coins = 5000;
   for (let i = 0; i < 2; i++) assert.equal(T.api('buy', { token: T1, id: 'big' }).status, 200);
   assert.equal(T.api('buy', { token: T1, id: 'big' }).status, 409, 'strop 9 kusů u těžké bomby');
-  assert.equal(T.api('buy', { token: T3, id: 'big' }).status, 402, 'nedostatek coinů');
+  T.tankOf(accs[T3]).coins = 100; assert.equal(T.api('buy', { token: T3, id: 'big' }).status, 402, 'nedostatek coinů');
   assert.equal(T.api('color', { token: T1, c: 3 }).status, 403); assert.equal(T.api('color', { token: T1, c: 99 }).status, 400);
   assert.equal(T.api('color', { token: T1, c: 2 }).json.tank.color, 2);
   T.tankOf(accs[T1]).xp = P.xpFor(6);
   assert.equal(T.api('buy', { token: T1, id: 'nuke' }).status, 200); assert.equal(T.api('buy', { token: T1, id: 'nuke' }).status, 409, 'atomovku máš u sebe nejvíc 1×');
   assert.equal(T.api('color', { token: T1, c: 5 }).status, 200);
-  assert.ok(dirty > 0 && notified.includes('Honza'));
+  assert.ok(dirty > 0);
   accs[T1] = mk('Honza', 5000); accs[T2] = mk('Eva', 5000); accs[T3] = mk('Chudák', 150);
 }
 
@@ -247,14 +249,15 @@ function findHit(room, i, w = 'std') {
   accs[T1] = mk('Honza', 5000); accs[T2] = mk('Eva', 150);
   const m = online(); const { a, b, room } = m; const s = a.last('state');
   const w = s.turn, cw = w === s.you ? a : b; const wacc = w === s.you ? accs[T1] : accs[T2], lacc = w === s.you ? accs[T2] : accs[T1];
-  const wb = wacc.balance, lb = lacc.balance;
+  const wtk = T.tankOf(wacc), ltk = T.tankOf(lacc); wtk.streak = 2; ltk.streak = 4; const wb = wtk.coins, lb = ltk.coins, bal0 = [wacc.balance, lacc.balance];
   room.tanks[1 - w].hp = 1; room.tanks[0].shots = room.tanks[1].shots = 2;
   const hit = findHit(room, w); assert.ok(hit, 'existuje zásah');
   cw.say({ t: 'fire', a: hit.a, p: hit.pw, w: 'std' });
   const over = await until(() => { const x = a.last('state'); return x.phase === 'over' && x; });
-  assert.equal(over.result.winner, w); assert.ok(over.result.coins[w] === 900);
-  assert.equal(wacc.balance, wb + 900); assert.equal(lacc.balance, Math.max(100, lb - 300));
-  assert.ok(notified.length > 0 && T.tankOf(wacc).wins === 1 && T.tankOf(lacc).losses === 1 && T.tankOf(wacc).xp > 0 && T.tankOf(lacc).xp > 0);
+  assert.equal(over.result.winner, w); assert.equal(over.result.coins[w], 200 + 80, 'výhra +200 a bonus za 3. výhru v řadě +80'); assert.equal(over.result.bonus[w], 80); assert.equal(over.result.streak[w], 3);
+  assert.equal(wtk.coins, wb + 280); assert.equal(ltk.coins, lb + 60, 'prohra dává méně, ale dává'); assert.equal(over.result.coins[1 - w], 60); assert.equal(ltk.streak, 0, 'prohra zruší sérii'); assert.equal(wtk.best, 3);
+  assert.deepEqual([wacc.balance, lacc.balance], bal0, 'portálové coiny se nemění');
+  assert.ok(T.tankOf(wacc).wins === 1 && T.tankOf(lacc).losses === 1 && T.tankOf(wacc).xp > 0 && T.tankOf(lacc).xp > 0);
   assert.equal(over.result.xp[w].gain, T.tankOf(wacc).xp);
   // odveta
   a.say({ t: 'rematch' }); assert.equal(a.last('state').phase, 'over'); b.say({ t: 'rematch' });
@@ -271,19 +274,19 @@ function findHit(room, i, w = 'std') {
   assert.equal(b2.last('state').you, b.last('state').you);
   b2.close(); room.tanks[0].shots = 1; room.tanks[1].shots = 1;
   const ov = await until(() => { const x = a.last('state'); return x.phase === 'over' && x; }, 3000);
-  assert.equal(ov.result.winner, a.last('state').you); assert.ok(ov.result.noCoins, 'moc krátký zápas'); assert.equal(accs[T1].balance, 5000);
+  assert.equal(ov.result.winner, a.last('state').you); assert.ok(ov.result.noCoins, 'moc krátký zápas'); assert.equal(T.tankOf(accs[T1]).coins, 300);
   a.say({ t: 'leave' });
 }
 { // vzdání po dostatečném počtu výstřelů
   const m = online(); const { a, b, room } = m; room.tanks[0].shots = room.tanks[1].shots = 2;
   const bb = b.last('state').you; const ab = a.last('state').you;
   b.say({ t: 'leave' });
-  const ov = a.last('state'); assert.equal(ov.phase, 'over'); assert.equal(ov.result.winner, ab); assert.ok(ov.result.coins[ab] === 900);
+  const ov = a.last('state'); assert.equal(ov.phase, 'over'); assert.equal(ov.result.winner, ab); assert.ok(ov.result.coins[ab] >= 200);
   assert.notEqual(bb, ab);
 }
 { // žádný výstřel a odchod = místnost zmizí bez účtování
-  const m = online(); const { a, b, code } = m; const bal = accs[T1].balance;
-  b.say({ t: 'leave' }); assert.ok(!T.rooms.has(code)); assert.equal(accs[T1].balance, bal);
+  const m = online(); const { a, b, code } = m; const bal = T.tankOf(accs[T1]).coins;
+  b.say({ t: 'leave' }); assert.ok(!T.rooms.has(code)); assert.equal(T.tankOf(accs[T1]).coins, bal);
 }
 { // zmeškané tahy → prohra
   const m = online(); const { a, b, room, code } = m;
@@ -318,7 +321,7 @@ function findHit(room, i, w = 'std') {
   a.say({ t: 'leave' }); assert.ok(!T.rooms.has(st.code), 'bot hra po odchodu zmizí');
 }
 { // výhra nad botem: +odměna dle úrovně, prohra bez ztráty
-  accs[T1] = mk('Honza', 5000); const before = accs[T1].balance;
+  accs[T1] = mk('Honza', 5000); const before = T.tankOf(accs[T1]).coins;
   const a = client(); a.say({ t: 'bot', level: 3, token: T1, name: 'Honza' });
   const st = a.last('state'); const room = T.rooms.get(st.code); const me = st.you, bot = 1 - me;
   room.tanks[me].shots = 2; room.tanks[bot].hp = 1;
@@ -326,12 +329,12 @@ function findHit(room, i, w = 'std') {
   if (room.turn !== me) { await until(() => room.turn === me && room.phase === 'play', 8000); }
   const hit = findHit(room, me); a.say({ t: 'fire', a: hit.a, p: hit.pw, w: 'std' });
   const ov = await until(() => { const x = a.last('state'); return x.phase === 'over' && x; });
-  assert.equal(ov.result.winner, me); assert.equal(accs[T1].balance, before + 500); assert.ok(T.tankOf(accs[T1]).xp >= 110);
+  assert.equal(ov.result.winner, me); assert.equal(T.tankOf(accs[T1]).coins, before + 240); assert.equal(ov.result.coins[me], 240); assert.equal(T.tankOf(accs[T1]).streak, 1); assert.equal(accs[T1].balance, 5000); assert.ok(T.tankOf(accs[T1]).xp >= 110);
   a.say({ t: 'rematch' }); await until(() => a.last('state').phase === 'play'); assert.equal(a.last('state').hp[me], 100);
   // prohra: bot nezabíjí zadarmo — člověk jen čeká, soupeř ho nesmí oškubat o coiny
-  room.tanks[me].hp = 1; const bal = accs[T1].balance;
+  room.tanks[me].hp = 1; room.tanks[me].shots = 2; const bal = T.tankOf(accs[T1]).coins;
   await until(() => room.phase === 'over', 20000);
-  assert.equal(room.result.winner === me, false); assert.equal(accs[T1].balance, bal, 'prohra s botem nestojí coiny');
+  assert.equal(room.result.winner === me, false); assert.equal(T.tankOf(accs[T1]).coins, bal + 60, 'prohra s botem 3. úrovně dá +60'); assert.equal(T.tankOf(accs[T1]).streak, 0);
   a.say({ t: 'leave' });
 }
 { // bot úrovně 3 trefuje hned: hráč nehraje, bot střílí
