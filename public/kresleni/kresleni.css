@@ -81,7 +81,7 @@ img.av { object-fit:cover; background:#222; }
 @keyframes beat { to { transform:scale(1.12) } }
 .timebar { height:6px; border-radius:6px; background:#0d0b26; margin:0 2px 8px; overflow:hidden; }
 .timebar i { display:block; height:100%; width:0; background:linear-gradient(90deg,var(--cyan),var(--pink)); border-radius:6px; }
-.cwrap { position:relative; width:100%; aspect-ratio:4/3; background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 8px 28px #0009, 0 0 0 3px #3a3570; touch-action:none; user-select:none; }
+.cwrap { -webkit-touch-callout:none; position:relative; width:100%; aspect-ratio:4/3; background:#fff; border-radius:14px; overflow:hidden; box-shadow:0 8px 28px #0009, 0 0 0 3px #3a3570; touch-action:none; user-select:none; }
 #cv { width:100%; height:100%; display:block; touch-action:none; }
 #pv { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
 .cwrap.draw #cv { cursor:crosshair; }
@@ -227,7 +227,7 @@ h2 { text-align:center; font-size:28px; margin:14px 0 4px; }
 
 /* mobil: hra je pevně rozložená na výšku viditelné části, stránka se neposouvá a klávesnice ji nerozhodí */
 @media (max-width:899px) {
-  html.ingame, html.ingame body { height:var(--app-h, 100dvh); overflow:hidden; overscroll-behavior:none; }
+  html.ingame, html.ingame body { height:var(--app-h, 100dvh); overflow:hidden; overscroll-behavior:none; touch-action:pan-x pan-y; }   /* bez pinch-zoomu stránky při dvou prstech */
   html.ingame body { position:fixed; left:0; right:0; top:var(--app-top, 0px); width:100%; min-height:0; }
   html.ingame #app { height:var(--app-h, 100dvh); display:flex; flex-direction:column; overflow:hidden; padding-bottom:calc(6px + env(safe-area-inset-bottom)); }
   html.ingame .top { flex:none; padding-top:calc(6px + env(safe-area-inset-top)); padding-bottom:2px; }
