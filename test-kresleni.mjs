@@ -305,5 +305,22 @@ await sleep(200);
 assert.equal(h.state.players.length, 8);
 assert.ok(many[7].msgs.some((m) => m.t === 'err' && /plná/.test(m.msg)), '9. hráč se nevejde');
 
+// --- 1v1: kreslíři se musí střídat, nikdy dvakrát za sebou (ani na přelomu kol)
+for (let rep = 0; rep < 6; rep++) {
+  const p1 = client('P1'), p2 = client('P2'); await Promise.all([p1.open, p2.open]);
+  p1.send({ t: 'create', name: 'P1' }); await p1.until((x) => x.phase === 'lobby');
+  p2.send({ t: 'join', code: p1.code, name: 'P2' }); await p1.until((x) => x.players.length === 2);
+  p1.send({ t: 'config', level: 'lehka', rounds: 3, drawSec: 40 }); await sleep(60);
+  p1.send({ t: 'start' });
+  const PP = {}; PP[p1.id] = p1; PP[p2.id] = p2; const seq = [];
+  for (let turn = 0; turn < 6; turn++) {
+    const want = turn + 1; const st = await p1.until((x) => x.phase === 'choose' && x.turnNo === want, 8000);
+    const d = PP[st.drawer], gsr = d === p1 ? p2 : p1; seq.push(st.drawer);
+    d.send({ t: 'pick', i: 0 }); await gsr.until((x) => x.phase === 'draw', 4000);
+    gsr.send({ t: 'chat', text: room(p1.code).entry.w }); // uhádne celé slovo
+  }
+  for (let i = 1; i < seq.length; i++) assert.notEqual(seq[i], seq[i - 1], '1v1: stejný kreslíř dvakrát za sebou: ' + seq.join(','));
+  for (const c of [p1, p2]) c.ws.close();
+}
 console.log('kreslení: všechny testy prošly ✓ (slov: ' + W.ALL.length + ')');
 process.exit(0);

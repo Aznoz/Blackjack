@@ -235,11 +235,20 @@ function nextTurn(room) {
     if (room.idx >= room.order.length) {
       room.round++;
       if (room.round > room.rounds) return finishGame(room, false);
-      room.order = active(room).map((p) => p.id); room.idx = 0;
+      // nové kolo: pořadí se znovu zamíchá, ale poslední kreslíř z minulého kola nesmí kreslit hned znovu (v 1v1 se tak hráči pravidelně střídají)
+      const prev = room.drawer;
+      room.order = shuffle(active(room).map((p) => p.id)); room.idx = 0;
+      if (room.order.length > 1 && room.order[0] === prev) room.order.push(room.order.shift());
       sys(room, `🏁 Začíná ${room.round}. kolo`, 'round');
     }
     const p = byId(room, room.order[room.idx]);
-    if (p && !p.left && p.connected) { room.drawer = p.id; break; }
+    if (p && !p.left && p.connected) {
+      // pojistka: nikdy dvakrát za sebou stejný kreslíř, když je k dispozici jiný přítomný hráč (např. po odchodu / návratu hráče uprostřed kola)
+      if (p.id === room.drawer && room.turns.length && live(room).some((q) => q.id !== p.id) && room.order.slice(room.idx + 1).some((id) => id !== p.id)) {
+        room.order.splice(room.idx, 1); room.order.push(p.id); room.idx--; continue;
+      }
+      room.drawer = p.id; break;
+    }
     if (!live(room).length) return pauseGame(room);
   }
   if (live(room).length < MIN_PLAYERS) return pauseGame(room);
