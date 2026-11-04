@@ -175,6 +175,12 @@ function findHit(room, i, w = 'std') {
   a.say({ t: 'leave' }); b.say({ t: 'leave' }); void ot;
 }
 
+// --- starý účet s 20 atomovkami se srazí na strop
+{
+  const acc = mk('Stary', 5000); acc.tank = { xp: 0, wins: 0, losses: 0, color: 0, ammo: { nuke: 20, big: 20, std: 5 } };
+  const t = T.tankOf(acc); assert.equal(t.ammo.nuke, 1); assert.equal(t.ammo.big, 9); assert.ok(!('std' in t.ammo));
+}
+
 // --- strop zbraní u sebe platí i pro bedny
 {
   accs[T1] = mk('Honza', 5000); T.tankOf(accs[T1]).ammo = { nuke: 1 };

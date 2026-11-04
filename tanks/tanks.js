@@ -34,6 +34,7 @@ export function tankOf(acc) {
   t.wins = Math.max(0, Math.floor(Number(t.wins) || 0)); t.losses = Math.max(0, Math.floor(Number(t.losses) || 0));
   t.color = Number.isInteger(t.color) && t.color >= 0 && t.color < COLORS.length ? t.color : 0;
   if (!t.ammo || typeof t.ammo !== 'object') t.ammo = {};
+  for (const id of Object.keys(t.ammo)) { const w = WEAPONS[id]; if (!w || w.inf) { delete t.ammo[id]; continue; } if (t.ammo[id] > w.max) { t.ammo[id] = w.max; } } // starší účty s víc kusy než dnešní strop se srazí na max
   return t;
 }
 const owned = (acc, w) => (acc ? (tankOf(acc).ammo[w] | 0) : 0);
