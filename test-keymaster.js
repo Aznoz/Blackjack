@@ -1,5 +1,5 @@
 'use strict';
-/** Test serverové části Key Master: start za 100, postup po patrech, odměny, ochrany, obnova kreditu. */
+/** Test serverové části Key Master: start za 100, jedna jízda = jedno zastavení v patře 1–3, odměny, ochrany, obnova kreditu. */
 process.env.TIME_SCALE = '0.04'; process.env.KM_RIG = '0'; // ostatní kontroly běží bez rigování, to se testuje zvlášť
 const { spawn } = require('child_process');
 const fs = require('fs'); const os = require('os'); const path = require('path'); const crypto = require('crypto');
@@ -12,11 +12,12 @@ const call = async (a, body) => { const r = await fetch(`http://127.0.0.1:${PORT
 (async () => {
   const createKeymaster = require('./keymaster');
   const { ITEMS } = require('./stacker');
-  // odehraje pokus s pevným „náhodným“ číslem: projde `levels` pater a pak vybere
+  // odehraje pokus s pevným „náhodným“ číslem: klíč zastaví v patře `levels` a odměnu vybere
+  const WAIT = [0, 60, 100, 160];   // minimální doba před zastavením v patře 1 / 2 / 3 (TIME_SCALE 0.04)
   const play = async (rv, levels, acc = { key: 'k', balance: 1000, lastSeen: 0 }) => {
     const s = createKeymaster({ resolveAccount: () => ({ acc }), markDirty() {}, notifyBalance() {}, TOKEN_RE: /.+/, rand: () => rv });
     const st = s.handle('start', { token: 'x' }); const playId = st.json.playId;
-    for (let t = 1; t <= levels; t++) { await sleep(t === 1 ? 60 : 60); const q = s.handle('stage', { token: 'x', playId, tier: t, hit: true }); if (q.status !== 200) return { q, acc, s, playId }; }
+    await sleep(WAIT[levels]); const q = s.handle('stage', { token: 'x', playId, tier: levels, hit: true }); if (q.status !== 200) return { q, acc, s, playId };
     await sleep(40);
     return { r: s.handle('claim', { token: 'x', playId }), acc, s, playId };
   };
@@ -32,7 +33,7 @@ const call = async (a, body) => { const r = await fetch(`http://127.0.0.1:${PORT
     const s = createKeymaster({ resolveAccount: () => ({ acc }), markDirty() {}, notifyBalance() {}, TOKEN_RE: /.+/ });
     for (let n = 0; n < 24; n++) {
       const lv = n % 2 ? 2 : 3; const pid = s.handle('start', { token: 'x' }).json.playId;
-      for (let t = 1; t <= lv; t++) { await sleep(55); s.handle('stage', { token: 'x', playId: pid, tier: t, hit: true }); }
+      await sleep(WAIT[lv]); s.handle('stage', { token: 'x', playId: pid, tier: lv, hit: true });
       await sleep(30); const rr = s.handle('claim', { token: 'x', playId: pid });
       check(rr.status === 200, 'claim ' + rr.status);
       if (lv === 2 && rr.json.won.item > 8) check(false, 'malá odměna mimo skupinu');
@@ -46,23 +47,28 @@ const call = async (a, body) => { const r = await fetch(`http://127.0.0.1:${PORT
     check(s.handle('claim', { token: 'x', playId: 1 }).status === 409, 'claim bez hry');
     let pid = s.handle('start', { token: 'x' }).json.playId;
     check(s.handle('stage', { token: 'x', playId: pid, tier: 1, hit: true }).status === 409, 'patro hned po startu (moc rychle)');
+    check(s.handle('stage', { token: 'x', playId: pid, tier: 3, hit: true }).status === 409, '3. patro hned po startu (moc rychle)');
     await sleep(60);
-    check(s.handle('stage', { token: 'x', playId: pid, tier: 2, hit: true }).status === 409, 'přeskočení 1. patra');
+    check(s.handle('stage', { token: 'x', playId: pid, tier: 3, hit: true }).status === 409, '3. patro před dojezdem ramena');
+    check(s.handle('stage', { token: 'x', playId: pid, tier: 4, hit: true }).status === 409, 'patro 4');
     check(s.handle('stage', { token: 'x', playId: pid, tier: 0, hit: true }).status === 409, 'patro 0');
     check(s.handle('stage', { token: 'x', playId: pid + 9, tier: 1, hit: true }).status === 409, 'cizí hra');
     check(s.handle('claim', { token: 'x', playId: pid }).status === 409, 'claim bez potvrzeného patra');
     let q = s.handle('stage', { token: 'x', playId: pid, tier: 1, hit: true }); check(q.status === 200 && q.json.hit && q.json.level === 1, '1. patro potvrzeno');
-    check(s.handle('stage', { token: 'x', playId: pid, tier: 1, hit: true }).status === 409, 'dvakrát totéž patro');
+    check(s.handle('stage', { token: 'x', playId: pid, tier: 1, hit: true }).status === 409, 'dvakrát zastavit jednu jízdu');
     check(s.handle('claim', { token: 'x', playId: pid }).status === 409, 'claim hned po patře (moc rychle)');
     await sleep(40);
     q = s.handle('claim', { token: 'x', playId: pid }); check(q.status === 200 && q.json.won.type === 'coin', 'claim po 1. patře');
     check(s.handle('claim', { token: 'x', playId: pid }).status === 409, 'dvojí vyplacení');
     check(s.handle('stage', { token: 'x', playId: pid, tier: 2, hit: true }).status === 409, 'stage po skončené hře');
+    // zastavení v 2. patře bez předchozího 1. patra je v pořádku (hráč si patro vybírá zastavením)
+    pid = s.handle('start', { token: 'x' }).json.playId; await sleep(110);
+    q = s.handle('stage', { token: 'x', playId: pid, tier: 2, hit: true }); check(q.status === 200 && q.json.hit && q.json.level === 2, 'rovnou 2. patro bez 1.: ' + JSON.stringify(q.json));
+    await sleep(40); q = s.handle('claim', { token: 'x', playId: pid }); check(q.status === 200 && q.json.won.type === 'small' && q.json.won.level === 2, 'odměna 2. patra');
     // netrefil: o všechno přicházíš
-    const before = acc.balance; pid = s.handle('start', { token: 'x' }).json.playId; await sleep(60);
-    s.handle('stage', { token: 'x', playId: pid, tier: 1, hit: true }); await sleep(80);
+    const before = acc.balance; pid = s.handle('start', { token: 'x' }).json.playId; await sleep(110);
     q = s.handle('stage', { token: 'x', playId: pid, tier: 2, hit: false });
-    check(q.status === 200 && q.json.lost && q.json.level === 1 && acc.balance === before - 100, 'netrefil 2. patro = nic: ' + JSON.stringify([q.json.lost, acc.balance, before]));
+    check(q.status === 200 && q.json.lost && q.json.level === 0 && acc.balance === before - 100, 'netrefil = nic: ' + JSON.stringify([q.json.lost, acc.balance, before]));
     check(s.handle('claim', { token: 'x', playId: pid }).status === 409, 'po prohře už nejde vybrat');
     // nová hra přepíše starou
     const pa = s.handle('start', { token: 'x' }).json.playId; const pb = s.handle('start', { token: 'x' }).json.playId; await sleep(60);
@@ -108,7 +114,7 @@ const call = async (a, body) => { const r = await fetch(`http://127.0.0.1:${PORT
   await sleep(40);
   r = await call('claim', { token: t, playId: pid }); check(r.s === 200 && r.j.won.type === 'coin' && r.j.balance === 4900 + r.j.won.amount, 'claim přes HTTP: ' + JSON.stringify(r.j.won));
   // věc z Key Masteru se prodá přes Stacker (stejný inventář)
-  const acc = await (async () => { for (let i = 0; i < 30; i++) { const p = (await call('start', { token: t })).j.playId; for (let k = 1; k <= 2; k++) { await sleep(70); await call('stage', { token: t, playId: p, tier: k, hit: true }); } await sleep(40); const c = await call('claim', { token: t, playId: p }); if (c.j.won && c.j.won.type === 'small' && c.j.won.need === 1) return c.j.won; } return null; })();
+  const acc = await (async () => { for (let i = 0; i < 30; i++) { const p = (await call('start', { token: t })).j.playId; await sleep(110); await call('stage', { token: t, playId: p, tier: 2, hit: true }); await sleep(40); const c = await call('claim', { token: t, playId: p }); if (c.j.won && c.j.won.type === 'small' && c.j.won.need === 1) return c.j.won; } return null; })();
   if (acc) { const sr = await fetch(`http://127.0.0.1:${PORT}/api/stacker/sell`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ token: t, item: acc.item, count: 1 }) }); check(sr.status === 200, 'věc z Key Masteru jde prodat v Obchodu: ' + sr.status); }
   // opuštěný pokus nesmí blokovat obnovu kreditu
   const ab = tok(); for (let i = 0; i < 52; i++) await call('start', { token: ab });

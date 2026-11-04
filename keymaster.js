@@ -3,8 +3,8 @@
  * Key Master: serverová část (peníze).
  * Hra sama (klíč jezdí po patře, hráč ho zastaví nad zámkem) běží v prohlížeči; server hlídá:
  *  - cenu pokusu (100 žetonů, strhne se při startu),
- *  - postup po patrech: patro N lze potvrdit jen po patře N-1 a nejdřív po minimální době,
- *  - odměnu: určuje ji server podle nejvyššího potvrzeného patra (1 = coiny, 2 = malá věc, 3 = velká věc),
+ *  - jednu souvislou jízdu klíče nahoru: hráč ho zastaví v patře, které chce (1–3), a server to potvrdí jednou (`stage`), nejdřív po minimální době dojezdu do toho patra,
+ *  - odměnu: určuje ji server podle patra, ve kterém se klíč trefil (1 = coiny, 2 = malá věc, 3 = velká věc); klient ji po trefě rovnou vybere (`claim`), žádné další potvrzování,
  *  - „rigování“ jako na skutečném automatu: i dobrý zásah může sklouznout (malá šance podle patra, a čím méně přesný zásah, tím větší).
  * Věcné odměny jsou stejné jako ve Stackeru a ukládají se do stejného inventáře (acc.items),
  * takže se prodávají ve stejném Obchodu.
@@ -21,8 +21,8 @@ const KEYMASTER = Object.freeze({
     { amount: 50, w: 45 }, { amount: 100, w: 40 }, { amount: 200, w: 30 }, { amount: 300, w: 20 },
     { amount: 500, w: 10 }, { amount: 1000, w: 4 }, { amount: 2000, w: 1 },
   ],
-  // nejkratší doba od začátku patra, než se dá zastavit klíč (pojezd klíče přes celé patro trvá déle)
-  MIN_TIER_MS: [0, Math.max(30, Math.round(700 * SC)), Math.max(30, Math.round(1100 * SC)), Math.max(30, Math.round(1100 * SC))],
+  // nejkratší doba od startu hry, než se dá klíč zastavit v daném patře (dojezd ramena k 1. / 2. / 3. patru trvá aspoň ~1,2 / 2,8 / 4,7 s, tady s rezervou)
+  MIN_TIER_MS: [0, Math.max(30, Math.round(700 * SC)), Math.max(30, Math.round(2000 * SC)), Math.max(30, Math.round(3500 * SC))],
   MIN_CLAIM_MS: Math.max(20, Math.round(350 * SC)),  // po poslední výhře chvíli trvá, než zámek cvakne
   MAX_PLAY_MS: 10 * 60 * 1000,
   // šance, že zásah, který prohlížeč nahlásil, klíč nakonec sklouzne z hrany dírky: base[patro] + (1 - přesnost) * edge (přesnost q 0..1, 1 = střed dírky)
@@ -109,7 +109,7 @@ module.exports = function createKeymaster({ resolveAccount, markDirty, notifyBal
       const play = active.get(acc.key);
       if (!play || play.id !== Number(body.playId)) return bad(409, 'Tahle hra už skončila.');
       const tier = Math.floor(Number(body.tier));
-      if (tier !== play.level + 1 || tier < 1 || tier > KEYMASTER.TIERS) return bad(409, 'Špatné patro.');
+      if (play.level !== 0 || !(tier >= 1 && tier <= KEYMASTER.TIERS)) return bad(409, 'Špatné patro.');   // jedna jízda = jedno zastavení
       const now = Date.now();
       if (now - play.at > KEYMASTER.MAX_PLAY_MS) { active.delete(acc.key); return bad(409, 'Hra vypršela.'); }
       if (now - play.stageAt < KEYMASTER.MIN_TIER_MS[tier]) return bad(409, 'Hra neproběhla v pořádku.');
@@ -124,7 +124,7 @@ module.exports = function createKeymaster({ resolveAccount, markDirty, notifyBal
         const refilled = topUp(acc);
         return { status: 200, json: state(acc, { lost: true, slip, level: play.level, refilled }) };
       }
-      play.level = tier; play.stageAt = now;
+      play.level = tier; play.stageAt = now;   // odměnu za toto patro si klient hned vybere (claim)
       return { status: 200, json: state(acc, { hit: true, level: tier }) };
     }
 
