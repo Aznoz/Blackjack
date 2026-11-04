@@ -1,0 +1,180 @@
+// TANKOVÉ SOUBOJE: sdílená fyzika (server i prohlížeč). Tenhle soubor je stejný v tanks/ (server) a public/tanks/ (klient),
+// aby kráter a dráha střely vyšly na obou stranách přesně stejně. Test (test-tanks.mjs) hlídá, že jsou identické.
+// Souřadnice: x doprava, y dolů, svět je W × H. Terén je výška povrchu h[x] (větší y = níž), kráter jen ubírá zem.
+
+export const W = 1600, H = 800;
+export const GRAV = 520;          // px/s²
+export const VSCALE = 8.8;        // síla 0–100 → počáteční rychlost (px/s)
+export const WIND_K = 7;          // vítr (−8…8) → zrychlení ve vodorovném směru (px/s²)
+export const DT = 1 / 120;        // krok simulace (s); do dráhy se ukládá každý druhý krok (60 bodů za vteřinu)
+export const TANK_R = 30;         // poloměr zásahu tanku
+export const TANK_HY = 18;        // střed tanku je takhle vysoko nad zemí
+export const MAX_HP = 100;
+export const FUEL_MAX = 190;      // kolik pixelů smí tank za tah ujet
+export const DRIVE_SPEED = 72;    // px/s
+export const SLOPE_MAX = 1.15;    // nejstrmější svah, který tank vyjede (změna výšky / vodorovná vzdálenost)
+export const MIN_GAP = 70;        // nejmenší vzdálenost mezi tanky
+export const EDGE = 46;           // tank nezajede blíž k okraji
+
+/** Zbraně. `price`/`pack`/`lvl` = obchod (cena za balíček kusů, od které úrovně); `std` je neomezená. */
+export const WEAPONS = {
+  std:     { id: 'std',     name: 'Granát',            desc: 'Základní náboj, neomezený.',                           r: 38,  dmg: 30, col: '#ffd23f', inf: true },
+  big:     { id: 'big',     name: 'Těžká bomba',       desc: 'Velký kráter a velká rána.',                           r: 68,  dmg: 48, col: '#ff7a3d', price: 240, pack: 3, lvl: 1 },
+  triple:  { id: 'triple',  name: 'Trojitá salva',     desc: 'Tři střely vedle sebe, hodí se na vzdálené cíle.',      r: 34,  dmg: 24, col: '#5ee1ff', price: 240, pack: 3, lvl: 2, shots: 3, spread: 6 },
+  bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',             r: 44,  dmg: 34, col: '#7dff9a', price: 300, pack: 3, lvl: 3, bounces: 2 },
+  cluster: { id: 'cluster', name: 'Kazeta',            desc: 'Ve vrcholu dráhy se rozpadne na 5 menších bomb.',      r: 0,   dmg: 0,  col: '#d58cff', price: 360, pack: 3, lvl: 4, split: { n: 5, r: 30, dmg: 20 } },
+  nuke:    { id: 'nuke',    name: 'Atomovka',          desc: 'Obrovský výbuch. Dej si pozor, ať nezasáhne i tebe.',  r: 120, dmg: 80, col: '#ff3b3b', price: 900, pack: 1, lvl: 6 },
+  repair:  { id: 'repair',  name: 'Opravárenská sada', desc: 'Vyléčí 35 životů a ukončí tah. Nestřílí.',             r: 0,   dmg: 0,  col: '#6cff6c', price: 200, pack: 2, lvl: 2, util: 'heal', heal: 35 },
+};
+export const ORDER = ['std', 'big', 'triple', 'bounce', 'cluster', 'nuke', 'repair'];
+export const COLORS = [
+  { c: '#f5c518', name: 'Žlutá', lvl: 1 }, { c: '#4fd8ff', name: 'Azurová', lvl: 1 }, { c: '#6ee06a', name: 'Zelená', lvl: 1 },
+  { c: '#ff5a52', name: 'Červená', lvl: 2 }, { c: '#b07cff', name: 'Fialová', lvl: 3 }, { c: '#ff7bc0', name: 'Růžová', lvl: 4 },
+  { c: '#dfe6ee', name: 'Bílá', lvl: 5 }, { c: '#3a4150', name: 'Černá', lvl: 7 },
+];
+export const MAX_LEVEL = 12;
+/** XP potřebné k dosažení úrovně n (úroveň 1 = 0). */
+export const xpFor = (n) => (n <= 1 ? 0 : 120 * (n - 1) * n / 2);
+export const levelOf = (xp) => { let n = 1; while (n < MAX_LEVEL && xp >= xpFor(n + 1)) n++; return n; };
+
+export function mulberry32(a) {
+  return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+}
+
+const xi = (v) => (v < 0 ? 0 : v > W - 1 ? W - 1 : Math.round(v));
+/** Na čem tank stojí: nejvyšší z bodů pod pásy (tank nezapadne do hrany). */
+export const groundAt = (h, x) => Math.min(h[xi(x - 15)], h[xi(x)], h[xi(x + 15)]);
+export const tiltAt = (h, x) => Math.atan2(h[xi(x + 17)] - h[xi(x - 17)], 34);
+const smooth = (t) => t * t * (3 - 2 * t);
+
+/** Náhodný terén: rovné okraje pro tanky a 1–3 kopce uprostřed. */
+export function genTerrain(seed) {
+  const r = mulberry32(seed >>> 0);
+  const h = new Int16Array(W);
+  const base = 560 + Math.round(r() * 30);
+  const hills = []; const nh = 1 + Math.floor(r() * 3);
+  for (let i = 0; i < nh; i++) hills.push({ c: 480 + r() * 640, w: 160 + r() * 220, a: 110 + r() * 170, flat: r() < 0.5 });
+  const waves = [];
+  for (let k = 1; k <= 4; k++) waves.push({ f: 1.5 + k * 1.9 + r() * 1.2, ph: r() * 6.283, a: 22 / k + r() * 6 });
+  for (let x = 0; x < W; x++) {
+    let y = base;
+    for (const hl of hills) {
+      const d = Math.abs(x - hl.c) / hl.w;
+      const bump = hl.flat ? smooth(Math.max(0, Math.min(1, (1.6 - d) / 0.9))) : smooth(Math.max(0, 1 - d));
+      y -= hl.a * bump * smooth(Math.max(0, Math.min(1, (Math.min(x, W - 1 - x) - 250) / 300)));   // kopce se k okrajům vytrácejí (tanky stojí na rovině)
+    }
+    // vlnky jen mimo okraje (tam jsou rovná stanoviště)
+    const edge = Math.min(1, Math.max(0, (Math.min(x, W - 1 - x) - 170) / 160));
+    for (const w of waves) y += Math.sin((x / W) * w.f * 6.283 + w.ph) * w.a * edge * 0.55;
+    h[x] = Math.max(240, Math.min(H - 150, Math.round(y)));
+  }
+  return h;
+}
+
+/** Kráter: ubere zem v kruhu (jen když kruh zasahuje povrch). Čistá celočíselná aritmetika kvůli shodě server/klient. */
+export function applyCrater(h, cx, cy, r) {
+  const x0 = Math.max(0, cx - r), x1 = Math.min(W - 1, cx + r);
+  for (let x = x0; x <= x1; x++) {
+    const dx = x - cx, dy = Math.sqrt(r * r - dx * dx);
+    const top = cy - dy, bottom = Math.ceil(cy + dy);
+    if (top <= h[x] && bottom > h[x]) h[x] = Math.min(bottom, H - 26);
+  }
+}
+
+export const checksum = (h) => { let s = 0; for (let x = 0; x < W; x += 3) s = (s * 31 + h[x]) | 0; return s; };
+
+/** Kam se otáčí hlaveň a odkud střela vyletí. */
+export const pivotOf = (h, x) => [x, groundAt(h, x) - 28];
+export const muzzleOf = (h, x, ang) => { const a = ang * Math.PI / 180; return [x + Math.cos(a) * 40, groundAt(h, x) - 28 - Math.sin(a) * 40]; };
+
+/** Náhled dráhy pro zaměřování (jen terén, bez zásahů tanků). Vrací body každých `every` kroků. */
+export function previewPath(h, x, ang, pw, wind, count, every = 3) {
+  const a = ang * Math.PI / 180, v = pw * VSCALE;
+  let [px, py] = muzzleOf(h, x, ang);
+  let vx = Math.cos(a) * v, vy = -Math.sin(a) * v;
+  const pts = [[px, py]];
+  for (let i = 1; i <= count * every; i++) {
+    vy += GRAV * DT; vx += wind * WIND_K * DT; px += vx * DT; py += vy * DT;
+    if (px < -250 || px > W + 250 || py > H + 400) break;
+    if (px >= 0 && px < W && py >= h[xi(px)]) { pts.push([px, h[xi(px)]]); break; }
+    if (i % every === 0) pts.push([px, py]);
+  }
+  return pts;
+}
+
+/**
+ * Simulace jednoho výstřelu.
+ *  env = { h, tanks: [{ x, hp }], wind, crates?: [{ id, x }] }; `h` i hp tanků se mění (kromě dry), bedny zasažené výbuchem se odeberou.
+ *  Výsledek: { paths: [{ t0, pts, end }], ex: [{ t, x, y, r, hits: [[i, dmg]], cr: [id], split? }], dur, dmg: [d0, d1] }.
+ *  Časy jsou v ms od výstřelu; pts jsou celá čísla po 1/60 s od t0. `dry` = jen odhad pro bota (nic nemění, bez drah).
+ */
+export function simulate(env, si, ang, pw, wid, opts = {}) {
+  const dry = !!opts.dry, rnd = opts.rnd || Math.random;
+  const { h, tanks, wind } = env; const crates = env.crates || [];
+  const wp = WEAPONS[wid];
+  const me = tanks[si];
+  const a0 = ang * Math.PI / 180, v = pw * VSCALE;
+  const [px, py] = muzzleOf(h, me.x, ang);
+  const offs = wp.shots === 3 ? [-wp.spread, 0, wp.spread] : [0];
+  let live = offs.map((o) => { const a = a0 + o * Math.PI / 180; return { x: px, y: py, vx: Math.cos(a) * v, vy: -Math.sin(a) * v, bounces: wp.bounces || 0, split: wp.split || null, r: wp.r, dmg: wp.dmg, t0: 0, age: 0, pts: dry ? null : [[Math.round(px), Math.round(py)]] }; });
+  const paths = [], ex = [], dmg = new Array(tanks.length).fill(0);
+  let tick = 0; const MAXT = 120 * 14;
+  const tms = () => Math.round(tick * 1000 / 120);
+  const finish = (p, end, x, y) => { if (!dry) { p.pts.push([Math.round(x), Math.round(y)]); paths.push({ t0: Math.round(p.t0 * 1000 / 120), pts: p.pts, end }); } };
+  const explode = (p, x, y) => {
+    x = Math.round(x); y = Math.round(y);
+    const e = { t: tms(), x, y, r: p.r, hits: [], cr: [] };
+    for (let i = 0; i < tanks.length; i++) {
+      const tk = tanks[i]; if (tk.hp <= 0) continue;
+      const d = Math.hypot(tk.x - x, groundAt(h, tk.x) - TANK_HY - y);
+      const f = 1 - Math.max(0, d - 16) / (p.r + 12);
+      if (f > 0 && p.dmg > 0) { const dm = Math.max(1, Math.round(p.dmg * f)); e.hits.push([i, dm]); dmg[i] += dm; if (!dry) tk.hp = Math.max(0, tk.hp - dm); }
+    }
+    if (!dry) {
+      for (let k = crates.length - 1; k >= 0; k--) { const c = crates[k]; if (Math.hypot(c.x - x, h[xi(c.x)] - 12 - y) < p.r + 14) { e.cr.push(c.id); crates.splice(k, 1); } }
+      applyCrater(h, x, y, p.r); ex.push(e);
+    } else ex.push(e);
+  };
+  const doSplit = (p, next) => {
+    finish(p, 'split', p.x, p.y); ex.push({ t: tms(), x: Math.round(p.x), y: Math.round(p.y), r: 0, hits: [], cr: [], split: true });
+    const n = p.split.n;
+    for (let k = 0; k < n; k++) {
+      const sp = (k - (n - 1) / 2) * 62 + (rnd() - 0.5) * 26;
+      next.push({ x: p.x, y: p.y, vx: p.vx * 0.55 + sp, vy: p.vy * 0.25 + (rnd() - 0.4) * 70, bounces: 0, split: null, r: p.split.r, dmg: p.split.dmg, t0: tick, age: 0, pts: dry ? null : [[Math.round(p.x), Math.round(p.y)]] });
+    }
+  };
+  while (live.length && tick < MAXT) {
+    tick++;
+    const next = [];
+    for (const p of live) {
+      p.age++; p.vy += GRAV * DT; p.vx += wind * WIND_K * DT; p.x += p.vx * DT; p.y += p.vy * DT;
+      if (!dry && (tick - p.t0) % 2 === 0) p.pts.push([Math.round(p.x), Math.round(p.y)]);
+      if (p.bounces > 0 && (p.x < 0 || p.x > W - 1)) { p.x = p.x < 0 ? 0 : W - 1; p.vx = -p.vx * 0.6; }   // odrážeč se odráží i od krajů světa
+      if (p.x < -250 || p.x > W + 250 || p.y > H + 400) { finish(p, 'out', p.x, p.y); continue; }
+      if (p.x >= 0 && p.x < W && p.y >= h[xi(p.x)]) {
+        if (p.bounces > 0) { // odraz od svahu
+          const gy = h[xi(p.x)], gx = (h[xi(p.x + 3)] - h[xi(p.x - 3)]) / 6, ln = Math.hypot(gx, 1), nx = gx / ln, ny = -1 / ln;
+          const dot = p.vx * nx + p.vy * ny;
+          if (dot < 0) { p.vx = (p.vx - 2 * dot * nx) * 0.62; p.vy = (p.vy - 2 * dot * ny) * 0.62; }
+          p.y = gy - 3; p.bounces--; next.push(p); continue;
+        }
+        const gy = h[xi(p.x)];
+        if (p.split) { doSplit(p, next); continue; }
+        finish(p, 'boom', p.x, gy); explode(p, p.x, gy); continue;
+      }
+      let hit = false;
+      for (let i = 0; i < tanks.length; i++) {
+        const tk = tanks[i]; if (tk.hp <= 0) continue;
+        if (i === si && p.age < 40) continue;                       // vlastní tank hned po výstřelu nepočítáme
+        if (Math.hypot(p.x - tk.x, p.y - (groundAt(h, tk.x) - TANK_HY)) < TANK_R) { hit = true; break; }
+      }
+      if (hit) { if (p.split) { doSplit(p, next); continue; } finish(p, 'boom', p.x, p.y); explode(p, p.x, p.y); continue; }
+      if (p.split && p.vy > 0 && p.age > 14) { doSplit(p, next); continue; }   // kazeta se rozpadne ve vrcholu
+      next.push(p);
+    }
+    live = next;
+  }
+  for (const p of live) finish(p, 'out', p.x, p.y);
+  const dur = ex.length ? ex[ex.length - 1].t : tms();
+  return { paths, ex, dur, dmg };
+}

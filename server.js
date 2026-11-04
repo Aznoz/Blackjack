@@ -116,6 +116,15 @@ function keyOf(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+const TANK_AMMO_IDS = ['big', 'triple', 'bounce', 'cluster', 'nuke', 'repair'];
+function cleanTank(t) {
+  t = t && typeof t === 'object' ? t : {};
+  const n = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);
+  const ammo = {};
+  for (const id of TANK_AMMO_IDS) { const c = n(t.ammo && t.ammo[id], 20); if (c) ammo[id] = c; }
+  return { xp: n(t.xp, 1e7), wins: n(t.wins, 1e6), losses: n(t.losses, 1e6), color: n(t.color, 7), ammo };
+}
+
 function makeAccount(key, d = {}) {
   return {
     key,
@@ -131,6 +140,7 @@ function makeAccount(key, d = {}) {
     stats: Object.assign({ rounds: 0, wins: 0, losses: 0, pushes: 0, blackjacks: 0, biggestWin: 0 }, d.stats || {}),
     avatar: typeof d.avatar === 'string' && (AVATAR_PRESET_RE.test(d.avatar) || AVATAR_CUSTOM_RE.test(d.avatar)) ? d.avatar : randomPreset(),
     custom: typeof d.custom === 'string' && /^[0-9a-f]{16}$/.test(d.custom) ? d.custom : null, // nahraný vlastní obrázek (hash)
+    tank: cleanTank(d.tank), // Tankové souboje: zkušenosti, výhry, koupená munice, barva tanku
     lastUpload: 0,
     createdAt: d.createdAt || Date.now(),
     lastSeen: d.lastSeen || Date.now(),
@@ -149,7 +159,7 @@ async function loadAccounts() {
     for (const [key, a] of Object.entries(raw)) {
       if (!a || typeof a.balance !== 'number') continue;
       // úklid: anonymní účty, které nikdy nehrály a 30 dní se neozvaly (účty propojené s Googlem se nemažou)
-      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && (a.lastSeen || 0) < cutoff) continue;
+      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && (a.lastSeen || 0) < cutoff) continue;
       accounts.set(key, makeAccount(key, a));
     }
     console.log(`Načteno ${accounts.size} účtů.`);
@@ -273,7 +283,7 @@ function saveNow() {
   try {
     const out = {};
     for (const [k, a] of accounts) {
-      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
+      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
     }
     store.write('players', JSON.stringify(out));
     const g = {};
@@ -1127,6 +1137,11 @@ async function handleApi(req, res, p) {
       const r = kresleni.me(await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p.startsWith('/api/tanks/') && req.method === 'POST') { // Tankové souboje: me / buy / color (profil, nákup munice, barva tanku)
+      if (!tanks) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = tanks.api(p.slice('/api/tanks/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1222,6 +1237,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
     return res.end(JSON.stringify({ ok: true, ...(kresleni ? kresleni.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
+  if (p === '/tanks/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ ok: true, ...(tanks ? tanks.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
   if (p === '/sachy/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ ok: true, ...(sachy ? sachy.stats() : {}), uptime: Math.round(process.uptime()) }));
@@ -1313,6 +1332,12 @@ let kresleni = null;
 import('./kresleni/kresleni.js').then((m) => { m.init({ resolveAccount, TOKEN_RE }); kresleni = m; console.log('Kreslení: načteno (WebSocket /kresleni).'); }).catch((e) => console.error('Kreslení se nenačetlo:', e.message));
 dwss.on('connection', (ws) => { if (!kresleni) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } kresleni.handleConnection(ws); });
 
+// devátá cesta: /tanks = Tankové souboje 1v1 (složka tanks/): bot nebo online, postup (XP, munice, barva) se ukládá v účtu
+const twss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
+let tanks = null;
+import('./tanks/tanks.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); tanks = m; console.log('Tanky: načteno (WebSocket /tanks).'); }).catch((e) => console.error('Tanky se nenačetly:', e.message));
+twss.on('connection', (ws) => { if (!tanks) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } tanks.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1320,7 +1345,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });
