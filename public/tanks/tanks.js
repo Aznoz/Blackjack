@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=3';
+import * as P from './physics.js?v=4';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -9,7 +9,7 @@ const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const API = String(CFG.SERVER_URL || '').replace(/^wss:/, 'https:').replace(/^ws:/, 'http:').replace(/\/tanks\/?$/, '');
-const ICON = { std: '🎯', big: '💣', triple: '🔱', bounce: '🏀', roller: '🟢', cluster: '🎆', sniper: '🔭', nuke: '☢️', five: '🌠', mega: '💥', napalm: '🔥', airstrike: '✈️', bounce4: '🪀', megacluster: '🎇', doom: '🌋', repair: '🔧', repair2: '🧰' };
+const ICON = { std: '🎯', big: '💣', triple: '🔱', bounce: '🏀', roller: '🟢', laser: '🔴', cluster: '🎆', sniper: '🔭', nuke: '☢️', five: '🌠', mega: '💥', napalm: '🔥', airstrike: '✈️', bounce4: '🪀', megacluster: '🎇', doom: '🌋', repair: '🔧', repair2: '🧰' };
 
 // ------------------------------------------------------------------ identita
 let memToken = null;
@@ -508,6 +508,7 @@ function render() {
       const i = Math.floor(idx), f = idx - i, a = p.pts[i], b = p.pts[i + 1]; const x = a[0] + (b[0] - a[0]) * f, y = a[1] + (b[1] - a[1]) * f; const col = WEAPONS[sh.m.w].col;
       g.globalCompositeOperation = 'lighter'; const gr = g.createRadialGradient(x, y, 0, x, y, 14); gr.addColorStop(0, col); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.beginPath(); g.arc(x, y, 14, 0, 6.283); g.fill(); g.globalCompositeOperation = 'source-over';
       const wr = WEAPONS[sh.m.w];
+      if (wr.laser) continue;
       if (wr.roll) { // kulatý granát: tmavé tělo, otáčející se pruh a odpočet do výbuchu
         g.save(); g.translate(x, y); g.rotate(x / 6);
         g.fillStyle = '#2b3a1f'; g.strokeStyle = wr.col; g.lineWidth = 2; g.beginPath(); g.arc(0, 0, 7, 0, 6.283); g.fill(); g.stroke();
@@ -515,6 +516,14 @@ function render() {
         const left = Math.max(0, Math.ceil((wr.fuse * 1000 - sh.t) / 1000));
         g.font = '800 15px system-ui, sans-serif'; g.textAlign = 'center'; g.lineWidth = 3; g.strokeStyle = 'rgba(0,0,0,.7)'; g.strokeText(left, x, y - 15); g.fillStyle = left <= 1 ? '#ff6a5a' : '#fff'; g.fillText(left, x, y - 15);
       } else { g.fillStyle = '#fff'; g.beginPath(); g.arc(x, y, 3.6, 0, 6.283); g.fill(); }
+    }
+  }
+  if (R.shot && WEAPONS[R.shot.m.w].laser && R.shot.m.paths[0]) { // laserový paprsek: rychle zhasíná
+    const sh = R.shot, pp = R.shot.m.paths[0].pts, a = pp[0], b = pp[pp.length - 1], k = Math.max(0, 1 - sh.t / 450);
+    if (k > 0) {
+      g.save(); g.lineCap = 'round'; g.globalCompositeOperation = 'lighter';
+      g.globalAlpha = k * .55; g.strokeStyle = WEAPONS[sh.m.w].col; g.lineWidth = 14 * k + 3; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke();
+      g.globalAlpha = k; g.strokeStyle = '#fff'; g.lineWidth = 4 * k + 1; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); g.restore();
     }
   }
   drawFx(g);

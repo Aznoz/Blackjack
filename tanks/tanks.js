@@ -166,7 +166,7 @@ function startMatch(room) {
 }
 
 function pickCrateKind() {
-  const t = [['big', 18], ['triple', 16], ['bounce', 13], ['roller', 12], ['cluster', 11], ['sniper', 11], ['repair', 9], ['five', 8], ['mega', 7], ['napalm', 7], ['airstrike', 5], ['bounce4', 4], ['megacluster', 3], ['repair2', 4], ['nuke', 3], ['doom', 1]];
+  const t = [['big', 18], ['triple', 16], ['bounce', 13], ['roller', 12], ['laser', 10], ['cluster', 11], ['sniper', 11], ['repair', 9], ['five', 8], ['mega', 7], ['napalm', 7], ['airstrike', 5], ['bounce4', 4], ['megacluster', 3], ['repair2', 4], ['nuke', 3], ['doom', 1]];
   let r = Math.random() * t.reduce((a, b) => a + b[1], 0);
   for (const [k, w] of t) { r -= w; if (r < 0) return k; }
   return 'big';

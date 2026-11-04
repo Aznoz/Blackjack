@@ -46,6 +46,18 @@ assert.equal(fs.readFileSync('./tanks/physics.js', 'utf8'), fs.readFileSync('./p
     const r3 = P.simulate({ h: flat.slice(), tanks: [{ x: 200, hp: 100 }, { x: 560, hp: 100 }], wind: 0 }, 0, 40, 40, 'roller');
     assert.ok(r3.ex[0].hits.some((q) => q[0] === 1), 'granát se zastavil u soupeře a zranil ho');
   }
+  { // laser: rovně skrz terén, pevných 20 životů bez ohledu na sílu, bedny na cestě sebere
+    const flat = new Int16Array(P.W).fill(500); const tk = () => [{ x: 200, hp: 100 }, { x: 900, hp: 100 }];
+    const [mx, my] = P.muzzleOf(flat, 200, 0);
+    const a = P.simulate({ h: flat.slice(), tanks: tk(), wind: 5 }, 0, 0, 10, 'laser'); const b = P.simulate({ h: flat.slice(), tanks: tk(), wind: -5 }, 0, 0, 100, 'laser');
+    assert.deepEqual(a.ex[0].hits, [[1, 20]]); assert.deepEqual(b.ex[0].hits, [[1, 20]], 'síla ani vítr nic nemění');
+    const env = { h: flat.slice(), tanks: tk(), wind: 0 }; P.simulate(env, 0, 0, 50, 'laser'); assert.equal(env.tanks[1].hp, 80); assert.equal(env.tanks[0].hp, 100);
+    const hill = flat.slice(); for (let i = 500; i < 560; i++) hill[i] = 350; // zeď před soupeřem
+    const hc0 = P.checksum(hill); const w = P.simulate({ h: hill, tanks: tk(), wind: 0 }, 0, 0, 50, 'laser'); assert.deepEqual(w.ex[0].hits, [[1, 20]], 'laser prostřelí zeď'); assert.equal(P.checksum(hill), hc0, 'terén neničí');
+    const c = P.simulate({ h: flat.slice(), tanks: tk(), wind: 0, crates: [{ id: 5, x: 500 }] }, 0, 0, 50, 'laser'); assert.deepEqual(c.ex[0].cr, [5]);
+    const up = P.simulate({ h: flat.slice(), tanks: tk(), wind: 0 }, 0, 80, 50, 'laser'); assert.equal(up.ex.length, 0, 'do nebe nic netrefí');
+    assert.ok(P.previewPath(flat, 200, 0, 50, 0, 40, 3, 'laser').length > 5);
+  }
   assert.equal(P.levelOf(0), 1); assert.ok(P.levelOf(P.xpFor(5)) === 5); assert.equal(P.levelOf(1e9), P.MAX_LEVEL);
 }
 

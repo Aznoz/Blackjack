@@ -24,6 +24,7 @@ export const WEAPONS = {
   triple:  { id: 'triple',  name: 'Trojitá salva',     desc: 'Tři střely vedle sebe, hodí se na vzdálené cíle.',                  r: 34,  dmg: 24, col: '#5ee1ff', price: 240,  pack: 3, max: 9, lvl: 2, shots: 3, spread: 6, fuelPen: 0.2 },
   bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',                         r: 44,  dmg: 34, col: '#7dff9a', price: 300,  pack: 3, max: 6, lvl: 3, bounces: 2, selfDmg: 3 },
   roller:  { id: 'roller',  name: 'Kutálející granát', desc: 'Po dopadu se kutálí po zemi (z kopce rychleji) a vybuchne přesně 5 s po výstřelu. Zastaví se u tanku.', r: 56, dmg: 42, col: '#9be15d', price: 340, pack: 3, max: 6, lvl: 4, roll: true, fuse: 5, selfDmg: 2 },
+  laser:   { id: 'laser',   name: 'Laser',             desc: 'Střílí úplně rovně skrz kopce i překážky (síla se ignoruje) a prvnímu tanku v cestě vždy dá pevných 20 životů. Terén neničí.', r: 0, dmg: 20, col: '#ff4de1', price: 420, pack: 3, max: 6, lvl: 7, laser: true, fuelPen: 0.3 },
   cluster: { id: 'cluster', name: 'Kazeta',            desc: 'Ve vrcholu dráhy se rozpadne na 5 menších bomb.',                  r: 0,   dmg: 0,  col: '#d58cff', price: 360,  pack: 3, max: 6, lvl: 4, split: { n: 5, r: 30, dmg: 20 }, selfDmg: 4 },
   sniper:  { id: 'sniper',  name: 'Odstřelovač',       desc: 'Rychlá, skoro přímá střela, vítr ji sotva ovlivní. Malý kráter, silný zásah.', r: 24, dmg: 58, col: '#f2f2f2', price: 320, pack: 3, max: 6, lvl: 5, vmul: 1.25, gmul: 0.55, wmul: 0.3, fuelPen: 0.5 },
   nuke:    { id: 'nuke',    name: 'Atomovka',          desc: 'Obrovský výbuch. Dej si pozor, ať nezasáhne i tebe.',              r: 120, dmg: 80, col: '#ff3b3b', price: 900,  pack: 1, max: 1, lvl: 6, selfDmg: 10, fuelPen: 0.5, cd: 1 },
@@ -46,7 +47,7 @@ export function consOf(w) {
   if (w.cd) out.push(w.cd === 1 ? 'další tah se zbraň nabíjí' : `další ${w.cd} tahy se zbraň nabíjí`);
   return out.length ? out.join(', ').replace(/^./, (c) => c.toUpperCase()) + '.' : '';
 }
-export const ORDER = ['std', 'big', 'triple', 'bounce', 'roller', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
+export const ORDER = ['std', 'big', 'triple', 'bounce', 'roller', 'laser', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
 export const COLORS = [
   { c: '#f5c518', name: 'Žlutá', lvl: 1 }, { c: '#4fd8ff', name: 'Azurová', lvl: 1 }, { c: '#6ee06a', name: 'Zelená', lvl: 1 },
   { c: '#ff5a52', name: 'Červená', lvl: 2 }, { c: '#b07cff', name: 'Fialová', lvl: 3 }, { c: '#ff7bc0', name: 'Růžová', lvl: 4 },
@@ -110,9 +111,26 @@ export const checksum = (h) => { let s = 0; for (let x = 0; x < W; x += 3) s = (
 export const pivotOf = (h, x) => [x, groundAt(h, x) - 28];
 export const muzzleOf = (h, x, ang) => { const a = ang * Math.PI / 180; return [x + Math.cos(a) * 40, groundAt(h, x) - 28 - Math.sin(a) * 40]; };
 
+/** Paprsek laseru: jde rovně od ústí hlavně skrz terén a překážky a zastaví se na prvním cizím tanku nebo na okraji světa. Vrací body po 30 px, koncový bod a případně zasažený tank / bedny. */
+export function laserRay(h, x, ang, tanks, si, crates) {
+  const [px, py] = muzzleOf(h, x, ang); const a = ang * Math.PI / 180, dx = Math.cos(a), dy = -Math.sin(a);
+  let xx = px, yy = py, len = 0, end = 'out', tank = -1; const pts = [[Math.round(px), Math.round(py)]]; const cr = [];
+  for (;;) {
+    xx += dx * 3; yy += dy * 3; len += 3;
+    if (xx < -60 || xx > W + 60 || yy < -400 || yy > H + 100 || len > 2600) break;
+    if (tanks) for (let i = 0; i < tanks.length; i++) { const tk = tanks[i]; if (i === si || tk.hp <= 0) continue; if (Math.hypot(xx - tk.x, yy - (groundAt(h, tk.x) - TANK_HY)) < TANK_R) { tank = i; end = 'tank'; break; } }
+    if (tank >= 0) break;
+    if (crates) for (const c of crates) if (!cr.includes(c.id) && Math.hypot(c.x - xx, h[xi(c.x)] - 12 - yy) < 18) cr.push(c.id);
+    if (len % 30 === 0) pts.push([Math.round(xx), Math.round(yy)]);
+  }
+  pts.push([Math.round(xx), Math.round(yy)]);
+  return { pts, x: Math.round(xx), y: Math.round(yy), end, tank, cr };
+}
+
 /** Náhled dráhy pro zaměřování (jen terén, bez zásahů tanků). Vrací body každých `every` kroků. */
 export function previewPath(h, x, ang, pw, wind, count, every = 3, wid = 'std') {
   const wp = WEAPONS[wid] || WEAPONS.std, gm = wp.gmul || 1, wm = wp.wmul ?? 1;
+  if (wp.laser) { const r = laserRay(h, x, ang, null, -1); const out = [[r.pts[0][0], r.pts[0][1]]]; for (let i = 1; i < r.pts.length && out.length <= count; i++) out.push(r.pts[i]); return out; }
   const a = ang * Math.PI / 180, v = pw * VSCALE * (wp.vmul || 1);
   let [px, py] = muzzleOf(h, x, ang);
   let vx = Math.cos(a) * v, vy = -Math.sin(a) * v;
@@ -137,6 +155,17 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
   const { h, tanks, wind } = env; const crates = env.crates || [];
   const wp = WEAPONS[wid];
   const me = tanks[si];
+  if (wp.laser) { // laser: rovný paprsek skrz terén, pevných `dmg` životů prvnímu zasaženému tanku (nic neničí)
+    const r = laserRay(h, me.x, ang, tanks, si, crates); const paths = [], ex = [], dmg = new Array(tanks.length).fill(0);
+    if (!dry) paths.push({ t0: 0, pts: r.pts, end: 'laser' });
+    if (r.end !== 'out') {
+      const e = { t: 80, x: r.x, y: r.y, r: 0, hits: [], cr: dry ? [] : r.cr };
+      if (r.tank >= 0) { e.hits.push([r.tank, wp.dmg]); dmg[r.tank] = wp.dmg; if (!dry) tanks[r.tank].hp = Math.max(0, tanks[r.tank].hp - wp.dmg); }
+      if (!dry) { for (const id of r.cr) { const k = crates.findIndex((c) => c.id === id); if (k >= 0) crates.splice(k, 1); } }
+      ex.push(e);
+    }
+    return { paths, ex, dur: ex.length ? 80 : 150, dmg };
+  }
   const a0 = ang * Math.PI / 180, v = pw * VSCALE * (wp.vmul || 1);
   const [px, py] = muzzleOf(h, me.x, ang);
   const ns = wp.shots || 1; const offs = ns > 1 ? Array.from({ length: ns }, (_, i) => (i - (ns - 1) / 2) * wp.spread) : [0];
