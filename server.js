@@ -116,13 +116,13 @@ function keyOf(token) {
   return crypto.createHash('sha256').update(token).digest('hex');
 }
 
-const TANK_AMMO_IDS = ['big', 'triple', 'bounce', 'cluster', 'nuke', 'repair'];
+const TANK_AMMO_IDS = ['big', 'triple', 'bounce', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
 function cleanTank(t) {
   t = t && typeof t === 'object' ? t : {};
   const n = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);
   const ammo = {};
   for (const id of TANK_AMMO_IDS) { const c = n(t.ammo && t.ammo[id], 20); if (c) ammo[id] = c; }
-  return { xp: n(t.xp, 1e7), wins: n(t.wins, 1e6), losses: n(t.losses, 1e6), color: n(t.color, 7), ammo };
+  return { xp: n(t.xp, 1e7), wins: n(t.wins, 1e6), losses: n(t.losses, 1e6), color: n(t.color, 15), ammo };
 }
 
 function makeAccount(key, d = {}) {

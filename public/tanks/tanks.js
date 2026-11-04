@@ -9,7 +9,7 @@ const LS = { get(k) { try { return localStorage.getItem(k); } catch (e) { return
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const API = String(CFG.SERVER_URL || '').replace(/^wss:/, 'https:').replace(/^ws:/, 'http:').replace(/\/tanks\/?$/, '');
-const ICON = { std: '🎯', big: '💣', triple: '🔱', bounce: '🏀', cluster: '🎆', nuke: '☢️', repair: '🔧' };
+const ICON = { std: '🎯', big: '💣', triple: '🔱', bounce: '🏀', cluster: '🎆', sniper: '🔭', nuke: '☢️', five: '🌠', mega: '💥', napalm: '🔥', airstrike: '✈️', bounce4: '🪀', megacluster: '🎇', doom: '🌋', repair: '🔧', repair2: '🧰' };
 
 // ------------------------------------------------------------------ identita
 let memToken = null;
@@ -274,7 +274,7 @@ function startShot(m) {
   t.recoil = 9; sfx.fire(); R.shake = Math.max(R.shake, 2.5);
   for (let k = 0; k < 10; k++) R.fx.push({ k: 'smoke', x: mx, y: my, vx: Math.cos(m.a * Math.PI / 180) * (30 + Math.random() * 90) + (Math.random() - .5) * 30, vy: -Math.sin(m.a * Math.PI / 180) * (30 + Math.random() * 90) + (Math.random() - .5) * 30, life: 0, max: .6 + Math.random() * .4, size: 6 + Math.random() * 6, grow: 20 });
   R.fx.push({ k: 'flash', x: mx, y: my, r: 36, life: 0, max: .16 });
-  if (by === me) { const pa = m.paths; const p0 = m.w === 'triple' && pa[1] ? pa[1] : pa[0]; R.trace = p0 ? p0.pts.filter((_, i) => i % 2 === 0).map((q) => q) : null; }
+  if (by === me) { const pa = m.paths; const p0 = pa.filter((q) => q.t0 === 0).sort((x, y) => y.pts.length - x.pts.length)[0] || pa[0]; R.trace = p0 ? p0.pts.filter((_, i) => i % 2 === 0) : null; }
   fireSent = true; updateHud(true);
 }
 function stepShot(dt) {
@@ -497,7 +497,7 @@ function render() {
   if (screen === 'game' && myTurn()) {
     const t = R.tk[me]; const a = R.aim[me];
     if (R.trace) dots(g, R.trace, '#58e08a', 2.6, 2);
-    const pv = P.previewPath(R.h, t.x, a.a, a.p, S.wind, 26, 3); dots(g, pv, '#ffffff', 3, 1, true);
+    const pv = P.previewPath(R.h, t.x, a.a, a.p, S.wind, 26, 3, sel); dots(g, pv, '#ffffff', 3, 1, true);
   }
   if (R.shot) {
     const sh = R.shot;
@@ -563,7 +563,7 @@ function renderWbtn() {
 function renderTray() {
   if (!S) return;
   const items = ORDER.filter(ammoHas);
-  $('tray').innerHTML = items.map((id) => { const w = WEAPONS[id]; const n = w.inf ? '∞' : S.ammo[id]; return `<button type="button" data-w="${id}" class="${id === sel ? 'on' : ''}"><span class="dot" style="color:${w.col}"></span>${w.name}<small>${n}</small><kbd>${ORDER.indexOf(id) + 1}</kbd></button>`; }).join('');
+  $('tray').innerHTML = items.map((id, ix) => { const w = WEAPONS[id]; const n = w.inf ? '∞' : S.ammo[id]; return `<button type="button" data-w="${id}" class="${id === sel ? 'on' : ''}"><span class="dot" style="color:${w.col}"></span>${w.name}<small>${n}</small><kbd>${ix < 9 ? ix + 1 : ''}</kbd></button>`; }).join('');
   renderWbtn();
 }
 function selectWeapon(id) { if (!ammoHas(id)) return; sel = id; $('tray').hidden = true; renderTray(); sfx.click(); }
@@ -634,7 +634,7 @@ window.addEventListener('keydown', (e) => {
   if (k === 'Escape') { $('pauseModal').hidden = false; return; }
   if (k === 'a' || k === 'A') { setDrive(-1); return; } if (k === 'd' || k === 'D') { setDrive(1); return; }
   if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(k)) { e.preventDefault(); if (!held.has(k)) { held.add(k); keyStep(); } if (!keyIv) keyIv = setInterval(keyStep, 55); return; }
-  if (/^[1-7]$/.test(k) && myTurn()) { const id = ORDER[+k - 1]; if (id) selectWeapon(id); }
+  if (/^[1-9]$/.test(k) && myTurn()) { const id = ORDER.filter(ammoHas)[+k - 1]; if (id) selectWeapon(id); }
 });
 window.addEventListener('keyup', (e) => {
   const k = e.key; if (k === 'a' || k === 'A' || k === 'd' || k === 'D') setDrive(0);

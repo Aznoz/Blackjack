@@ -166,7 +166,8 @@ function startMatch(room) {
 }
 
 function pickCrateKind() {
-  const t = [['big', 24], ['triple', 22], ['bounce', 18], ['cluster', 16], ['repair', 14], ['nuke', 4]]; let r = Math.random() * 98;
+  const t = [['big', 18], ['triple', 16], ['bounce', 13], ['cluster', 11], ['sniper', 11], ['repair', 9], ['five', 8], ['mega', 7], ['napalm', 7], ['airstrike', 5], ['bounce4', 4], ['megacluster', 3], ['repair2', 4], ['nuke', 3], ['doom', 1]];
+  let r = Math.random() * t.reduce((a, b) => a + b[1], 0);
   for (const [k, w] of t) { r -= w; if (r < 0) return k; }
   return 'big';
 }
@@ -226,7 +227,7 @@ function driveTick(room) {
     const c = room.crates[k];
     if (Math.abs(c.x - tk.x) < 30) {
       room.crates.splice(k, 1);
-      const n = c.kind === 'nuke' ? 1 : 1 + (Math.random() < 0.45 ? 1 : 0);
+      const n = (WEAPONS[c.kind].pack || 2) <= 1 ? 1 : 1 + (Math.random() < 0.45 ? 1 : 0);
       tk.crate[c.kind] = (tk.crate[c.kind] | 0) + n; got.push({ id: c.id, w: c.kind, n });
     }
   }
@@ -340,7 +341,8 @@ function botTurn(room) {
     let plan; try { plan = botPlan(room, bi); } catch (e) { console.error('tanks: bot', e); plan = { a: bi === 0 ? 50 : 130, pw: 60, w: 'std' }; }
     // zdraví: když je málo životů a má opravu, použije ji
     const am = ammoOf(room, bi);
-    if (am.repair && tk.hp <= 45 && lvl >= 2) { plan = { a: 90, pw: 50, w: 'repair' }; }
+    const rep = am.repair2 ? 'repair2' : am.repair ? 'repair' : null;
+    if (rep && tk.hp <= 45 && lvl >= 2) { plan = { a: 90, pw: 50, w: rep }; }
     room.botT = setTimeout(() => { if (!act()) return; const err = doFire(room, bi, plan.a, plan.pw, plan.w); if (err) doFire(room, bi, plan.a, plan.pw, 'std'); }, ms(600 + Math.random() * 700));
   };
   // nejdřív případně popojede k bedně (úroveň 2+), pak zamíří a vystřelí

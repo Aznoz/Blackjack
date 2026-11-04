@@ -19,23 +19,34 @@ export const EDGE = 46;           // tank nezajede blíž k okraji
 
 /** Zbraně. `price`/`pack`/`lvl` = obchod (cena za balíček kusů, od které úrovně); `std` je neomezená. */
 export const WEAPONS = {
-  std:     { id: 'std',     name: 'Granát',            desc: 'Základní náboj, neomezený.',                           r: 38,  dmg: 30, col: '#ffd23f', inf: true },
-  big:     { id: 'big',     name: 'Těžká bomba',       desc: 'Velký kráter a velká rána.',                           r: 68,  dmg: 48, col: '#ff7a3d', price: 240, pack: 3, lvl: 1 },
-  triple:  { id: 'triple',  name: 'Trojitá salva',     desc: 'Tři střely vedle sebe, hodí se na vzdálené cíle.',      r: 34,  dmg: 24, col: '#5ee1ff', price: 240, pack: 3, lvl: 2, shots: 3, spread: 6 },
-  bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',             r: 44,  dmg: 34, col: '#7dff9a', price: 300, pack: 3, lvl: 3, bounces: 2 },
-  cluster: { id: 'cluster', name: 'Kazeta',            desc: 'Ve vrcholu dráhy se rozpadne na 5 menších bomb.',      r: 0,   dmg: 0,  col: '#d58cff', price: 360, pack: 3, lvl: 4, split: { n: 5, r: 30, dmg: 20 } },
-  nuke:    { id: 'nuke',    name: 'Atomovka',          desc: 'Obrovský výbuch. Dej si pozor, ať nezasáhne i tebe.',  r: 120, dmg: 80, col: '#ff3b3b', price: 900, pack: 1, lvl: 6 },
-  repair:  { id: 'repair',  name: 'Opravárenská sada', desc: 'Vyléčí 35 životů a ukončí tah. Nestřílí.',             r: 0,   dmg: 0,  col: '#6cff6c', price: 200, pack: 2, lvl: 2, util: 'heal', heal: 35 },
+  std:     { id: 'std',     name: 'Granát',            desc: 'Základní náboj, neomezený.',                                       r: 38,  dmg: 30, col: '#ffd23f', inf: true },
+  big:     { id: 'big',     name: 'Těžká bomba',       desc: 'Velký kráter a velká rána.',                                       r: 68,  dmg: 48, col: '#ff7a3d', price: 240,  pack: 3, lvl: 1 },
+  triple:  { id: 'triple',  name: 'Trojitá salva',     desc: 'Tři střely vedle sebe, hodí se na vzdálené cíle.',                  r: 34,  dmg: 24, col: '#5ee1ff', price: 240,  pack: 3, lvl: 2, shots: 3, spread: 6 },
+  bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',                         r: 44,  dmg: 34, col: '#7dff9a', price: 300,  pack: 3, lvl: 3, bounces: 2 },
+  cluster: { id: 'cluster', name: 'Kazeta',            desc: 'Ve vrcholu dráhy se rozpadne na 5 menších bomb.',                  r: 0,   dmg: 0,  col: '#d58cff', price: 360,  pack: 3, lvl: 4, split: { n: 5, r: 30, dmg: 20 } },
+  sniper:  { id: 'sniper',  name: 'Odstřelovač',       desc: 'Rychlá, skoro přímá střela, vítr ji sotva ovlivní. Malý kráter, silný zásah.', r: 24, dmg: 58, col: '#f2f2f2', price: 320, pack: 3, lvl: 5, vmul: 1.25, gmul: 0.55, wmul: 0.3 },
+  nuke:    { id: 'nuke',    name: 'Atomovka',          desc: 'Obrovský výbuch. Dej si pozor, ať nezasáhne i tebe.',              r: 120, dmg: 80, col: '#ff3b3b', price: 900,  pack: 1, lvl: 6 },
+  five:    { id: 'five',    name: 'Pětisalva',         desc: 'Pět střel vedle sebe, skoro vždycky něco trefí.',                  r: 30,  dmg: 20, col: '#4fd8ff', price: 480,  pack: 3, lvl: 8, shots: 5, spread: 4.5 },
+  mega:    { id: 'mega',    name: 'Mega bomba',        desc: 'Obří kráter a těžká rána.',                                        r: 95,  dmg: 62, col: '#ff5a2a', price: 560,  pack: 2, lvl: 10 },
+  napalm:  { id: 'napalm',  name: 'Napalm',            desc: 'Po dopadu se rozstříkne na 8 malých výbuchů kolem.',               r: 0,   dmg: 0,  col: '#ff9a1f', price: 520,  pack: 3, lvl: 12, split: { n: 8, r: 26, dmg: 15, impact: true } },
+  airstrike: { id: 'airstrike', name: 'Letecký nálet', desc: 'Na místě dopadu zavolá déšť 6 bomb z nebe.',                      r: 0,   dmg: 0,  col: '#9fb4ff', price: 720,  pack: 2, lvl: 16, split: { n: 6, r: 36, dmg: 26, impact: true, rain: true, gap: 56 } },
+  bounce4: { id: 'bounce4', name: 'Super odrážeč',     desc: 'Čtyřikrát se odrazí, než vybuchne.',                               r: 54,  dmg: 40, col: '#5dffb0', price: 640,  pack: 3, lvl: 19, bounces: 4 },
+  megacluster: { id: 'megacluster', name: 'Mega kazeta', desc: 'Ve vrcholu se rozpadne na 9 bomb.',                              r: 0,   dmg: 0,  col: '#e6a0ff', price: 900,  pack: 3, lvl: 22, split: { n: 9, r: 38, dmg: 24 } },
+  doom:    { id: 'doom',    name: 'Soudný den',        desc: 'Gigantický výbuch, který smete skoro všechno. Opatrně.',           r: 160, dmg: 100, col: '#ff2a2a', price: 2200, pack: 1, lvl: 26 },
+  repair:  { id: 'repair',  name: 'Opravárenská sada', desc: 'Vyléčí 35 životů a ukončí tah. Nestřílí.',                         r: 0,   dmg: 0,  col: '#6cff6c', price: 200,  pack: 2, lvl: 2,  util: 'heal', heal: 35 },
+  repair2: { id: 'repair2', name: 'Generální oprava',  desc: 'Vyléčí 70 životů a ukončí tah. Nestřílí.',                         r: 0,   dmg: 0,  col: '#3dff9a', price: 420,  pack: 2, lvl: 14, util: 'heal', heal: 70 },
 };
-export const ORDER = ['std', 'big', 'triple', 'bounce', 'cluster', 'nuke', 'repair'];
+export const ORDER = ['std', 'big', 'triple', 'bounce', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
 export const COLORS = [
   { c: '#f5c518', name: 'Žlutá', lvl: 1 }, { c: '#4fd8ff', name: 'Azurová', lvl: 1 }, { c: '#6ee06a', name: 'Zelená', lvl: 1 },
   { c: '#ff5a52', name: 'Červená', lvl: 2 }, { c: '#b07cff', name: 'Fialová', lvl: 3 }, { c: '#ff7bc0', name: 'Růžová', lvl: 4 },
   { c: '#dfe6ee', name: 'Bílá', lvl: 5 }, { c: '#3a4150', name: 'Černá', lvl: 7 },
+  { c: '#ff9a2e', name: 'Oranžová', lvl: 9 }, { c: '#2ee6c4', name: 'Tyrkysová', lvl: 11 }, { c: '#b6f23a', name: 'Limetková', lvl: 13 }, { c: '#a3202f', name: 'Bordó', lvl: 15 },
+  { c: '#ffe066', name: 'Zlatá', lvl: 18 }, { c: '#aab4c4', name: 'Stříbrná', lvl: 21 }, { c: '#3b6bff', name: 'Královská modř', lvl: 24 }, { c: '#7affc8', name: 'Mátová', lvl: 30 },
 ];
-export const MAX_LEVEL = 12;
+export const MAX_LEVEL = 30;
 /** XP potřebné k dosažení úrovně n (úroveň 1 = 0). */
-export const xpFor = (n) => (n <= 1 ? 0 : 120 * (n - 1) * n / 2);
+export const xpFor = (n) => (n <= 1 ? 0 : 80 * (n - 1) * n / 2);
 export const levelOf = (xp) => { let n = 1; while (n < MAX_LEVEL && xp >= xpFor(n + 1)) n++; return n; };
 
 export function mulberry32(a) {
@@ -89,13 +100,14 @@ export const pivotOf = (h, x) => [x, groundAt(h, x) - 28];
 export const muzzleOf = (h, x, ang) => { const a = ang * Math.PI / 180; return [x + Math.cos(a) * 40, groundAt(h, x) - 28 - Math.sin(a) * 40]; };
 
 /** Náhled dráhy pro zaměřování (jen terén, bez zásahů tanků). Vrací body každých `every` kroků. */
-export function previewPath(h, x, ang, pw, wind, count, every = 3) {
-  const a = ang * Math.PI / 180, v = pw * VSCALE;
+export function previewPath(h, x, ang, pw, wind, count, every = 3, wid = 'std') {
+  const wp = WEAPONS[wid] || WEAPONS.std, gm = wp.gmul || 1, wm = wp.wmul ?? 1;
+  const a = ang * Math.PI / 180, v = pw * VSCALE * (wp.vmul || 1);
   let [px, py] = muzzleOf(h, x, ang);
   let vx = Math.cos(a) * v, vy = -Math.sin(a) * v;
   const pts = [[px, py]];
   for (let i = 1; i <= count * every; i++) {
-    vy += GRAV * DT; vx += wind * WIND_K * DT; px += vx * DT; py += vy * DT;
+    vy += GRAV * gm * DT; vx += wind * wm * WIND_K * DT; px += vx * DT; py += vy * DT;
     if (px < -250 || px > W + 250 || py > H + 400) break;
     if (px >= 0 && px < W && py >= h[xi(px)]) { pts.push([px, h[xi(px)]]); break; }
     if (i % every === 0) pts.push([px, py]);
@@ -114,10 +126,10 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
   const { h, tanks, wind } = env; const crates = env.crates || [];
   const wp = WEAPONS[wid];
   const me = tanks[si];
-  const a0 = ang * Math.PI / 180, v = pw * VSCALE;
+  const a0 = ang * Math.PI / 180, v = pw * VSCALE * (wp.vmul || 1);
   const [px, py] = muzzleOf(h, me.x, ang);
-  const offs = wp.shots === 3 ? [-wp.spread, 0, wp.spread] : [0];
-  let live = offs.map((o) => { const a = a0 + o * Math.PI / 180; return { x: px, y: py, vx: Math.cos(a) * v, vy: -Math.sin(a) * v, bounces: wp.bounces || 0, split: wp.split || null, r: wp.r, dmg: wp.dmg, t0: 0, age: 0, pts: dry ? null : [[Math.round(px), Math.round(py)]] }; });
+  const ns = wp.shots || 1; const offs = ns > 1 ? Array.from({ length: ns }, (_, i) => (i - (ns - 1) / 2) * wp.spread) : [0];
+  let live = offs.map((o) => { const a = a0 + o * Math.PI / 180; return { x: px, y: py, vx: Math.cos(a) * v, vy: -Math.sin(a) * v, bounces: wp.bounces || 0, split: wp.split || null, r: wp.r, dmg: wp.dmg, gm: wp.gmul || 1, wm: wp.wmul ?? 1, t0: 0, age: 0, pts: dry ? null : [[Math.round(px), Math.round(py)]] }; });
   const paths = [], ex = [], dmg = new Array(tanks.length).fill(0);
   let tick = 0; const MAXT = 120 * 14;
   const tms = () => Math.round(tick * 1000 / 120);
@@ -138,17 +150,20 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
   };
   const doSplit = (p, next) => {
     finish(p, 'split', p.x, p.y); ex.push({ t: tms(), x: Math.round(p.x), y: Math.round(p.y), r: 0, hits: [], cr: [], split: true });
-    const n = p.split.n;
+    const sp = p.split, n = sp.n; const gy = h[xi(p.x)];
     for (let k = 0; k < n; k++) {
-      const sp = (k - (n - 1) / 2) * 62 + (rnd() - 0.5) * 26;
-      next.push({ x: p.x, y: p.y, vx: p.vx * 0.55 + sp, vy: p.vy * 0.25 + (rnd() - 0.4) * 70, bounces: 0, split: null, r: p.split.r, dmg: p.split.dmg, t0: tick, age: 0, pts: dry ? null : [[Math.round(p.x), Math.round(p.y)]] });
+      let c;
+      if (sp.rain) { const gx = Math.max(6, Math.min(W - 7, p.x + (k - (n - 1) / 2) * sp.gap + (rnd() - 0.5) * 18)); c = { x: gx, y: -30 - rnd() * 90, vx: 0, vy: 150 }; }
+      else if (sp.impact) { c = { x: p.x, y: Math.min(p.y, gy) - 6, vx: (k - (n - 1) / 2) * 62 + (rnd() - 0.5) * 30, vy: -(90 + rnd() * 160) }; }
+      else { const o = (k - (n - 1) / 2) * 62 + (rnd() - 0.5) * 26; c = { x: p.x, y: p.y, vx: p.vx * 0.55 + o, vy: p.vy * 0.25 + (rnd() - 0.4) * 70 }; }
+      next.push({ ...c, bounces: 0, split: null, r: sp.r, dmg: sp.dmg, gm: 1, wm: 1, t0: tick, age: 0, pts: dry ? null : [[Math.round(c.x), Math.round(c.y)]] });
     }
   };
   while (live.length && tick < MAXT) {
     tick++;
     const next = [];
     for (const p of live) {
-      p.age++; p.vy += GRAV * DT; p.vx += wind * WIND_K * DT; p.x += p.vx * DT; p.y += p.vy * DT;
+      p.age++; p.vy += GRAV * p.gm * DT; p.vx += wind * p.wm * WIND_K * DT; p.x += p.vx * DT; p.y += p.vy * DT;
       if (!dry && (tick - p.t0) % 2 === 0) p.pts.push([Math.round(p.x), Math.round(p.y)]);
       if (p.bounces > 0 && (p.x < 0 || p.x > W - 1)) { p.x = p.x < 0 ? 0 : W - 1; p.vx = -p.vx * 0.6; }   // odrážeč se odráží i od krajů světa
       if (p.x < -250 || p.x > W + 250 || p.y > H + 400) { finish(p, 'out', p.x, p.y); continue; }
@@ -170,7 +185,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
         if (Math.hypot(p.x - tk.x, p.y - (groundAt(h, tk.x) - TANK_HY)) < TANK_R) { hit = true; break; }
       }
       if (hit) { if (p.split) { doSplit(p, next); continue; } finish(p, 'boom', p.x, p.y); explode(p, p.x, p.y); continue; }
-      if (p.split && p.vy > 0 && p.age > 14) { doSplit(p, next); continue; }   // kazeta se rozpadne ve vrcholu
+      if (p.split && !p.split.impact && p.vy > 0 && p.age > 14) { doSplit(p, next); continue; }   // kazeta se rozpadne ve vrcholu
       next.push(p);
     }
     live = next;

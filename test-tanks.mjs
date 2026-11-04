@@ -27,6 +27,11 @@ assert.equal(fs.readFileSync('./tanks/physics.js', 'utf8'), fs.readFileSync('./p
       while (dir > 0 ? px < 1000 : px > 600) { const nx = px + dir * stp; assert.ok(-(P.groundAt(h, nx) - P.groundAt(h, px)) <= Math.max(P.SLOPE_MAX * stp, P.STEP_UP), 'kráter ' + r + ' se dá přejet'); px = nx; }
     }
   }
+  for (const id of P.ORDER) { const w = P.WEAPONS[id]; assert.ok(w.inf || (w.price > 0 && w.pack > 0 && w.lvl >= 1 && w.lvl <= P.MAX_LEVEL), id); }
+  assert.equal(P.MAX_LEVEL, 30); assert.equal(P.levelOf(P.xpFor(30)), 30); assert.ok(P.COLORS.every((c) => c.lvl <= P.MAX_LEVEL));
+  { const cnt = (id) => P.simulate({ h: P.genTerrain(9), tanks: [{ x: 200, hp: 100 }, { x: 1400, hp: 100 }], wind: 0 }, 0, 55, 70, id);
+    assert.equal(cnt('five').paths.length, 5, 'pětisalva = 5 střel'); assert.ok(cnt('napalm').ex.filter((e) => e.r > 0).length >= 6, 'napalm se rozstříkne'); assert.ok(cnt('airstrike').ex.filter((e) => e.r > 0).length >= 5, 'nálet = déšť bomb');
+    assert.ok(cnt('megacluster').paths.length >= 10, 'mega kazeta'); }
   assert.equal(P.levelOf(0), 1); assert.ok(P.levelOf(P.xpFor(5)) === 5); assert.equal(P.levelOf(1e9), P.MAX_LEVEL);
 }
 
