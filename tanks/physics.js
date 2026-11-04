@@ -21,7 +21,7 @@ export const EDGE = 46;           // tank nezajede blíž k okraji
 /** Zbraně. `price`/`pack`/`lvl` = obchod (cena za balíček kusů, od které úrovně), `max` = nejvíc kusů, které smíš mít u sebe (koupené + z beden v zápase); `std` je neomezená. */
 export const WEAPONS = {
   std:     { id: 'std',     name: 'Granát',            desc: 'Základní náboj, neomezený.',                                       r: 38,  dmg: 30, col: '#ffd23f', inf: true },
-  big:     { id: 'big',     name: 'Těžká bomba',       desc: 'Velký kráter a velká rána.',                                       r: 68,  dmg: 48, col: '#ff7a3d', price: 240,  pack: 3, max: 9, lvl: 1, fuelPen: 0.4 },
+  big:     { id: 'big',     name: 'Těžká bomba',       desc: 'Velký kráter a velká rána.',                                       r: 68,  dmg: 48, col: '#ff7a3d', price: 240,  pack: 3, max: 9, lvl: 1, selfDmg: 5, fuelPen: 0.4 },
   triple:  { id: 'triple',  name: 'Trojitá salva',     desc: 'Tři střely vedle sebe, hodí se na vzdálené cíle.',                  r: 34,  dmg: 24, col: '#5ee1ff', price: 240,  pack: 3, max: 9, lvl: 2, shots: 3, spread: 6, fuelPen: 0.2 },
   bounce:  { id: 'bounce',  name: 'Odrážeč',           desc: 'Dvakrát se odrazí od země, než vybuchne.',                         r: 44,  dmg: 34, col: '#7dff9a', price: 300,  pack: 3, max: 6, lvl: 3, bounces: 2, selfDmg: 3 },
   roller:  { id: 'roller',  name: 'Kutálející granát', desc: 'Po dopadu se kutálí po zemi (z kopce rychleji) a vybuchne přesně 3 s po výstřelu. Zastaví se u tanku.', r: 56, dmg: 42, col: '#9be15d', price: 340, pack: 3, max: 6, lvl: 4, roll: true, fuse: 3, selfDmg: 6, fuelPen: 0.5 },
