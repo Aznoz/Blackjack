@@ -12,6 +12,22 @@ export const TANK_HY = 18;        // střed tanku je takhle vysoko nad zemí
 export const MAX_HP = 100;
 export const TRAP_R = 22;          // soupeř, který se přiblíží k pasti na tuhle vzdálenost, ji spustí
 export const FUEL_MAX = 190;      // kolik pixelů smí tank za tah ujet
+/** Trvalá vylepšení tanku (kupují se za tankové coiny v Arzenálu; úrovně 0–5). `price[n]` = cena další úrovně (n = už koupená úroveň). */
+export const UPGRADES = {
+  tank:  { id: 'tank',  name: 'Větší nádrž',      icon: '⛽', max: 5, price: [150, 250, 400, 600, 900],   per: '+10 % paliva za tah', desc: 'Každá úroveň přidá 10 % paliva na tah (nejvíc +50 %).' },
+  aim:   { id: 'aim',   name: 'Přesnost míření',  icon: '🎯', max: 5, price: [100, 200, 350, 550, 800],   per: 'delší vodicí tečky',  desc: 'Bílé vodicí tečky ukazují dál dráhu střely. Bez vylepšení jen krátký kousek, na maximu celý oblouk.' },
+  armor: { id: 'armor', name: 'Pancíř',           icon: '🛡️', max: 5, price: [200, 350, 550, 800, 1200], per: '−4 % přijatého poškození', desc: 'Každá úroveň ubere 4 % z poškození, které tank dostane (nejvíc −20 %).' },
+  regen: { id: 'regen', name: 'Opravárenská četa', icon: '🔧', max: 5, price: [250, 400, 650, 950, 1400], per: '+2 životy na začátku tahu', desc: 'Na začátku každého tvého tahu si tank sám opraví 2 životy za úroveň (nejvíc +10).' },
+  loot:  { id: 'loot',  name: 'Válečná kořist',   icon: '💰', max: 5, price: [200, 350, 550, 800, 1100], per: '+6 % coinů z výher', desc: 'Každá úroveň přidá 6 % k tankovým coinům za zápas (nejvíc +30 %).' },
+};
+export const UPGRADE_IDS = Object.keys(UPGRADES);
+const upl = (l, max = 5) => Math.max(0, Math.min(max, Math.floor(Number(l) || 0)));
+export const fuelMaxOf = (l) => Math.round(190 * (1 + 0.1 * upl(l)));
+export const AIM_DOTS = [3, 6, 10, 15, 21, 30];     // počet bílých teček podle úrovně Přesnosti míření
+export const aimDotsOf = (l) => AIM_DOTS[upl(l)];
+export const armorOf = (l) => 0.04 * upl(l);        // podíl poškození, který pancíř zachytí
+export const regenOf = (l) => 2 * upl(l);
+export const lootOf = (l) => 1 + 0.06 * upl(l);
 export const DRIVE_SPEED = 72;    // px/s
 export const SLOPE_MAX = 1.7;     // nejstrmější svah, který tank vyjede (změna výšky / vodorovná vzdálenost)
 export const STEP_UP = 26;        // drobný schod / hrana, kterou tank přejede vždy (px na jeden krok jízdy)
@@ -153,7 +169,7 @@ export function previewPath(h, x, ang, pw, wind, count, every = 3, wid = 'std') 
  *  Časy jsou v ms od výstřelu; pts jsou celá čísla po 1/60 s od t0. `dry` = jen odhad pro bota (nic nemění, bez drah).
  */
 export function simulate(env, si, ang, pw, wid, opts = {}) {
-  const dry = !!opts.dry, rnd = opts.rnd || Math.random, mul = opts.dmgMul || 1;   // dmgMul: slabší zásahy (boti nižších obtížností)
+  const dry = !!opts.dry, rnd = opts.rnd || Math.random, mul = opts.dmgMul || 1, arm = (i) => (opts.armor ? 1 - (opts.armor[i] || 0) : 1);   // dmgMul: slabší zásahy (boti nižších obtížností)
   const { h, tanks, wind } = env; const crates = env.crates || [];
   const wp = WEAPONS[wid];
   const me = tanks[si];
@@ -162,7 +178,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
     if (!dry) paths.push({ t0: 0, pts: r.pts, end: 'laser' });
     if (r.end !== 'out') {
       const e = { t: 80, x: r.x, y: r.y, r: 0, hits: [], cr: dry ? [] : r.cr };
-      if (r.tank >= 0) { const dv = Math.max(1, Math.round(wp.dmg * mul)); e.hits.push([r.tank, dv]); dmg[r.tank] = dv; if (!dry) tanks[r.tank].hp = Math.max(0, tanks[r.tank].hp - dv); }
+      if (r.tank >= 0) { const dv = Math.max(1, Math.round(wp.dmg * mul * arm(r.tank))); e.hits.push([r.tank, dv]); dmg[r.tank] = dv; if (!dry) tanks[r.tank].hp = Math.max(0, tanks[r.tank].hp - dv); }
       if (!dry) { for (const id of r.cr) { const k = crates.findIndex((c) => c.id === id); if (k >= 0) crates.splice(k, 1); } }
       ex.push(e);
     }
@@ -183,7 +199,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
       const tk = tanks[i]; if (tk.hp <= 0) continue;
       const d = Math.hypot(tk.x - x, groundAt(h, tk.x) - TANK_HY - y);
       const f = 1 - Math.max(0, d - 16) / (p.r + 12);
-      if (f > 0 && p.dmg > 0) { const dm = Math.max(1, Math.round(p.dmg * f * mul)); e.hits.push([i, dm]); dmg[i] += dm; if (!dry) tk.hp = Math.max(0, tk.hp - dm); }
+      if (f > 0 && p.dmg > 0) { const dm = Math.max(1, Math.round(p.dmg * f * mul * arm(i))); e.hits.push([i, dm]); dmg[i] += dm; if (!dry) tk.hp = Math.max(0, tk.hp - dm); }
     }
     if (!dry) {
       for (let k = crates.length - 1; k >= 0; k--) { const c = crates[k]; if (Math.hypot(c.x - x, h[xi(c.x)] - 12 - y) < p.r + 14) { e.cr.push(c.id); crates.splice(k, 1); } }
@@ -230,7 +246,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
           const gy = h[xi(p.x)], tx = Math.round(p.x); finish(p, 'trap', p.x, gy);
           let vic = -1; for (let i = 0; i < tanks.length; i++) if (i !== si && tanks[i].hp > 0 && Math.abs(tanks[i].x - tx) < TRAP_R) vic = i;
           const e = { t: tms(), x: tx, y: Math.round(gy), r: 0, hits: [], cr: [] };
-          if (vic >= 0) { const dv = Math.max(1, Math.round(p.dmg * mul)); e.hits.push([vic, dv]); dmg[vic] += dv; if (!dry) tanks[vic].hp = Math.max(0, tanks[vic].hp - dv); } else e.trap = true;
+          if (vic >= 0) { const dv = Math.max(1, Math.round(p.dmg * mul * arm(vic))); e.hits.push([vic, dv]); dmg[vic] += dv; if (!dry) tanks[vic].hp = Math.max(0, tanks[vic].hp - dv); } else e.trap = true;
           ex.push(e); continue;
         }
         if (p.roll) { p.rolling = true; p.s = Math.max(-300, Math.min(300, p.vx * 0.5)); p.y = h[xi(p.x)] - 6; next.push(p); continue; }

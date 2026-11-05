@@ -44,6 +44,8 @@ export function tankOf(acc) {
   t.wins = Math.max(0, Math.floor(Number(t.wins) || 0)); t.losses = Math.max(0, Math.floor(Number(t.losses) || 0));
   t.coins = Number.isFinite(t.coins) ? Math.max(0, Math.min(1e9, Math.floor(t.coins))) : START_COINS;
   t.streak = Math.max(0, Math.floor(Number(t.streak) || 0)); t.best = Math.max(t.streak, Math.floor(Number(t.best) || 0));
+  if (!t.up || typeof t.up !== 'object') t.up = {};
+  for (const id of P.UPGRADE_IDS) t.up[id] = Math.max(0, Math.min(P.UPGRADES[id].max, Math.floor(Number(t.up[id]) || 0)));
   t.color = Number.isInteger(t.color) && t.color >= 0 && t.color < COLORS.length ? t.color : 0;
   if (!t.ammo || typeof t.ammo !== 'object') t.ammo = {};
   for (const id of Object.keys(t.ammo)) { const w = WEAPONS[id]; if (!w || w.inf) { delete t.ammo[id]; continue; } if (t.ammo[id] > w.max) { t.ammo[id] = w.max; } } // starší účty s víc kusy než dnešní strop se srazí na max
@@ -57,7 +59,7 @@ function profileOf(acc, linked) {
   const t = tankOf(acc); const lvl = P.levelOf(t.xp);
   return {
     account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, coins: t.coins, streak: t.streak, best: t.best,
-    tank: { xp: t.xp, lvl, from: P.xpFor(lvl), next: lvl >= P.MAX_LEVEL ? null : P.xpFor(lvl + 1), wins: t.wins, losses: t.losses, color: t.color, ammo: { ...t.ammo } },
+    tank: { xp: t.xp, lvl, from: P.xpFor(lvl), next: lvl >= P.MAX_LEVEL ? null : P.xpFor(lvl + 1), wins: t.wins, losses: t.losses, color: t.color, ammo: { ...t.ammo }, up: { ...t.up } },
     rewards: REWARDS,
   };
 }
@@ -80,6 +82,17 @@ export function api(action, body) {
     if ((t.ammo[w.id] | 0) + w.pack > w.max) return bad(409, `${w.name}: u sebe smíš mít nejvíc ${w.max} ks.`);
     if (t.coins < w.price) return bad(402, 'Nemáš dost tankových coinů.');
     t.coins -= w.price; t.ammo[w.id] = (t.ammo[w.id] | 0) + w.pack; acc.lastSeen = now();
+    dirty();
+    return { status: 200, json: profileOf(acc, ident.linked) };
+  }
+  if (action === 'upgrade') {   // trvalé vylepšení tanku (nádrž, míření, pancíř, ...): koupí další úroveň
+    const u = P.UPGRADES[String(body.id)];
+    if (!u) return bad(400, 'Neznámé vylepšení.');
+    const cur = t.up[u.id];
+    if (cur >= u.max) return bad(409, `${u.name}: už máš nejvyšší úroveň.`);
+    const price = u.price[cur];
+    if (t.coins < price) return bad(402, 'Nemáš dost tankových coinů.');
+    t.coins -= price; t.up[u.id] = cur + 1; acc.lastSeen = now();
     dirty();
     return { status: 200, json: profileOf(acc, ident.linked) };
   }
@@ -146,7 +159,7 @@ function view(room, pid) {
   return {
     t: 'state', code: room.code, phase: room.phase, you, hostIdx: 0, bot: room.bot || 0, quick: !!room.quick,
     players: room.players.map((p, i) => playerView(room, p, i)),
-    hp: room.tanks.map((k) => k.hp), x: room.tanks.map((k) => r1(k.x)), fuel: room.tanks.map((k) => Math.round(k.fuel)),
+    hp: room.tanks.map((k) => k.hp), x: room.tanks.map((k) => r1(k.x)), fuel: room.tanks.map((k) => Math.round(k.fuel)), fmax: room.tanks.map((k) => k.fmax || FUEL_MAX),
     turn: room.turn, turnNo: room.turnNo, turnMs: room.phase === 'play' && room.turnEnd ? Math.max(0, room.turnEnd - now()) : 0, turnTotal: TURN_MS,
     wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x, hp: c.kind === 'hp' ? 1 : 0 })), mines: (room.mines || []).map((q) => ({ id: q.id, x: q.x, o: q.o })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {}, lock: you >= 0 && room.tanks[you] ? { ...room.tanks[you].lock } : {},
     th: P.checksum(room.h), shots: room.tanks.map((k) => k.shots), result: room.result || null, rematch: [...room.rematch],
@@ -166,7 +179,11 @@ function startMatch(room) {
   room.seed = crypto.randomInt(1, 2 ** 31);
   room.h = P.genTerrain(room.seed);
   const xl = 190 + Math.round(Math.random() * 40), xr = W - 190 - Math.round(Math.random() * 40);
-  room.tanks = [xl, xr].map((x) => ({ x, hp: MAX_HP, fuel: FUEL_MAX, crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 }));
+  room.tanks = [xl, xr].map((x, i) => {
+    const pl = room.players[i]; const up = pl && !pl.bot && pl.acc ? tankOf(pl.acc).up : {};   // trvalá vylepšení (jen lidé)
+    const fmax = P.fuelMaxOf(up.tank);
+    return { x, hp: MAX_HP, fuel: fmax, fmax, armor: P.armorOf(up.armor), regen: P.regenOf(up.regen), crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 };
+  });
   room.crates = []; room.crateSeq = 0; room.mines = []; room.mineSeq = 0;
   room.players.forEach((p, i) => { if (p.bot) room.tanks[i].crate = botArsenal(p.bot); });   // bot má od začátku celý arzenál podle obtížnosti
   for (let i = 0; i < 2; i++) spawnCrate(room);
@@ -199,7 +216,8 @@ function beginTurn(room, first) {
   room.turnNo++; room.driveDir = 0;
   const cur = room.tanks[room.turn];
   for (const k of Object.keys(cur.lock)) { if (--cur.lock[k] <= 0) delete cur.lock[k]; }   // nabíjení zbraní se odpočítává po vlastních tazích
-  const pen = cur.fuelNext; cur.fuelNext = 0; cur.fuel = Math.round(FUEL_MAX * (1 - pen));
+  const pen = cur.fuelNext; cur.fuelNext = 0; cur.fuel = Math.round((cur.fmax || FUEL_MAX) * (1 - pen));
+  if (cur.regen > 0 && cur.hp > 0 && cur.hp < MAX_HP) { const before = cur.hp; cur.hp = Math.min(MAX_HP, cur.hp + cur.regen); bcast(room, { t: 'heal', i: room.turn, hp: cur.hp, amount: cur.hp - before }); }   // Opravárenská četa
   const added = [];
   if (room.turnNo % 2 === 0 && room.crates.length < MAX_CRATES && Math.random() < 0.75) { const c = spawnCrate(room); if (c) added.push({ id: c.id, x: c.x, hp: c.kind === 'hp' ? 1 : 0 }); }
   room.turnEnd = now() + TURN_MS; room.phase = 'play';
@@ -255,7 +273,7 @@ function driveTick(room) {
   bcast(room, { t: 'mv', i, x: r1(tk.x), f: Math.round(tk.fuel) });
   for (let k = room.mines.length - 1; k >= 0; k--) { // soupeřova past: ubere 25 životů a zmizí
     const q = room.mines[k]; if (q.o === i || Math.abs(q.x - tk.x) >= P.TRAP_R) continue;
-    room.mines.splice(k, 1); const dm = WEAPONS.trap.dmg; tk.hp = Math.max(0, tk.hp - dm); room.tanks[q.o].dmg += dm;
+    room.mines.splice(k, 1); const dm = Math.max(1, Math.round(WEAPONS.trap.dmg * (1 - (tk.armor || 0)))); tk.hp = Math.max(0, tk.hp - dm); room.tanks[q.o].dmg += dm;
     bcast(room, { t: 'mine', id: q.id, i, x: q.x, dmg: dm, hp: tk.hp });
     if (tk.hp <= 0) { stopDrive(room); finish(room, { winner: q.o, reason: `${room.players[i].name} najel na past` }); return; }
   }
@@ -287,7 +305,7 @@ function doFire(room, i, a, pw, wid) {
   tk.shots++;
   const hpBefore = room.tanks.map((k) => k.hp);
   let self = 0; if (wp.selfDmg) { self = Math.min(wp.selfDmg, Math.max(0, tk.hp - 1)); tk.hp -= self; }   // výstřel nikdy nezabije střelce
-  const res = P.simulate({ h: room.h, tanks: room.tanks, wind: room.wind, crates: room.crates }, i, a, pw, wid, room.players[i] && room.players[i].bot ? botSimOpts(room.players[i].bot) : {});
+  const res = P.simulate({ h: room.h, tanks: room.tanks, wind: room.wind, crates: room.crates }, i, a, pw, wid, { ...(room.players[i] && room.players[i].bot ? botSimOpts(room.players[i].bot) : {}), armor: room.tanks.map((k) => k.armor || 0) });
   tk.dmg += res.dmg[1 - i] | 0;
   const tr = res.ex.find((e) => e.trap);
   if (tr) { // past zůstává na poli; víc než `cap` kusů od jednoho hráče nejde, nejstarší zmizí
@@ -330,10 +348,10 @@ function finish(room, r) {
       if (won) {
         t.streak++; t.best = Math.max(t.best, t.streak);
         const bonus = STREAK_BONUS * Math.min(t.streak - 1, STREAK_CAP);
-        const amount = (room.bot ? BOT_REWARDS[room.bot] : WIN_COINS) + bonus;
+        const amount = Math.round(((room.bot ? BOT_REWARDS[room.bot] : WIN_COINS) + bonus) * P.lootOf(t.up.loot));
         t.coins = Math.min(1e9, t.coins + amount); out.coins[i] = amount; out.bonus[i] = bonus;
       } else {
-        t.streak = 0; const amount = room.bot ? BOT_LOSE[room.bot] : LOSE_COINS;
+        t.streak = 0; const amount = Math.round((room.bot ? BOT_LOSE[room.bot] : LOSE_COINS) * P.lootOf(t.up.loot));
         t.coins = Math.min(1e9, t.coins + amount); out.coins[i] = amount; out.bonus[i] = 0;
       }
       out.streak[i] = t.streak; p.acc.lastSeen = now();
@@ -372,7 +390,7 @@ export function botPlan(room, bi) {
   const weapons = botWeapons(room, bi);
   let best = null;
   const evalShot = (a, pw, w) => {
-    const r = P.simulate(env, bi, a, pw, w, { dry: true, dmgMul: BOT_DMG[lvl] || 1 });
+    const r = P.simulate(env, bi, a, pw, w, { dry: true, dmgMul: BOT_DMG[lvl] || 1, armor: room.tanks.map((k) => k.armor || 0) });
     let dist = 1e9; for (const e of r.ex) dist = Math.min(dist, Math.hypot(e.x - en.x, e.y - (groundAt(room.h, en.x) - TANK_HY)));
     const score = Math.min(r.dmg[ei], en.hp + 10) * 1.0 - r.dmg[bi] * 2.2 - (WEAPONS[w].selfDmg || 0) * 1.3 - (WEAPONS[w].fuelPen || 0) * 6 - Math.min(dist, 900) * 0.04 + (w === 'std' ? 4 : 0) + (r.dmg[ei] >= en.hp ? 60 : 0);
     return { a, pw, w, score, dmg: r.dmg[ei], self: r.dmg[bi] };

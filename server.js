@@ -117,12 +117,14 @@ function keyOf(token) {
 }
 
 const TANK_AMMO_IDS = ['big', 'triple', 'bounce', 'roller', 'laser', 'trap', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
+const TANK_UPGRADE_IDS = ['tank', 'aim', 'armor', 'regen', 'loot'];   // trvalá vylepšení tanku (shodně s UPGRADES v tanks/physics.js)
 function cleanTank(t) {
   t = t && typeof t === 'object' ? t : {};
   const n = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);
   const ammo = {};
   for (const id of TANK_AMMO_IDS) { const c = n(t.ammo && t.ammo[id], 20); if (c) ammo[id] = c; }
   const out = { xp: n(t.xp, 1e7), wins: n(t.wins, 1e6), losses: n(t.losses, 1e6), color: n(t.color, 15), ammo, streak: n(t.streak, 1e5), best: n(t.best, 1e5) };
+  const up = {}; for (const id of TANK_UPGRADE_IDS) { const l = n(t.up && t.up[id], 5); if (l) up[id] = l; } if (Object.keys(up).length) out.up = up;   // trvalá vylepšení tanku (úrovně 0–5)
   if (Number.isFinite(t.coins)) out.coins = n(t.coins, 1e9); // bez `coins` začíná hráč na startovních 300 (viz tanks/tanks.js)
   return out;
 }

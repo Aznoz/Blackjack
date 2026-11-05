@@ -243,6 +243,12 @@ function renderShop() {
   $('shopCoins').textContent = prof.coins.toLocaleString('cs-CZ');
   $('shopLvl').innerHTML = `<div class="plvl">${t.lvl}</div><div class="pinfo"><div class="pname">Úroveň ${t.lvl}</div><div class="xpbar"><i style="width:${t.next ? clamp((t.xp - t.from) / (t.next - t.from), 0, 1) * 100 : 100}%"></i></div><div class="psub"><span>${t.next ? `${t.xp - t.from} / ${t.next - t.from} XP` : 'maximum'}</span><span>${t.wins} výher</span></div></div>`;
   $('shopColors').innerHTML = COLORS.map((c, i) => `<button type="button" data-c="${i}" style="background:${c.c}" class="${t.color === i ? 'on' : ''} ${t.lvl < c.lvl ? 'lock' : ''}" data-l="Lv ${c.lvl}" aria-label="${c.name}" title="${c.name}${t.lvl < c.lvl ? ' (od úrovně ' + c.lvl + ')' : ''}"></button>`).join('');
+  const up = t.up || {};
+  $('shopUpgrades').innerHTML = P.UPGRADE_IDS.map((id) => {
+    const u = P.UPGRADES[id]; const l = up[id] | 0; const maxed = l >= u.max; const price = u.price[l]; const poor = !maxed && prof.coins < price;
+    const pips = Array.from({ length: u.max }, (_, k) => `<i class="${k < l ? 'on' : ''}"></i>`).join('');
+    return `<div class="wi up"><div class="ic" style="background:#4b78e8">${u.icon}</div><div><div class="nm">${u.name} <span class="own">· úroveň ${l}/${u.max}</span></div><div class="pips">${pips}</div><div class="ds">${u.desc}<br><u>${u.per}</u></div></div><button class="buy" type="button" data-u="${id}" ${maxed || poor ? 'disabled' : ''}>${maxed ? 'Maximum' : `Vylepšit<br><span class="coin"></span> ${price}`}</button></div>`;
+  }).join('');
   $('shopWeapons').innerHTML = ORDER.filter((id) => id !== 'std').map((id) => {
     const w = WEAPONS[id]; const own = t.ammo[id] | 0; const lock = t.lvl < w.lvl; const full = own + w.pack > w.max; const poor = prof.coins < w.price;
     const label = lock ? `Úroveň ${w.lvl}` : full ? 'Plno' : `Koupit ${w.pack}×<br><span class="coin"></span> ${w.price}`;
@@ -252,6 +258,10 @@ function renderShop() {
 $('shopColors').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-c]'); if (!b) return;
   try { prof = await call('color', { c: +b.dataset.c }); renderProfile(); renderShop(); sfx.click(); } catch (err) { toast(err.message); }
+});
+$('shopUpgrades').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-u]'); if (!b || b.disabled) return; b.disabled = true;
+  try { prof = await call('upgrade', { id: b.dataset.u }); renderProfile(); renderShop(); sfx.pick(); } catch (err) { toast(err.message); renderShop(); }
 });
 $('shopWeapons').addEventListener('click', async (e) => {
   const b = e.target.closest('[data-b]'); if (!b || b.disabled) return; b.disabled = true;
@@ -303,7 +313,7 @@ function onMsg(m) {
     case 'terrain': R.h = Int16Array.from(m.h); terrDirty = true; if (S) R.tk.forEach((t, i) => { t.y = P.groundAt(R.h, t.dx); }); return;
     case 'shot': return startShot(m);
     case 'aim': if (m.i !== me && R.aim[m.i]) R.aim[m.i] = { a: clamp(m.a, 0, 180), p: clamp(m.p, 8, 100) }; return;
-    case 'mv': { if (!S) return; S.x[m.i] = m.x; S.fuel[m.i] = m.f; R.tk[m.i].x = m.x; if (m.i === me) $('fuelFill').style.height = clamp(m.f / FUEL_MAX, 0, 1) * 100 + '%'; if (m.stop && m.i === me) driveDir = 0; engineKick(m.i, m.x, m.stop); return; }
+    case 'mv': { if (!S) return; S.x[m.i] = m.x; S.fuel[m.i] = m.f; R.tk[m.i].x = m.x; if (m.i === me) $('fuelFill').style.height = clamp(m.f / ((S.fmax && S.fmax[me]) || FUEL_MAX), 0, 1) * 100 + '%'; if (m.stop && m.i === me) driveDir = 0; engineKick(m.i, m.x, m.stop); return; }
     case 'ammo': if (S) { S.ammo = m.ammo; renderTray(); } return;
     case 'crate': return onCrate(m);
     case 'mine': { // past spuštěná jízdou
@@ -616,7 +626,7 @@ function render() {
   if (screen === 'game' && myTurn()) {
     const t = R.tk[me]; const a = R.aim[me];
     if (R.trace) dots(g, R.trace, '#58e08a', 2.6, 2);
-    const pv = P.previewPath(R.h, t.x, a.a, a.p, S.wind, 26, 3, sel); dots(g, pv, '#ffffff', 3, 1, true);
+    const pv = P.previewPath(R.h, t.x, a.a, a.p, S.wind, P.aimDotsOf(prof && prof.tank && prof.tank.up && prof.tank.up.aim), 3, sel); dots(g, pv, '#ffffff', 3, 1, true);   // délka vodicích teček = vylepšení Přesnost míření
   }
   if (R.shot) {
     const sh = R.shot;
@@ -672,7 +682,7 @@ function updateHud(force) {
   $('drive').style.visibility = 'visible';
   const key = `${S.turnNo}|${sel}|${S.ammo && JSON.stringify(S.ammo)}`;
   if (force || key !== hudKey) { hudKey = key; renderWbtn(); }
-  const f = S.fuel ? S.fuel[me] : 0; $('fuelFill').style.height = clamp(f / FUEL_MAX, 0, 1) * 100 + '%';
+  const f = S.fuel ? S.fuel[me] : 0; $('fuelFill').style.height = clamp(f / ((S.fmax && S.fmax[me]) || FUEL_MAX), 0, 1) * 100 + '%';
   $('knob') && placeKnob();
 }
 let hpCache = '';
