@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=13';
+import * as P from './physics.js?v=14';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -676,6 +676,9 @@ function setDrive(d) {
   if (d === driveDir) return; driveDir = d; $('dl').classList.toggle('on', d < 0); $('dr').classList.toggle('on', d > 0);
   sendMsg({ t: 'drive', d });
 }
+// dlouhé držení prstu na ovládání nesmí spustit systémové menu ani vibraci (telefon při dlouhém stisku bzučí)
+document.addEventListener('contextmenu', (e) => { if (!/^(INPUT|TEXTAREA)$/.test(e.target.tagName)) e.preventDefault(); });
+for (const el of [...document.querySelectorAll('#drive button, #pad, .nudge button')]) el.addEventListener('touchstart', (e) => { e.preventDefault(); }, { passive: false });
 for (const [id, d] of [['dl', -1], ['dr', 1]]) {
   const el = $(id);
   el.addEventListener('pointerdown', (e) => { e.preventDefault(); el.setPointerCapture(e.pointerId); setDrive(d); });

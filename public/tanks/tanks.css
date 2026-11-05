@@ -3,7 +3,9 @@
   --or: #ff8a1f; --yl: #ffd21f; --red: #ff4b45; --vs: #7b3fe4; --ok: #4be08a;
   --u: min(1vw, 1.7vh);
 }
-* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; -webkit-touch-callout: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+.drive button, .nudge button, .pad, .fire, #wbtn, .tray button { touch-action: none; -webkit-user-select: none; user-select: none; }
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--txt); font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif; touch-action: none; user-select: none; -webkit-user-select: none; }
 button, input { font: inherit; color: inherit; }
 button { cursor: pointer; }
