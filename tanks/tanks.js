@@ -341,17 +341,23 @@ function finish(room, r) {
 }
 
 // ------------------------------------------------------------------ bot
-/** Zásoba zbraní bota: Rekrut zbraně do úrovně 8, Seržant do 16, Generál všechny; od každé polovina povoleného maxima (aspoň 1 ks), opravy po 1. */
-const BOT_LVL_CAP = { 1: 8, 2: 16, 3: 30 };
-function botArsenal(level) {
+/** Zásoba zbraní bota: všechny zbraně, od každé polovina povoleného maxima (aspoň 1 ks), opravy po 1. O tom, jestli ji v daném tahu vůbec zvažuje, rozhoduje `botChance`. */
+function botArsenal() {
   const out = {};
-  for (const id of ORDER) { const w = WEAPONS[id]; if (w.inf || w.lvl > (BOT_LVL_CAP[level] || 8)) continue; out[id] = w.util ? 1 : Math.max(1, Math.ceil(w.max / 2)); }
+  for (const id of ORDER) { const w = WEAPONS[id]; if (w.inf) continue; out[id] = w.util ? 1 : Math.max(1, Math.ceil(w.max / 2)); }
   return out;
+}
+/** Šance (0–1), že bot dané obtížnosti v tomhle tahu zvažuje danou zbraň. Podle ceny: běžné zbraně často, dobré míň, elitní (atomovka, nálet, mega kazeta) vzácně a Soudný den skoro nikdy, ale nikdy ne nulová; vyšší obtížnost má šanci vyšší. */
+export function botChance(id, level) {
+  const w = WEAPONS[id]; if (!w || w.inf || w.util) return 0;
+  const tier = w.price >= 2000 ? 3 : w.price >= 700 ? 2 : w.price >= 450 ? 1 : 0;
+  const T = [[0.55, 0.7, 0.8], [0.2, 0.35, 0.5], [0.015, 0.035, 0.06], [0.005, 0.015, 0.03]];
+  return T[tier][clamp((level | 0) - 1, 0, 2)];
 }
 function botWeapons(room, bi) {
   const a = ammoOf(room, bi); const list = ['std'];
-  const lk = room.tanks[bi].lock; const specials = Object.keys(a).filter((k) => k !== 'std' && a[k] > 0 && !WEAPONS[k].util && !WEAPONS[k].trap && !(lk[k] > 0));
-  for (let n = 0; n < (room.bot || 1) + 1 && specials.length; n++) list.push(specials.splice(Math.floor(Math.random() * specials.length), 1)[0]);
+  const lk = room.tanks[bi].lock; const specials = Object.keys(a).filter((k) => k !== 'std' && a[k] > 0 && !WEAPONS[k].util && !WEAPONS[k].trap && !(lk[k] > 0) && Math.random() < botChance(k, room.bot || 1));
+  for (let n = 0; n < 4 && specials.length; n++) list.push(specials.splice(Math.floor(Math.random() * specials.length), 1)[0]);   // víc než 4 se kvůli rychlosti nezkouší
   return list;
 }
 const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;

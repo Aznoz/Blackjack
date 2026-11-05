@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=14';
+import * as P from './physics.js?v=15';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -147,13 +147,14 @@ const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenEle
 const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
 let lockWhy = '';
 async function lockLand(verbose) { // zámek orientace jde jen v celé obrazovce; zkusí se víc způsobů, protože prohlížeče se liší
+  if (!coarse) return false;   // na počítači se nic zamykat nemá
   lockWhy = '';
   const so = screen.orientation;
   for (const mode of ['landscape', 'landscape-primary']) {
     try { if (so && so.lock) { await so.lock(mode); return true; } } catch (e) { lockWhy = (e && e.name) || 'chyba'; }
   }
   try { const old = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation; if (old && old.call(screen, 'landscape')) return true; } catch (e) { /* nic */ }
-  if (verbose) toast(so && so.lock ? `Telefon zámek na šířku nepovolil (${lockWhy || 'neznámý důvod'}). Zkus zapnout automatické otáčení v telefonu a otočit ho.` : 'Tenhle prohlížeč neumí zamknout šířku, otoč telefon ručně.');
+  if (verbose && window.innerHeight > window.innerWidth) toast(so && so.lock ? `Telefon zámek na šířku nepovolil (${lockWhy || 'neznámý důvod'}). Zkus zapnout automatické otáčení v telefonu a otočit ho.` : 'Tenhle prohlížeč neumí zamknout šířku, otoč telefon ručně.');
   return false;
 }
 async function enterFs() {

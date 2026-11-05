@@ -340,9 +340,11 @@ function findHit(room, i, w = 'std') {
 { // bot má od začátku celý arzenál podle obtížnosti a střílí i speciálními zbraněmi
   const lv = (n) => { const a = client(); a.say({ t: 'bot', level: n, token: T1, name: 'Honza' }); const st = a.last('state'); const room = T.rooms.get(st.code); const bi = 1 - st.you; const am = Object.keys(room.tanks[bi].crate); a.say({ t: 'leave' }); return am; };
   const l1 = lv(1), l2 = lv(2), l3 = lv(3);
-  assert.ok(l1.includes('big') && l1.includes('nuke') && !l1.includes('airstrike'), 'Rekrut: zbraně do úrovně 8');
-  assert.ok(l2.includes('airstrike') && l2.includes('repair2') && !l2.includes('doom'), 'Seržant: do úrovně 16');
-  assert.ok(l3.includes('doom') && l3.includes('laser') && l3.includes('trap'), 'Generál: všechno');
+  for (const l of [l1, l2, l3]) assert.ok(l.includes('big') && l.includes('nuke') && l.includes('doom') && l.includes('laser') && l.includes('repair2'), 'každý bot má celý arzenál');
+  // šance na použití: lepší zbraně vzácně, ale nenulově; vyšší obtížnost = větší šance
+  for (const lvl of [1, 2, 3]) { const c = ['big', 'five', 'nuke', 'doom'].map((id) => T.botChance(id, lvl)); assert.ok(c[0] > c[1] && c[1] > c[2] && c[2] > c[3] && c[3] > 0 && c[2] < 0.1, 'šance klesá s kvalitou zbraně ' + lvl); }
+  for (const id of ['big', 'five', 'nuke', 'doom']) assert.ok(T.botChance(id, 1) < T.botChance(id, 2) && T.botChance(id, 2) < T.botChance(id, 3), 'vyšší obtížnost = větší šance ' + id);
+  assert.equal(T.botChance('std', 3), 0); assert.equal(T.botChance('repair', 3), 0);
   const a = client(); a.say({ t: 'bot', level: 3, token: T1, name: 'Honza' }); const st = a.last('state'); const room = T.rooms.get(st.code); const bi = 1 - st.you;
   const used = new Set(); room.tanks[st.you].hp = 1000;   // člověk nezemře, bot střílí různými zbraněmi
   for (let k = 0; k < 8 && used.size < 2; k++) { await until(() => room.turn === bi && room.phase === 'play', 15000).catch(() => null); const n = a.all('shot').length; await until(() => a.all('shot').length > n, 15000).catch(() => null); for (const s of a.all('shot')) if (s.by === bi) used.add(s.w); if (room.turn === st.you) a.say({ t: 'fire', a: 45, p: 10, w: 'std' }); }
