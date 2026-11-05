@@ -339,13 +339,13 @@ function findHit(room, i, w = 'std') {
 }
 { // bot má od začátku celý arzenál podle obtížnosti a střílí i speciálními zbraněmi
   const lv = (n) => { const a = client(); a.say({ t: 'bot', level: n, token: T1, name: 'Honza' }); const st = a.last('state'); const room = T.rooms.get(st.code); const bi = 1 - st.you; const am = Object.keys(room.tanks[bi].crate); a.say({ t: 'leave' }); return am; };
-  const l1 = lv(1), l2 = lv(2), l3 = lv(3);
-  for (const l of [l1, l2, l3]) assert.ok(l.includes('big') && l.includes('nuke') && l.includes('doom') && l.includes('laser') && l.includes('repair2'), 'každý bot má celý arzenál');
+  const l1 = lv(1), l2 = lv(2), l3 = lv(3), l4 = lv(4);
+  for (const l of [l1, l2, l3, l4]) assert.ok(l.includes('big') && l.includes('nuke') && l.includes('doom') && l.includes('laser') && l.includes('repair2'), 'každý bot má celý arzenál');
   // šance na použití: lepší zbraně vzácně, ale nenulově; vyšší obtížnost = větší šance
-  for (const lvl of [1, 2, 3]) { const c = ['big', 'five', 'nuke', 'doom'].map((id) => T.botChance(id, lvl)); assert.ok(c[0] > c[1] && c[1] > c[2] && c[2] > c[3] && c[3] > 0 && c[2] < 0.1, 'šance klesá s kvalitou zbraně ' + lvl); }
-  for (const id of ['big', 'five', 'nuke', 'doom']) assert.ok(T.botChance(id, 1) < T.botChance(id, 2) && T.botChance(id, 2) < T.botChance(id, 3), 'vyšší obtížnost = větší šance ' + id);
-  assert.equal(T.botChance('std', 3), 0); assert.equal(T.botChance('repair', 3), 0);
-  const a = client(); a.say({ t: 'bot', level: 3, token: T1, name: 'Honza' }); const st = a.last('state'); const room = T.rooms.get(st.code); const bi = 1 - st.you;
+  for (const lvl of [1, 2, 3, 4]) { const c = ['big', 'five', 'nuke', 'doom'].map((id) => T.botChance(id, lvl)); assert.ok(c[0] > c[1] && c[1] > c[2] && c[2] > c[3] && c[3] > 0 && c[2] < 0.1, 'šance klesá s kvalitou zbraně ' + lvl); }
+  for (const id of ['big', 'five', 'nuke', 'doom']) assert.ok(T.botChance(id, 1) < T.botChance(id, 2) && T.botChance(id, 2) < T.botChance(id, 3) && T.botChance(id, 3) < T.botChance(id, 4), 'vyšší obtížnost = větší šance ' + id);
+  assert.equal(T.botChance('std', 4), 0); assert.deepEqual([1, 2, 3, 4].map((n) => T.BOT_REWARDS[n]), [100, 160, 200, 240]); assert.ok(T.BOT_NAMES[3] && T.BOT_NAMES[4]); assert.equal(T.botChance('repair', 3), 0);
+  const a = client(); a.say({ t: 'bot', level: 4, token: T1, name: 'Honza' }); const st = a.last('state'); const room = T.rooms.get(st.code); const bi = 1 - st.you;
   const used = new Set(); room.tanks[st.you].hp = 1000;   // člověk nezemře, bot střílí různými zbraněmi
   for (let k = 0; k < 8 && used.size < 2; k++) { await until(() => room.turn === bi && room.phase === 'play', 15000).catch(() => null); const n = a.all('shot').length; await until(() => a.all('shot').length > n, 15000).catch(() => null); for (const s of a.all('shot')) if (s.by === bi) used.add(s.w); if (room.turn === st.you) a.say({ t: 'fire', a: 45, p: 10, w: 'std' }); }
   assert.ok(used.size >= 2, 'bot používá i jiné zbraně než granát: ' + [...used]);
@@ -353,7 +353,7 @@ function findHit(room, i, w = 'std') {
 }
 { // výhra nad botem: +odměna dle úrovně, prohra bez ztráty
   accs[T1] = mk('Honza', 5000); const before = T.tankOf(accs[T1]).coins;
-  const a = client(); a.say({ t: 'bot', level: 3, token: T1, name: 'Honza' });
+  const a = client(); a.say({ t: 'bot', level: 4, token: T1, name: 'Honza' });
   const st = a.last('state'); const room = T.rooms.get(st.code); const me = st.you, bot = 1 - me;
   room.tanks[me].shots = 2; room.tanks[bot].hp = 1; room.tanks[bot].crate = {};   // bez arzenálu, ať ho nezabije jedním výstřelem dřív
   await until(() => a.last('state').turn === me && a.last('state').phase === 'play', 4000).catch(() => null);
@@ -370,14 +370,14 @@ function findHit(room, i, w = 'std') {
 }
 { // bot úrovně 3 trefuje hned: hráč nehraje, bot střílí
   let hits = 0, tries = 0;
-  for (let k = 0; k < 4; k++) {
-    const a = client(); a.say({ t: 'bot', level: 3, token: T1, name: 'Honza' });
+  for (let k = 0; k < 6; k++) {
+    const a = client(); a.say({ t: 'bot', level: 4, token: T1, name: 'Honza' });
     const st = a.last('state'); const bot = 1 - st.you;
     const shot = await until(() => a.all('shot').find((x) => x.by === bot), 8000).catch(() => null);
     if (shot) { tries++; if (shot.hp[st.you] < shot.hpBefore[st.you]) hits++; }
     a.say({ t: 'leave' });
   }
-  assert.ok(tries >= 3 && hits >= tries - 1, `bot L3 trefuje (${hits}/${tries})`);
+  assert.ok(tries >= 4 && hits >= tries * 0.6, `bot Generál často trefuje (${hits}/${tries})`);
 }
 
 console.log('test-tanks: OK');

@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=15';
+import * as P from './physics.js?v=16';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -126,8 +126,8 @@ let meTries = 0;
 async function bootProfile() { const j = await refreshProfile(); if (!j && ++meTries <= 20) setTimeout(bootProfile, Math.min(5000, 1200 * meTries)); }
 
 function botMenu() {
-  const RW = (prof && prof.rewards) || { botWin: { 1: 100, 2: 160, 3: 240 }, botLose: { 1: 30, 2: 45, 3: 60 } }; const rw = RW.botWin, rl = RW.botLose;
-  const L = [[1, 'Rekrut', 'Občas se netrefí a míří nepřesně.'], [2, 'Seržant', 'Trefuje poměrně přesně a sbírá bedny.'], [3, 'Generál', 'Skoro vždycky trefí. Hodně štěstí.']];
+  const RW = (prof && prof.rewards) || { botWin: { 1: 100, 2: 160, 3: 200, 4: 240 }, botLose: { 1: 30, 2: 45, 3: 50, 4: 60 } }; const rw = RW.botWin, rl = RW.botLose;
+  const L = [[1, 'Rekrut', 'Občas se netrefí a míří nepřesně.'], [2, 'Seržant', 'Trefuje poměrně přesně a sbírá bedny.'], [3, 'Kapitán', 'Míří přesně a občas sáhne po silnější zbrani.'], [4, 'Generál', 'Skoro vždycky trefí a nejčastěji střílí těžkým kalibrem. Hodně štěstí.']];
   $('botLevels').innerHTML = L.map(([n, nm, ds]) => `<button class="lv" type="button" data-lv="${n}"><span><b>${nm}</b><small>${ds}</small></span><span class="rw"><span class="coin"></span> +${rw[n]}<small>prohra +${rl[n]}</small></span></button>`).join('');
   openModal('botModal');
 }

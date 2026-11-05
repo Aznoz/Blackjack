@@ -12,12 +12,12 @@ const ms = (n) => Math.max(5, Math.round(n * S));
 export const START_COINS = 300;                        // s tolika coiny hráč začíná
 export const WIN_COINS = 200;                          // výhra online
 export const LOSE_COINS = 60;                          // prohra online: menší odměna (útěcha), coiny se nikdy neodečítají
-export const BOT_REWARDS = { 1: 100, 2: 160, 3: 240 };   // výhra nad botem dané úrovně
-export const BOT_LOSE = { 1: 30, 2: 45, 3: 60 };       // prohra s botem
+export const BOT_REWARDS = { 1: 100, 2: 160, 3: 200, 4: 240 };   // výhra nad botem dané úrovně
+export const BOT_LOSE = { 1: 30, 2: 45, 3: 50, 4: 60 };       // prohra s botem
 export const STREAK_BONUS = 40, STREAK_CAP = 5;        // za každou další výhru v řadě +40 coinů navíc, nejvíc +200 (od 6. výhry v řadě)
 const REWARDS = { win: WIN_COINS, lose: LOSE_COINS, botWin: BOT_REWARDS, botLose: BOT_LOSE, streakBonus: STREAK_BONUS, streakCap: STREAK_CAP };
-export const BOT_NAMES = { 1: 'Bot Rekrut', 2: 'Bot Seržant', 3: 'Bot Generál' };
-const BOT_XP = { 1: 40, 2: 70, 3: 110 };
+export const BOT_NAMES = { 1: 'Bot Rekrut', 2: 'Bot Seržant', 3: 'Bot Kapitán', 4: 'Bot Generál' };
+const BOT_XP = { 1: 40, 2: 70, 3: 90, 4: 110 };
 const MIN_SHOTS = 2;                                  // coiny jen když každý hráč vystřelil aspoň 2×
 const TURN_MS = ms(45_000);                           // čas na tah
 const DROP_GRACE_MS = Number(process.env.TANKS_DROP_MS) || 60_000;
@@ -351,8 +351,8 @@ function botArsenal() {
 export function botChance(id, level) {
   const w = WEAPONS[id]; if (!w || w.inf || w.util) return 0;
   const tier = w.price >= 2000 ? 3 : w.price >= 700 ? 2 : w.price >= 450 ? 1 : 0;
-  const T = [[0.55, 0.7, 0.8], [0.2, 0.35, 0.5], [0.015, 0.035, 0.06], [0.005, 0.015, 0.03]];
-  return T[tier][clamp((level | 0) - 1, 0, 2)];
+  const T = [[0.55, 0.7, 0.75, 0.8], [0.2, 0.35, 0.42, 0.5], [0.015, 0.035, 0.048, 0.06], [0.005, 0.015, 0.022, 0.03]];
+  return T[tier][clamp((level | 0) - 1, 0, 3)];
 }
 function botWeapons(room, bi) {
   const a = ammoOf(room, bi); const list = ['std'];
@@ -380,7 +380,7 @@ function botPlan(room, bi) {
     const b0 = best;
     for (let a = b0.a - 4; a <= b0.a + 4; a += 1) for (let pw = b0.pw - 5; pw <= b0.pw + 5; pw += 1) { if (a < 0 || a > 180 || pw < 8 || pw > 100) continue; const c = evalShot(a, pw, b0.w); if (c.score > best.score) best = c; }
   }
-  const sig = lvl === 1 ? [8, 9] : lvl === 2 ? [3.2, 4] : [1.1, 1.3];
+  const sig = lvl === 1 ? [8, 9] : lvl === 2 ? [3.2, 4] : lvl === 3 ? [2, 2.4] : [1.1, 1.3];
   return { a: clamp(best.a + gauss() * sig[0], 2, 178), pw: clamp(best.pw + gauss() * sig[1], 10, 100), w: best.w };
 }
 function botTurn(room) {
