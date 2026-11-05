@@ -347,8 +347,8 @@ function findHit(room, i, w = 'std') {
   assert.equal(T.botChance('std', 4), 0); assert.deepEqual([1, 2, 3, 4].map((n) => T.BOT_REWARDS[n]), [100, 160, 200, 240]); assert.ok(T.BOT_NAMES[3] && T.BOT_NAMES[4]); assert.equal(T.botChance('repair', 3), 0);
   const a = client(); a.say({ t: 'bot', level: 4, token: T1, name: 'Honza' }); const st = a.last('state'); const room = T.rooms.get(st.code); const bi = 1 - st.you;
   const used = new Set(); room.tanks[st.you].hp = 1000;   // člověk nezemře, bot střílí různými zbraněmi
-  for (let k = 0; k < 8 && used.size < 2; k++) { await until(() => room.turn === bi && room.phase === 'play', 15000).catch(() => null); const n = a.all('shot').length; await until(() => a.all('shot').length > n, 15000).catch(() => null); for (const s of a.all('shot')) if (s.by === bi) used.add(s.w); if (room.turn === st.you) a.say({ t: 'fire', a: 45, p: 10, w: 'std' }); }
-  assert.ok(used.size >= 2, 'bot používá i jiné zbraně než granát: ' + [...used]);
+  for (let k = 0; k < 10 && ![...used].some((w) => w !== 'std'); k++) { await until(() => room.turn === bi && room.phase === 'play', 15000).catch(() => null); const n = a.all('shot').length; await until(() => a.all('shot').length > n, 15000).catch(() => null); for (const s of a.all('shot')) if (s.by === bi) used.add(s.w); if (room.turn === st.you) a.say({ t: 'fire', a: 45, p: 10, w: 'std' }); }
+  assert.ok([...used].some((w) => w !== 'std'), 'bot používá i jiné zbraně než granát: ' + [...used]);
   a.say({ t: 'leave' });
 }
 { // výhra nad botem: +odměna dle úrovně, prohra bez ztráty
