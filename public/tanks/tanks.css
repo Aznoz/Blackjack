@@ -57,6 +57,16 @@ button { cursor: pointer; }
 .modal { position: fixed; inset: 0; z-index: 30; display: flex; align-items: center; justify-content: center; padding: 14px; background: rgba(5, 8, 28, .72); overflow-y: auto; touch-action: pan-y; }
 .sheet { width: 100%; max-width: 560px; max-height: 100%; overflow-y: auto; background: #151d4b; border: 2px solid var(--line); border-radius: 20px; padding: 16px 18px 18px; display: flex; flex-direction: column; gap: 10px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6); }
 .sheet.small { max-width: 380px; } .sheet.pause { max-width: 440px; }
+.sheet.pause .phelp, .sheet.pause .pctl { display: flex; flex-direction: column; gap: 10px; }
+.sheet.pause .wh { flex-shrink: 0; min-height: 110px; }
+/* telefon na šířku: nápověda vlevo (rolovací), tlačítka vpravo, aby se vešlo všechno */
+@media (max-height: 520px) and (orientation: landscape) {
+  .sheet.pause { max-width: min(880px, 100%); flex-direction: row; align-items: stretch; gap: 18px; overflow: hidden; max-height: calc(100vh - 28px); max-height: calc(100dvh - 28px); padding: 12px 16px; }
+  .sheet.pause .phelp { flex: 1.6; min-width: 0; min-height: 0; }
+  .sheet.pause .wh { flex: 1; max-height: none; min-height: 0; }
+  .sheet.pause .pctl { flex: 1; justify-content: center; gap: 8px; }
+  .sheet.pause .pctl .mbtn { padding-top: 6px; padding-bottom: 6px; min-height: 44px; font-size: 15px; }
+}
 .wh { display: flex; flex-direction: column; gap: 6px; max-height: min(38vh, 300px); overflow-y: auto; padding-right: 4px; touch-action: pan-y; }
 .wh .wr { display: grid; grid-template-columns: 14px 1fr; gap: 4px 10px; align-items: start; font-size: 13px; line-height: 1.35; }
 .wh .wr i { width: 12px; height: 12px; border-radius: 50%; margin-top: 3px; box-shadow: 0 0 6px currentColor; background: currentColor; }

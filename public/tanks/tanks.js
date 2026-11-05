@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=11';
+import * as P from './physics.js?v=12';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -140,6 +140,23 @@ $('bShop').onclick = () => { audio(); renderShop(); openModal('shopModal'); refr
 $('bHow').onclick = () => openModal('howModal');
 $('muteBtn').onclick = () => { setMuted(!muted); audio(); };
 $('pMute').onclick = () => setMuted(!muted);
+// ------------------------------------------------------------------ celá obrazovka + otočení na šířku
+const rootEl = document.documentElement;
+const fsOK = !!(rootEl.requestFullscreen || rootEl.webkitRequestFullscreen);
+const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+async function enterFs() {
+  try { if (rootEl.requestFullscreen) await rootEl.requestFullscreen({ navigationUI: 'hide' }); else if (rootEl.webkitRequestFullscreen) rootEl.webkitRequestFullscreen(); } catch (e) { /* prohlížeč nepustil */ }
+  try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (e) { /* zámek jde jen v celé obrazovce a ne všude */ }
+}
+function exitFs() {
+  try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* nic */ }
+  try { if (document.exitFullscreen) document.exitFullscreen(); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) { /* nic */ }
+}
+function autoFs() { if (fsOK && coarse && !isFs() && LS.get('tanks_fs') !== '0') enterFs(); }   // na dotykových zařízeních se při startu hry zkusí celá obrazovka + šířka (jde jen z klepnutí)
+function toggleFs() { if (isFs()) { LS.set('tanks_fs', '0'); exitFs(); } else { LS.set('tanks_fs', '1'); enterFs(); } }
+function syncFs() { const on = isFs(); $('fsBtn').textContent = on ? '⤢' : '⛶'; $('fsBtn').setAttribute('aria-label', on ? 'Ukončit celou obrazovku' : 'Celá obrazovka'); $('pFs').innerHTML = `<b>Celá obrazovka: ${on ? 'zapnutá' : 'vypnutá'}</b>`; }
+if (fsOK) { $('fsBtn').hidden = false; $('pFs').hidden = false; $('fsBtn').onclick = toggleFs; $('pFs').onclick = toggleFs; document.addEventListener('fullscreenchange', syncFs); document.addEventListener('webkitfullscreenchange', syncFs); syncFs(); }
 $('code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
 $('name').addEventListener('change', () => LS.set('tanks_name', $('name').value.trim()));
 
@@ -189,6 +206,7 @@ function connect() {
 }
 function sendMsg(m) { const full = { ...m, ...(m.t === 'create' || m.t === 'join' || m.t === 'quick' || m.t === 'bot' ? { ...ident(), name: myName() } : {}) }; if (ws && ws.readyState === 1) ws.send(JSON.stringify(full)); else { if (m.t === 'create' || m.t === 'join' || m.t === 'quick' || m.t === 'bot') { outbox = [full]; connect(); } } }
 function startGame(req) {
+  autoFs();
   setStatus(''); LS.set('tanks_name', ($('name').value || '').trim());
   session = null; LS.del('tanks_resume'); S = null; outbox = []; retry = 0;
   if (ws && ws.readyState === 1) sendMsg(req); else { setStatus('Připojuji…'); sendMsg(req); }
@@ -347,7 +365,7 @@ let cw = 0, ch = 0, dpr = 1, sc = 1, ox = 0, oy = 0, bgCv = null, terrCv = null,
 function resize() {
   dpr = Math.min(2, window.devicePixelRatio || 1);
   cw = window.innerWidth; ch = window.innerHeight; cv.width = Math.round(cw * dpr); cv.height = Math.round(ch * dpr);
-  sc = Math.min(cw / W, ch / H); ox = (cw - W * sc) / 2; oy = ch - H * sc; if (oy < 0) oy = 0;
+  sc = cw / W; ox = 0; oy = ch - H * sc;   // svět vždy vyplní celou šířku (za okrajem mapy se nic nekreslí); na velmi širokých displejích se ořízne kus oblohy nahoře
   buildBg(); terrDirty = true; placeUi();
 }
 function shade(hex, amt) { const n = parseInt(hex.slice(1), 16); const f = (v) => clamp(Math.round(v + amt), 0, 255); return `rgb(${f(n >> 16)},${f((n >> 8) & 255)},${f(n & 255)})`; }

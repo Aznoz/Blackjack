@@ -5,8 +5,10 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>Tankové souboje</title>
 <meta name="theme-color" content="#16204e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2316204e'/%3E%3Crect x='10' y='36' width='40' height='12' rx='6' fill='%23f5c518'/%3E%3Crect x='18' y='28' width='22' height='10' rx='5' fill='%23ffd84a'/%3E%3Crect x='34' y='22' width='24' height='6' rx='2' fill='%23f5c518' transform='rotate(-20 34 25)'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="tanks.css?v=5">
+<link rel="stylesheet" href="tanks.css?v=6">
 </head>
 <body>
 <canvas id="cv" aria-label="Bojiště"></canvas>
@@ -16,6 +18,7 @@
   <header class="mtop">
     <a class="chip" id="back" href="../">← Herna</a>
     <div class="chip coins" id="coinChip" title="Tankové coiny (oddělené od coinů portálu)" hidden><span class="coin"></span><b id="coinNum">0</b></div>
+    <button class="chip ico" id="fsBtn" type="button" aria-label="Celá obrazovka" hidden>⛶</button>
     <button class="chip ico" id="muteBtn" type="button" aria-label="Zvuk">🔊</button>
   </header>
   <div class="mwrap">
@@ -140,12 +143,17 @@
   </div>
   <div class="modal" id="pauseModal" hidden>
     <div class="sheet pause">
-      <h3>Nápověda ke zbraním</h3>
-      <div class="wh" id="pauseHelp"></div>
-      <h2>Pozastaveno</h2>
-      <button class="mbtn primary" data-close type="button"><b>Pokračovat</b></button>
-      <button class="mbtn" id="pMute" type="button"><b>Zvuk: zapnutý</b></button>
-      <button class="mbtn danger" id="pLeave" type="button"><b>Vzdát se a odejít</b></button>
+      <div class="phelp">
+        <h3>Nápověda ke zbraním</h3>
+        <div class="wh" id="pauseHelp"></div>
+      </div>
+      <div class="pctl">
+        <h2>Pozastaveno</h2>
+        <button class="mbtn primary" data-close type="button"><b>Pokračovat</b></button>
+        <button class="mbtn" id="pMute" type="button"><b>Zvuk: zapnutý</b></button>
+        <button class="mbtn" id="pFs" type="button" hidden><b>Celá obrazovka: vypnutá</b></button>
+        <button class="mbtn danger" id="pLeave" type="button"><b>Vzdát se a odejít</b></button>
+      </div>
     </div>
   </div>
   <div class="rotate" id="rotate"><div><div class="phone">📱</div>Otoč telefon na šířku</div></div>
@@ -154,6 +162,6 @@
 <div class="toast" id="toast" role="alert" hidden></div>
 
 <script src="config.js?v=1"></script>
-<script type="module" src="tanks.js?v=11"></script>
+<script type="module" src="tanks.js?v=12"></script>
 </body>
 </html>

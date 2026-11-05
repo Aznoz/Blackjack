@@ -199,9 +199,9 @@ function beginTurn(room, first) {
   if (room.turnNo % 2 === 0 && room.crates.length < MAX_CRATES && Math.random() < 0.75) { const c = spawnCrate(room); if (c) added.push({ id: c.id, x: c.x, hp: c.kind === 'hp' ? 1 : 0 }); }
   room.turnEnd = now() + TURN_MS; room.phase = 'play';
   room.turnT = setTimeout(() => onTimeout(room), TURN_MS);
+  for (const c of added) bcast(room, { t: 'crate', op: 'spawn', id: c.id, x: c.x, hp: c.hp });   // nejdřív spawn (bedna padá z nebe), potom stav; opačně by se bedna v prohlížeči objevila rovnou na zemi
   publish(room);
   if (pen > 0 && room.players[room.turn].ws) send(room.players[room.turn].ws, { t: 'note', msg: `Zpětný ráz: palivo −${Math.round(pen * 100)} %` });
-  for (const c of added) bcast(room, { t: 'crate', op: 'spawn', id: c.id, x: c.x, hp: c.hp });
   if (room.players[room.turn].bot) botTurn(room);
 }
 
