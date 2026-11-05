@@ -66,7 +66,7 @@ button { cursor: pointer; }
   .sheet.pause { max-width: min(880px, 100%); flex-direction: row; align-items: stretch; gap: 18px; overflow: hidden; max-height: calc(100vh - 28px); max-height: calc(100dvh - 28px); padding: 12px 16px; }
   .sheet.pause .phelp { flex: 1.6; min-width: 0; min-height: 0; }
   .sheet.pause .wh { flex: 1; max-height: none; min-height: 0; }
-  .sheet.pause .pctl { flex: 1; justify-content: center; gap: 8px; }
+  .sheet.pause .pctl { flex: 1; justify-content: center; gap: 8px; overflow-y: auto; min-height: 0; }
   .sheet.pause .pctl .mbtn { padding-top: 6px; padding-bottom: 6px; min-height: 44px; font-size: 15px; }
 }
 .wh { display: flex; flex-direction: column; gap: 6px; max-height: min(38vh, 300px); overflow-y: auto; padding-right: 4px; touch-action: pan-y; }

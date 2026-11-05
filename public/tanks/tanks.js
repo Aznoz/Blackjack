@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=16';
+import * as P from './physics.js?v=17';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -63,7 +63,70 @@ const sfx = {
   turn() { tone(520, .09, 'sine', .07); tone(780, .12, 'sine', .07, 0, .09); },
   click() { tone(800, .04, 'square', .03); },
 };
-function setMuted(m) { muted = m; LS.set('tanks_mute', m ? '1' : '0'); $('muteBtn').textContent = m ? '🔇' : '🔊'; $('pMute').innerHTML = `<b>Zvuk: ${m ? 'vypnutý' : 'zapnutý'}</b>`; }
+function setMuted(m) { muted = m; LS.set('tanks_mute', m ? '1' : '0'); $('muteBtn').textContent = m ? '🔇' : '🔊'; $('pMute').innerHTML = `<b>Zvuk: ${m ? 'vypnutý' : 'zapnutý'}</b>`; if (typeof syncMusic === 'function') syncMusic(); }
+
+// ------------------------------------------------------------------ hudba (procedurální smyčka) a zvuk motoru
+let musicOn = LS.get('tanks_music') !== '0';
+const mus = { bus: null, timer: null, step: 0, next: 0, mode: 'menu' };
+const BPM = 104, STEP_S = 60 / BPM / 4;                       // jedna šestnáctina
+const midi = (n) => 440 * Math.pow(2, (n - 69) / 12);
+const PROG = [{ b: 45, c: [57, 60, 64] }, { b: 41, c: [53, 57, 60] }, { b: 48, c: [55, 60, 64] }, { b: 43, c: [55, 59, 62] }];   // Am – F – C – G
+function mTone(t, freq, dur, type, vol, lp, att = 0.005) {
+  const a = ac; const o = a.createOscillator(), f = a.createBiquadFilter(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t); f.type = 'lowpass'; f.frequency.setValueAtTime(lp, t);
+  g.gain.setValueAtTime(0.0001, t); g.gain.linearRampToValueAtTime(vol, t + att); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(f).connect(g).connect(mus.bus); o.start(t); o.stop(t + dur + 0.05);
+}
+function mNoise(t, dur, vol, ftype, f0) {
+  const a = ac; if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  const s = a.createBufferSource(); s.buffer = noiseBuf; s.loop = true; const f = a.createBiquadFilter(); f.type = ftype; f.frequency.setValueAtTime(f0, t); const g = a.createGain();
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur); s.connect(f).connect(g).connect(mus.bus); s.start(t, Math.random()); s.stop(t + dur + 0.02);
+}
+function musicStep(s, t) {
+  const bar = Math.floor(s / 16) % 4, k = s % 16, ch = PROG[bar], game = mus.mode === 'game';
+  if (k === 0) for (const n of ch.c) { mTone(t, midi(n), STEP_S * 16, 'triangle', 0.03, 1400, 0.5); mTone(t, midi(n - 12), STEP_S * 16, 'sine', 0.025, 800, 0.6); }   // pad
+  if (game ? k % 2 === 0 : k % 8 === 0) mTone(t, midi(ch.b + (k === 6 || k === 14 ? 12 : 0)), STEP_S * (game ? 1.8 : 6), 'sawtooth', game ? 0.085 : 0.06, game ? 420 : 300, 0.01);   // basa
+  if (k % (game ? 2 : 4) === 0) { const pat = [0, 1, 2, 1, 2, 1, 0, 2]; const n = ch.c[pat[(k / 2) % 8]] + 12; mTone(t, midi(n), 0.22, 'triangle', game ? 0.04 : 0.025, 2600); }   // arpeggio
+  if (game) {
+    if (k === 0 || k === 8 || (k === 10 && bar % 2 === 1)) { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.setValueAtTime(130, t); o.frequency.exponentialRampToValueAtTime(42, t + 0.14); g.gain.setValueAtTime(0.3, t); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.2); o.connect(g).connect(mus.bus); o.start(t); o.stop(t + 0.22); }   // buben
+    if (k === 4 || k === 12) mNoise(t, 0.14, 0.12, 'bandpass', 1500);                                                   // snare
+    if (k % 4 === 2) mNoise(t, 0.04, 0.05, 'highpass', 7000);                                                            // hi-hat
+  }
+}
+function musicTick() { const a = ac; if (!a || a.state !== 'running') return; while (mus.next < a.currentTime + 0.5) { musicStep(mus.step, mus.next); mus.next += STEP_S; mus.step++; } }
+function syncMusic() {
+  const on = musicOn && !muted && !document.hidden; const a = on ? audio() : ac;
+  if (!on || !a) { if (mus.timer) { clearInterval(mus.timer); mus.timer = null; if (mus.bus) mus.bus.gain.setTargetAtTime(0, a ? a.currentTime : 0, 0.08); } return; }
+  if (!mus.bus) { mus.bus = a.createGain(); mus.bus.connect(a.destination); }
+  mus.bus.gain.setTargetAtTime(0.55, a.currentTime, 0.1);
+  if (!mus.timer) { mus.next = a.currentTime + 0.12; mus.timer = setInterval(musicTick, 120); }
+}
+function setMusic(on) { musicOn = on; LS.set('tanks_music', on ? '1' : '0'); $('musicBtn').style.opacity = on ? '1' : '.45'; $('pMusic').innerHTML = `<b>Hudba: ${on ? 'zapnutá' : 'vypnutá'}</b>`; syncMusic(); }
+// motor tanku: hučení + cvakání pásů, hlasitost a stereo podle toho, kdo jede (zprávy `mv` chodí každých 50 ms)
+const eng = { g: null, pan: null, o1: null, last: -1e9, mine: true, x: W / 2, stop: false };
+function engineInit(a) {
+  if (!noiseBuf) { noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate); const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1; }
+  eng.g = a.createGain(); eng.g.gain.value = 0;
+  eng.pan = a.createStereoPanner ? a.createStereoPanner() : null;
+  if (eng.pan) { eng.g.connect(eng.pan); eng.pan.connect(a.destination); } else eng.g.connect(a.destination);
+  const lp = a.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 260; lp.connect(eng.g);
+  eng.o1 = a.createOscillator(); eng.o1.type = 'sawtooth'; eng.o1.frequency.value = 46; const g1 = a.createGain(); g1.gain.value = 0.55; eng.o1.connect(g1).connect(lp); eng.o1.start();
+  const o2 = a.createOscillator(); o2.type = 'triangle'; o2.frequency.value = 92; const g2 = a.createGain(); g2.gain.value = 0.3; o2.connect(g2).connect(lp); o2.start(); eng.o2 = o2;
+  const ns = a.createBufferSource(); ns.buffer = noiseBuf; ns.loop = true; const bp = a.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 520; bp.Q.value = 0.9;
+  const tr = a.createGain(); tr.gain.value = 0.35; const lfo = a.createOscillator(); lfo.type = 'square'; lfo.frequency.value = 13; const lg = a.createGain(); lg.gain.value = 0.3; lfo.connect(lg).connect(tr.gain); lfo.start();
+  ns.connect(bp).connect(tr).connect(eng.g); ns.start();
+}
+function engineKick(i, x, stop) { eng.last = performance.now(); eng.mine = i === me; eng.x = x; eng.stop = !!stop; }
+function engineStep() {
+  if (!ac || ac.state !== 'running') return;
+  const active = !muted && !eng.stop && !document.hidden && performance.now() - eng.last < 170;
+  if (!eng.g) { if (!active) return; engineInit(ac); }
+  const t = ac.currentTime;
+  eng.g.gain.setTargetAtTime(active ? (eng.mine ? 0.16 : 0.1) : 0, t, active ? 0.07 : 0.12);
+  eng.o1.frequency.setTargetAtTime(active ? 54 : 44, t, 0.25); eng.o2.frequency.setTargetAtTime(active ? 108 : 88, t, 0.25);
+  if (eng.pan) eng.pan.pan.setTargetAtTime(clamp((eng.x / W - 0.5) * 1.5, -0.8, 0.8), t, 0.1);
+}
+document.addEventListener('visibilitychange', syncMusic);
 
 // ------------------------------------------------------------------ stav
 let ws = null, S = null, me = -1, session = null, wantOpen = false, retry = 0, outbox = [], connTimer = null;
@@ -89,7 +152,7 @@ function resetMatch() {
 
 // ------------------------------------------------------------------ obrazovky
 function show(name) {
-  screen = name;
+  screen = name; mus.mode = name === 'game' ? 'game' : 'menu';
   $('menu').hidden = name !== 'menu'; $('lobby').hidden = name !== 'lobby'; $('game').hidden = name !== 'game';
   if (name !== 'game') { if (R.h !== R.demoH) { R.h = R.demoH; terrDirty = true; } R.tk[0].x = R.tk[0].dx = 300; R.tk[1].x = R.tk[1].dx = W - 300; R.tk.forEach((t) => { t.hp = MAX_HP; t.dead = false; t.col = 0; }); R.tk[1].col = 1; R.crates = []; R.fx = []; R.shot = null; R.trace = null; }
   $('back').hidden = false;
@@ -140,6 +203,8 @@ $('bShop').onclick = () => { audio(); renderShop(); openModal('shopModal'); refr
 $('bHow').onclick = () => openModal('howModal');
 $('muteBtn').onclick = () => { setMuted(!muted); audio(); };
 $('pMute').onclick = () => setMuted(!muted);
+$('musicBtn').onclick = () => { setMusic(!musicOn); audio(); };
+$('pMusic').onclick = () => setMusic(!musicOn);
 // ------------------------------------------------------------------ celá obrazovka + otočení na šířku
 const rootEl = document.documentElement;
 const fsOK = !!(rootEl.requestFullscreen || rootEl.webkitRequestFullscreen);
@@ -238,7 +303,7 @@ function onMsg(m) {
     case 'terrain': R.h = Int16Array.from(m.h); terrDirty = true; if (S) R.tk.forEach((t, i) => { t.y = P.groundAt(R.h, t.dx); }); return;
     case 'shot': return startShot(m);
     case 'aim': if (m.i !== me && R.aim[m.i]) R.aim[m.i] = { a: clamp(m.a, 0, 180), p: clamp(m.p, 8, 100) }; return;
-    case 'mv': { if (!S) return; S.x[m.i] = m.x; S.fuel[m.i] = m.f; R.tk[m.i].x = m.x; if (m.i === me) $('fuelFill').style.height = clamp(m.f / FUEL_MAX, 0, 1) * 100 + '%'; if (m.stop && m.i === me) driveDir = 0; return; }
+    case 'mv': { if (!S) return; S.x[m.i] = m.x; S.fuel[m.i] = m.f; R.tk[m.i].x = m.x; if (m.i === me) $('fuelFill').style.height = clamp(m.f / FUEL_MAX, 0, 1) * 100 + '%'; if (m.stop && m.i === me) driveDir = 0; engineKick(m.i, m.x, m.stop); return; }
     case 'ammo': if (S) { S.ammo = m.ammo; renderTray(); } return;
     case 'crate': return onCrate(m);
     case 'mine': { // past spuštěná jízdou
@@ -500,7 +565,7 @@ function dots(c, pts, col, r, every = 1, fade = false) {
 }
 
 function update(dt) {
-  R.t += dt;
+  R.t += dt; engineStep();
   for (const cl of R.clouds) { cl.x += (cl.v + (S ? S.wind * 4 : 0)) * dt; if (cl.x > W + 200) cl.x = -200; if (cl.x < -220) cl.x = W + 180; }
   const demo = screen !== 'game';
   for (let i = 0; i < 2; i++) {
@@ -748,10 +813,10 @@ $('copyLink').onclick = async () => {
 
 // ------------------------------------------------------------------ start
 $('back').href = CFG.BACK_URL || '../';
-setMuted(muted);
+setMuted(muted); setMusic(musicOn);
 window.addEventListener('resize', resize); window.addEventListener('orientationchange', () => setTimeout(resize, 200));
 resize(); requestAnimationFrame(frame); show('menu'); bootProfile();
-document.addEventListener('pointerdown', () => audio(), { once: true });
+document.addEventListener('pointerdown', () => { audio(); syncMusic(); }, { once: true });
 { // odkaz s kódem místnosti / rozehraná hra
   const q = new URLSearchParams(location.search).get('k');
   let rs = null; try { rs = JSON.parse(LS.get('tanks_resume')); } catch (e) { /* nic */ }
