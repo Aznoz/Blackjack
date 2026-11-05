@@ -12,22 +12,24 @@ export const TANK_HY = 18;        // střed tanku je takhle vysoko nad zemí
 export const MAX_HP = 100;
 export const TRAP_R = 22;          // soupeř, který se přiblíží k pasti na tuhle vzdálenost, ji spustí
 export const FUEL_MAX = 190;      // kolik pixelů smí tank za tah ujet
-/** Trvalá vylepšení tanku (kupují se za tankové coiny v Arzenálu; úrovně 0–5). `price[n]` = cena další úrovně (n = už koupená úroveň). */
+/** Trvalá vylepšení tanku (kupují se za tankové coiny v Arzenálu; úrovně 0–10). `price[n]` = cena další úrovně (n = už koupená úroveň), roste o 35 % za úroveň. */
+export const UPG_MAX = 10;
+const ladder = (base) => Array.from({ length: UPG_MAX }, (_, n) => Math.round(base * Math.pow(1.35, n) / 10) * 10);
 export const UPGRADES = {
-  tank:  { id: 'tank',  name: 'Větší nádrž',      icon: '⛽', max: 5, price: [150, 250, 400, 600, 900],   per: '+10 % paliva za tah', desc: 'Každá úroveň přidá 10 % paliva na tah (nejvíc +50 %).' },
-  aim:   { id: 'aim',   name: 'Přesnost míření',  icon: '🎯', max: 5, price: [100, 200, 350, 550, 800],   per: 'delší vodicí tečky',  desc: 'Bílé vodicí tečky ukazují dál dráhu střely. Bez vylepšení 10 teček, na maximu 40 (celý oblouk).' },
-  armor: { id: 'armor', name: 'Pancíř',           icon: '🛡️', max: 5, price: [200, 350, 550, 800, 1200], per: '−4 % přijatého poškození', desc: 'Každá úroveň ubere 4 % z poškození, které tank dostane (nejvíc −20 %).' },
-  regen: { id: 'regen', name: 'Opravárenská četa', icon: '🔧', max: 5, price: [250, 400, 650, 950, 1400], per: '+2 životy na začátku tahu', desc: 'Na začátku každého tvého tahu si tank sám opraví 2 životy za úroveň (nejvíc +10).' },
-  loot:  { id: 'loot',  name: 'Válečná kořist',   icon: '💰', max: 5, price: [200, 350, 550, 800, 1100], per: '+6 % coinů z výher', desc: 'Každá úroveň přidá 6 % k tankovým coinům za zápas (nejvíc +30 %).' },
+  tank:  { id: 'tank',  name: 'Větší nádrž',       icon: '⛽', max: UPG_MAX, price: ladder(120), per: '+8 % paliva za tah',        desc: 'Každá úroveň přidá 8 % paliva na tah (na maximu +80 %).' },
+  aim:   { id: 'aim',   name: 'Přesnost míření',   icon: '🎯', max: UPG_MAX, price: ladder(80),  per: '+3 vodicí tečky',           desc: 'Bílé vodicí tečky ukazují dál dráhu střely: bez vylepšení 10 teček, na maximu 40 (celý oblouk).' },
+  armor: { id: 'armor', name: 'Pancíř',            icon: '🛡️', max: UPG_MAX, price: ladder(160), per: '−3 % přijatého poškození',  desc: 'Každá úroveň ubere 3 % z poškození, které tank dostane (na maximu −30 %).' },
+  regen: { id: 'regen', name: 'Opravárenská četa', icon: '🔧', max: UPG_MAX, price: ladder(200), per: '+1 život na začátku tahu',  desc: 'Na začátku každého tvého tahu si tank sám opraví 1 život za úroveň (na maximu +12).' },
+  loot:  { id: 'loot',  name: 'Válečná kořist',    icon: '💰', max: UPG_MAX, price: ladder(160), per: '+5 % coinů z výher',        desc: 'Každá úroveň přidá 5 % k tankovým coinům za zápas (na maximu +50 %).' },
 };
 export const UPGRADE_IDS = Object.keys(UPGRADES);
-const upl = (l, max = 5) => Math.max(0, Math.min(max, Math.floor(Number(l) || 0)));
-export const fuelMaxOf = (l) => Math.round(190 * (1 + 0.1 * upl(l)));
-export const AIM_DOTS = [10, 14, 19, 25, 32, 40];     // počet bílých teček podle úrovně Přesnosti míření
+const upl = (l, max = UPG_MAX) => Math.max(0, Math.min(max, Math.floor(Number(l) || 0)));
+export const fuelMaxOf = (l) => Math.round(190 * (1 + 0.08 * upl(l)));
+export const AIM_DOTS = [10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40];   // počet bílých teček podle úrovně Přesnosti míření
 export const aimDotsOf = (l) => AIM_DOTS[upl(l)];
-export const armorOf = (l) => 0.04 * upl(l);        // podíl poškození, který pancíř zachytí
-export const regenOf = (l) => 2 * upl(l);
-export const lootOf = (l) => 1 + 0.06 * upl(l);
+export const armorOf = (l) => 0.03 * upl(l);        // podíl poškození, který pancíř zachytí
+export const regenOf = (l) => upl(l) + (upl(l) >= 10 ? 2 : 0);   // životy na začátku tahu (maximum +12)
+export const lootOf = (l) => 1 + 0.05 * upl(l);
 export const DRIVE_SPEED = 72;    // px/s
 export const SLOPE_MAX = 1.7;     // nejstrmější svah, který tank vyjede (změna výšky / vodorovná vzdálenost)
 export const STEP_UP = 26;        // drobný schod / hrana, kterou tank přejede vždy (px na jeden krok jízdy)

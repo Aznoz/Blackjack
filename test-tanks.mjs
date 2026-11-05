@@ -264,8 +264,8 @@ function findHit(room, i, w = 'std') {
 // --- trvalá vylepšení: nákup, strop, efekt (nádrž, pancíř, míření, opravárna, kořist)
 {
   assert.deepEqual(P.UPGRADE_IDS, ['tank', 'aim', 'armor', 'regen', 'loot']);
-  for (let l = 1; l <= 5; l++) { assert.ok(P.aimDotsOf(l) > P.aimDotsOf(l - 1), 'víc úrovní = víc teček'); assert.ok(P.fuelMaxOf(l) > P.fuelMaxOf(l - 1)); assert.ok(P.armorOf(l) > P.armorOf(l - 1)); }
-  assert.equal(P.aimDotsOf(0), 10); assert.equal(P.aimDotsOf(5), 40); assert.ok(P.aimDotsOf(5) >= 26, 'maximum ukazuje aspoň tolik jako dřív'); assert.equal(P.fuelMaxOf(0), P.FUEL_MAX); assert.equal(P.fuelMaxOf(5), Math.round(P.FUEL_MAX * 1.5)); assert.equal(P.aimDotsOf(99), P.aimDotsOf(5), 'úroveň se ořízne');
+  for (let l = 1; l <= 10; l++) { assert.ok(P.aimDotsOf(l) > P.aimDotsOf(l - 1), 'víc úrovní = víc teček'); assert.ok(P.fuelMaxOf(l) > P.fuelMaxOf(l - 1)); assert.ok(P.armorOf(l) > P.armorOf(l - 1)); }
+  assert.equal(P.aimDotsOf(0), 10); assert.equal(P.aimDotsOf(10), 40); assert.equal(P.fuelMaxOf(0), P.FUEL_MAX); assert.equal(P.fuelMaxOf(10), Math.round(P.FUEL_MAX * 1.8)); assert.equal(P.aimDotsOf(99), P.aimDotsOf(10), 'úroveň se ořízne'); assert.equal(P.regenOf(10), 12); assert.ok(Math.abs(P.armorOf(10) - 0.3) < 1e-9 && Math.abs(P.lootOf(10) - 1.5) < 1e-9);
   for (const id of P.UPGRADE_IDS) { const u = P.UPGRADES[id]; assert.equal(u.price.length, u.max); assert.ok(u.price.every((x, k) => k === 0 || x > u.price[k - 1]), 'ceny rostou ' + id); }
   // pancíř ubírá poškození (dry simulace)
   const h = P.genTerrain(99); const tk = () => [{ x: 300, hp: 100 }, { x: 420, hp: 100 }];
@@ -275,27 +275,27 @@ function findHit(room, i, w = 'std') {
   assert.ok(ra.dmg[1] < fnd.d && ra.dmg[1] >= Math.round(fnd.d * 0.8) - 1, `pancíř −20 % (${fnd.d} → ${ra.dmg[1]})`);
   // nákup přes API
   const tt = T.tankOf(accs[T1]); tt.coins = 1000; tt.up = {};
-  let r = T.api('upgrade', { token: T1, id: 'tank' }); assert.equal(r.status, 200); assert.equal(r.json.tank.up.tank, 1); assert.equal(r.json.coins, 850); assert.equal(accs[T1].balance, 5000, 'portálové coiny se nemění');
+  let r = T.api('upgrade', { token: T1, id: 'tank' }); assert.equal(r.status, 200); assert.equal(r.json.tank.up.tank, 1); assert.equal(r.json.coins, 1000 - P.UPGRADES.tank.price[0]); assert.equal(accs[T1].balance, 5000, 'portálové coiny se nemění');
   assert.equal(T.api('upgrade', { token: T1, id: 'nic' }).status, 400); assert.equal(T.api('upgrade', { token: TX, id: 'tank' }).status, 401);
-  r = T.api('upgrade', { token: T1, id: 'tank' }); assert.equal(r.json.coins, 850 - 250, 'druhá úroveň stojí víc');
+  r = T.api('upgrade', { token: T1, id: 'tank' }); assert.equal(r.json.coins, 1000 - P.UPGRADES.tank.price[0] - P.UPGRADES.tank.price[1], 'druhá úroveň stojí víc');
   tt.coins = 10; assert.equal(T.api('upgrade', { token: T1, id: 'aim' }).status, 402); assert.equal(tt.up.aim, 0);
-  tt.coins = 99999; tt.up.aim = 5; assert.equal(T.api('upgrade', { token: T1, id: 'aim' }).status, 409, 'nejvyšší úroveň'); assert.equal(T.api('me', { token: T1 }).json.tank.up.aim, 5);
-  tt.up = { tank: 99, aim: -3, armor: 'x' }; T.tankOf(accs[T1]); assert.deepEqual([tt.up.tank, tt.up.aim, tt.up.armor], [5, 0, 0], 'poškozená data se ořežou');
+  tt.coins = 99999; tt.up.aim = 10; assert.equal(T.api('upgrade', { token: T1, id: 'aim' }).status, 409, 'nejvyšší úroveň'); assert.equal(T.api('me', { token: T1 }).json.tank.up.aim, 10);
+  tt.up = { tank: 99, aim: -3, armor: 'x' }; T.tankOf(accs[T1]); assert.deepEqual([tt.up.tank, tt.up.aim, tt.up.armor], [10, 0, 0], 'poškozená data se ořežou');
   // efekt v zápase
   for (const k of [T1, T2]) { const q = T.tankOf(accs[k]); q.up = { tank: 2, aim: 0, armor: 3, regen: 2, loot: 5 }; }
   const m = online(); const { a, b, room } = m; const s = a.last('state');
-  assert.deepEqual(a.last('state').fmax, [228, 228], 'větší nádrž je ve stavu'); assert.equal(room.tanks[0].fuel, 228); assert.ok(Math.abs(room.tanks[0].armor - 0.12) < 1e-9);
+  assert.deepEqual(a.last('state').fmax, [220, 220], 'větší nádrž je ve stavu'); assert.equal(room.tanks[0].fuel, 220); assert.ok(Math.abs(room.tanks[0].armor - 0.09) < 1e-9);
   room.tanks[0].hp = room.tanks[1].hp = 60; const first = s.turn, cf = first === s.you ? a : b;
   cf.say({ t: 'fire', a: 90, p: 10, w: 'std' });
   await until(() => room.turn !== first && room.phase === 'play');
-  assert.equal(room.tanks[room.turn].hp, 64, 'opravárenská četa +4 na začátku tahu'); assert.equal(room.tanks[room.turn].fuel, 228);
+  assert.equal(room.tanks[room.turn].hp, 60 + P.regenOf(2), 'opravárenská četa +2 na začátku tahu'); assert.equal(room.tanks[room.turn].fuel, 220);
   a.say({ t: 'leave' }); b.say({ t: 'leave' });
   // kořist: +30 % coinů z výhry
   const m2 = online(); const w = m2.a.last('state').turn; const cw = w === m2.a.last('state').you ? m2.a : m2.b; const wacc = w === m2.a.last('state').you ? accs[T1] : accs[T2];
   const wt = T.tankOf(wacc); wt.streak = 0; const wc = wt.coins; m2.room.tanks[1 - w].hp = 1; m2.room.tanks[0].shots = m2.room.tanks[1].shots = 2; m2.room.tanks[1 - w].armor = 0;
   const hit = findHit(m2.room, w); assert.ok(hit); cw.say({ t: 'fire', a: hit.a, p: hit.pw, w: 'std' });
   const over = await until(() => { const x = m2.a.last('state'); return x.phase === 'over' && x; });
-  assert.equal(over.result.coins[w], 260, 'výhra 200 × 1,3'); assert.equal(wt.coins, wc + 260);
+  assert.equal(over.result.coins[w], 250, 'výhra 200 × 1,25'); assert.equal(wt.coins, wc + 250);
   m2.a.say({ t: 'leave' }); m2.b.say({ t: 'leave' });
   for (const k of [T1, T2]) { T.tankOf(accs[k]).up = {}; }
 }
