@@ -164,6 +164,7 @@ function startMatch(room) {
   const xl = 190 + Math.round(Math.random() * 40), xr = W - 190 - Math.round(Math.random() * 40);
   room.tanks = [xl, xr].map((x) => ({ x, hp: MAX_HP, fuel: FUEL_MAX, crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 }));
   room.crates = []; room.crateSeq = 0; room.mines = []; room.mineSeq = 0;
+  room.players.forEach((p, i) => { if (p.bot) room.tanks[i].crate = botArsenal(p.bot); });   // bot má od začátku celý arzenál podle obtížnosti
   for (let i = 0; i < 2; i++) spawnCrate(room);
   room.wind = Math.round((Math.random() * 2 - 1) * 6);
   room.turn = Math.random() < 0.5 ? 0 : 1; room.turnNo = 0; room.result = null; room.rematch = new Set();
@@ -340,10 +341,17 @@ function finish(room, r) {
 }
 
 // ------------------------------------------------------------------ bot
+/** Zásoba zbraní bota: Rekrut zbraně do úrovně 8, Seržant do 16, Generál všechny; od každé polovina povoleného maxima (aspoň 1 ks), opravy po 1. */
+const BOT_LVL_CAP = { 1: 8, 2: 16, 3: 30 };
+function botArsenal(level) {
+  const out = {};
+  for (const id of ORDER) { const w = WEAPONS[id]; if (w.inf || w.lvl > (BOT_LVL_CAP[level] || 8)) continue; out[id] = w.util ? 1 : Math.max(1, Math.ceil(w.max / 2)); }
+  return out;
+}
 function botWeapons(room, bi) {
   const a = ammoOf(room, bi); const list = ['std'];
-  const lk = room.tanks[bi].lock; const specials = Object.keys(a).filter((k) => k !== 'std' && a[k] > 0 && !WEAPONS[k].util && !(lk[k] > 0));
-  for (let n = 0; n < 2 && specials.length; n++) list.push(specials.splice(Math.floor(Math.random() * specials.length), 1)[0]);
+  const lk = room.tanks[bi].lock; const specials = Object.keys(a).filter((k) => k !== 'std' && a[k] > 0 && !WEAPONS[k].util && !WEAPONS[k].trap && !(lk[k] > 0));
+  for (let n = 0; n < (room.bot || 1) + 1 && specials.length; n++) list.push(specials.splice(Math.floor(Math.random() * specials.length), 1)[0]);
   return list;
 }
 const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
@@ -360,7 +368,7 @@ function botPlan(room, bi) {
     return { a, pw, w, score, dmg: r.dmg[ei], self: r.dmg[bi] };
   };
   for (const w of weapons) {
-    for (let a = 8; a <= 172; a += 4) for (let pw = 24; pw <= 100; pw += 5) { const c = evalShot(a, pw, w); if (!best || c.score > best.score) best = c; }
+    for (let a = 8; a <= 172; a += 6) for (let pw = 24; pw <= 100; pw += 7) { const c = evalShot(a, pw, w); if (!best || c.score > best.score) best = c; }
   }
   if (best && lvl >= 2) { // doladění kolem nejlepšího výstřelu
     const b0 = best;
@@ -388,7 +396,7 @@ function botTurn(room) {
     let target = null;
     if (lvl >= 2 || Math.random() < 0.3) {
       let bd = 1e9;
-      for (const c of room.crates) { const d = Math.abs(c.x - tk.x); const en = room.tanks[1 - bi]; if (d < bd && d <= tk.fuel * 0.9 && (c.x - en.x) * (tk.x - en.x) > 0 && Math.abs(c.x - en.x) > MIN_GAP + 10) { bd = d; target = c; } }
+      for (const c of room.crates) { const d = Math.abs(c.x - tk.x); const en = room.tanks[1 - bi]; if ((c.kind !== 'hp' || tk.hp < MAX_HP) && d < bd && d <= tk.fuel * 0.9 && (c.x - en.x) * (tk.x - en.x) > 0 && Math.abs(c.x - en.x) > MIN_GAP + 10) { bd = d; target = c; } }
     }
     if (!target) return aimAndFire();
     const dir = Math.sign(target.x - tk.x) || 1; const tid = target.id;
