@@ -153,7 +153,7 @@ export function previewPath(h, x, ang, pw, wind, count, every = 3, wid = 'std') 
  *  Časy jsou v ms od výstřelu; pts jsou celá čísla po 1/60 s od t0. `dry` = jen odhad pro bota (nic nemění, bez drah).
  */
 export function simulate(env, si, ang, pw, wid, opts = {}) {
-  const dry = !!opts.dry, rnd = opts.rnd || Math.random;
+  const dry = !!opts.dry, rnd = opts.rnd || Math.random, mul = opts.dmgMul || 1;   // dmgMul: slabší zásahy (boti nižších obtížností)
   const { h, tanks, wind } = env; const crates = env.crates || [];
   const wp = WEAPONS[wid];
   const me = tanks[si];
@@ -162,7 +162,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
     if (!dry) paths.push({ t0: 0, pts: r.pts, end: 'laser' });
     if (r.end !== 'out') {
       const e = { t: 80, x: r.x, y: r.y, r: 0, hits: [], cr: dry ? [] : r.cr };
-      if (r.tank >= 0) { e.hits.push([r.tank, wp.dmg]); dmg[r.tank] = wp.dmg; if (!dry) tanks[r.tank].hp = Math.max(0, tanks[r.tank].hp - wp.dmg); }
+      if (r.tank >= 0) { const dv = Math.max(1, Math.round(wp.dmg * mul)); e.hits.push([r.tank, dv]); dmg[r.tank] = dv; if (!dry) tanks[r.tank].hp = Math.max(0, tanks[r.tank].hp - dv); }
       if (!dry) { for (const id of r.cr) { const k = crates.findIndex((c) => c.id === id); if (k >= 0) crates.splice(k, 1); } }
       ex.push(e);
     }
@@ -183,7 +183,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
       const tk = tanks[i]; if (tk.hp <= 0) continue;
       const d = Math.hypot(tk.x - x, groundAt(h, tk.x) - TANK_HY - y);
       const f = 1 - Math.max(0, d - 16) / (p.r + 12);
-      if (f > 0 && p.dmg > 0) { const dm = Math.max(1, Math.round(p.dmg * f)); e.hits.push([i, dm]); dmg[i] += dm; if (!dry) tk.hp = Math.max(0, tk.hp - dm); }
+      if (f > 0 && p.dmg > 0) { const dm = Math.max(1, Math.round(p.dmg * f * mul)); e.hits.push([i, dm]); dmg[i] += dm; if (!dry) tk.hp = Math.max(0, tk.hp - dm); }
     }
     if (!dry) {
       for (let k = crates.length - 1; k >= 0; k--) { const c = crates[k]; if (Math.hypot(c.x - x, h[xi(c.x)] - 12 - y) < p.r + 14) { e.cr.push(c.id); crates.splice(k, 1); } }
@@ -230,7 +230,7 @@ export function simulate(env, si, ang, pw, wid, opts = {}) {
           const gy = h[xi(p.x)], tx = Math.round(p.x); finish(p, 'trap', p.x, gy);
           let vic = -1; for (let i = 0; i < tanks.length; i++) if (i !== si && tanks[i].hp > 0 && Math.abs(tanks[i].x - tx) < TRAP_R) vic = i;
           const e = { t: tms(), x: tx, y: Math.round(gy), r: 0, hits: [], cr: [] };
-          if (vic >= 0) { e.hits.push([vic, p.dmg]); dmg[vic] += p.dmg; if (!dry) tanks[vic].hp = Math.max(0, tanks[vic].hp - p.dmg); } else e.trap = true;
+          if (vic >= 0) { const dv = Math.max(1, Math.round(p.dmg * mul)); e.hits.push([vic, dv]); dmg[vic] += dv; if (!dry) tanks[vic].hp = Math.max(0, tanks[vic].hp - dv); } else e.trap = true;
           ex.push(e); continue;
         }
         if (p.roll) { p.rolling = true; p.s = Math.max(-300, Math.min(300, p.vx * 0.5)); p.y = h[xi(p.x)] - 6; next.push(p); continue; }

@@ -17,6 +17,10 @@ export const BOT_LOSE = { 1: 30, 2: 45, 3: 50, 4: 60 };       // prohra s botem
 export const STREAK_BONUS = 40, STREAK_CAP = 5;        // za každou další výhru v řadě +40 coinů navíc, nejvíc +200 (od 6. výhry v řadě)
 const REWARDS = { win: WIN_COINS, lose: LOSE_COINS, botWin: BOT_REWARDS, botLose: BOT_LOSE, streakBonus: STREAK_BONUS, streakCap: STREAK_CAP };
 export const BOT_NAMES = { 1: 'Bot Rekrut', 2: 'Bot Seržant', 3: 'Bot Kapitán', 4: 'Bot Generál' };
+/** Slabší zásahy botů nižších obtížností (násobek poškození) a šance, že se bot zcela přestřelí. */
+export const BOT_DMG = { 1: 0.85, 2: 0.9, 3: 1, 4: 1 };
+const BOT_SLIP = { 1: 0.12, 2: 0.1, 3: 0.06, 4: 0.03 };
+export const botSimOpts = (lvl) => ({ dmgMul: BOT_DMG[lvl] || 1 });
 const BOT_XP = { 1: 40, 2: 70, 3: 90, 4: 110 };
 const MIN_SHOTS = 2;                                  // coiny jen když každý hráč vystřelil aspoň 2×
 const TURN_MS = ms(45_000);                           // čas na tah
@@ -283,7 +287,7 @@ function doFire(room, i, a, pw, wid) {
   tk.shots++;
   const hpBefore = room.tanks.map((k) => k.hp);
   let self = 0; if (wp.selfDmg) { self = Math.min(wp.selfDmg, Math.max(0, tk.hp - 1)); tk.hp -= self; }   // výstřel nikdy nezabije střelce
-  const res = P.simulate({ h: room.h, tanks: room.tanks, wind: room.wind, crates: room.crates }, i, a, pw, wid);
+  const res = P.simulate({ h: room.h, tanks: room.tanks, wind: room.wind, crates: room.crates }, i, a, pw, wid, room.players[i] && room.players[i].bot ? botSimOpts(room.players[i].bot) : {});
   tk.dmg += res.dmg[1 - i] | 0;
   const tr = res.ex.find((e) => e.trap);
   if (tr) { // past zůstává na poli; víc než `cap` kusů od jednoho hráče nejde, nejstarší zmizí
@@ -342,7 +346,7 @@ function finish(room, r) {
 
 // ------------------------------------------------------------------ bot
 /** Zásoba zbraní bota: všechny zbraně, od každé polovina povoleného maxima (aspoň 1 ks), opravy po 1. O tom, jestli ji v daném tahu vůbec zvažuje, rozhoduje `botChance`. */
-function botArsenal() {
+export function botArsenal() {
   const out = {};
   for (const id of ORDER) { const w = WEAPONS[id]; if (w.inf) continue; out[id] = w.util ? 1 : Math.max(1, Math.ceil(w.max / 2)); }
   return out;
@@ -351,7 +355,7 @@ function botArsenal() {
 export function botChance(id, level) {
   const w = WEAPONS[id]; if (!w || w.inf || w.util) return 0;
   const tier = w.price >= 2000 ? 3 : w.price >= 700 ? 2 : w.price >= 450 ? 1 : 0;
-  const T = [[0.55, 0.7, 0.75, 0.8], [0.2, 0.35, 0.42, 0.5], [0.015, 0.035, 0.048, 0.06], [0.005, 0.015, 0.022, 0.03]];
+  const T = [[0.25, 0.4, 0.55, 0.8], [0.05, 0.1, 0.22, 0.5], [0.005, 0.01, 0.025, 0.06], [0.001, 0.002, 0.006, 0.03]];
   return T[tier][clamp((level | 0) - 1, 0, 3)];
 }
 function botWeapons(room, bi) {
@@ -361,14 +365,14 @@ function botWeapons(room, bi) {
   return list;
 }
 const gauss = () => (Math.random() + Math.random() + Math.random() - 1.5) * 1.15;
-function botPlan(room, bi) {
+export function botPlan(room, bi) {
   const lvl = room.bot, ei = 1 - bi;
   const me = room.tanks[bi], en = room.tanks[ei];
   const env = { h: room.h, tanks: room.tanks, wind: room.wind };
   const weapons = botWeapons(room, bi);
   let best = null;
   const evalShot = (a, pw, w) => {
-    const r = P.simulate(env, bi, a, pw, w, { dry: true });
+    const r = P.simulate(env, bi, a, pw, w, { dry: true, dmgMul: BOT_DMG[lvl] || 1 });
     let dist = 1e9; for (const e of r.ex) dist = Math.min(dist, Math.hypot(e.x - en.x, e.y - (groundAt(room.h, en.x) - TANK_HY)));
     const score = Math.min(r.dmg[ei], en.hp + 10) * 1.0 - r.dmg[bi] * 2.2 - (WEAPONS[w].selfDmg || 0) * 1.3 - (WEAPONS[w].fuelPen || 0) * 6 - Math.min(dist, 900) * 0.04 + (w === 'std' ? 4 : 0) + (r.dmg[ei] >= en.hp ? 60 : 0);
     return { a, pw, w, score, dmg: r.dmg[ei], self: r.dmg[bi] };
@@ -380,8 +384,9 @@ function botPlan(room, bi) {
     const b0 = best;
     for (let a = b0.a - 4; a <= b0.a + 4; a += 1) for (let pw = b0.pw - 5; pw <= b0.pw + 5; pw += 1) { if (a < 0 || a > 180 || pw < 8 || pw > 100) continue; const c = evalShot(a, pw, b0.w); if (c.score > best.score) best = c; }
   }
-  const sig = lvl === 1 ? [8, 9] : lvl === 2 ? [3.2, 4] : lvl === 3 ? [2, 2.4] : [1.1, 1.3];
-  return { a: clamp(best.a + gauss() * sig[0], 2, 178), pw: clamp(best.pw + gauss() * sig[1], 10, 100), w: best.w };
+  const sig = lvl === 1 ? [8, 9] : lvl === 2 ? [3.8, 4.6] : lvl === 3 ? [2.6, 3.1] : [1.4, 1.7];
+  const k = Math.random() < (BOT_SLIP[lvl] || 0) ? 3 : 1;   // občas se bot hrubě přestřelí
+  return { a: clamp(best.a + gauss() * sig[0] * k, 2, 178), pw: clamp(best.pw + gauss() * sig[1] * k, 10, 100), w: best.w };
 }
 function botTurn(room) {
   const bi = room.turn, mid = room.matchId;
