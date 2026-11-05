@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=12';
+import * as P from './physics.js?v=13';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -145,9 +145,20 @@ const rootEl = document.documentElement;
 const fsOK = !!(rootEl.requestFullscreen || rootEl.webkitRequestFullscreen);
 const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
 const coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+let lockWhy = '';
+async function lockLand(verbose) { // zámek orientace jde jen v celé obrazovce; zkusí se víc způsobů, protože prohlížeče se liší
+  lockWhy = '';
+  const so = screen.orientation;
+  for (const mode of ['landscape', 'landscape-primary']) {
+    try { if (so && so.lock) { await so.lock(mode); return true; } } catch (e) { lockWhy = (e && e.name) || 'chyba'; }
+  }
+  try { const old = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation; if (old && old.call(screen, 'landscape')) return true; } catch (e) { /* nic */ }
+  if (verbose) toast(so && so.lock ? `Telefon zámek na šířku nepovolil (${lockWhy || 'neznámý důvod'}). Zkus zapnout automatické otáčení v telefonu a otočit ho.` : 'Tenhle prohlížeč neumí zamknout šířku, otoč telefon ručně.');
+  return false;
+}
 async function enterFs() {
   try { if (rootEl.requestFullscreen) await rootEl.requestFullscreen({ navigationUI: 'hide' }); else if (rootEl.webkitRequestFullscreen) rootEl.webkitRequestFullscreen(); } catch (e) { /* prohlížeč nepustil */ }
-  try { if (screen.orientation && screen.orientation.lock) await screen.orientation.lock('landscape'); } catch (e) { /* zámek jde jen v celé obrazovce a ne všude */ }
+  await lockLand(true);
 }
 function exitFs() {
   try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* nic */ }
@@ -155,7 +166,7 @@ function exitFs() {
 }
 function autoFs() { if (fsOK && coarse && !isFs() && LS.get('tanks_fs') !== '0') enterFs(); }   // na dotykových zařízeních se při startu hry zkusí celá obrazovka + šířka (jde jen z klepnutí)
 function toggleFs() { if (isFs()) { LS.set('tanks_fs', '0'); exitFs(); } else { LS.set('tanks_fs', '1'); enterFs(); } }
-function syncFs() { const on = isFs(); $('fsBtn').textContent = on ? '⤢' : '⛶'; $('fsBtn').setAttribute('aria-label', on ? 'Ukončit celou obrazovku' : 'Celá obrazovka'); $('pFs').innerHTML = `<b>Celá obrazovka: ${on ? 'zapnutá' : 'vypnutá'}</b>`; }
+function syncFs() { const on = isFs(); if (on && coarse) lockLand(false); $('fsBtn').textContent = on ? '⤢' : '⛶'; $('fsBtn').setAttribute('aria-label', on ? 'Ukončit celou obrazovku' : 'Celá obrazovka'); $('pFs').innerHTML = `<b>Celá obrazovka: ${on ? 'zapnutá' : 'vypnutá'}</b>`; }
 if (fsOK) { $('fsBtn').hidden = false; $('pFs').hidden = false; $('fsBtn').onclick = toggleFs; $('pFs').onclick = toggleFs; document.addEventListener('fullscreenchange', syncFs); document.addEventListener('webkitfullscreenchange', syncFs); syncFs(); }
 $('code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
 $('name').addEventListener('change', () => LS.set('tanks_name', $('name').value.trim()));
