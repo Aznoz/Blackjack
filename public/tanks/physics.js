@@ -15,7 +15,7 @@ export const FUEL_MAX = 190;      // kolik pixelů smí tank za tah ujet
 /** Trvalá vylepšení tanku (kupují se za tankové coiny v Arzenálu; úrovně 0–5). `price[n]` = cena další úrovně (n = už koupená úroveň). */
 export const UPGRADES = {
   tank:  { id: 'tank',  name: 'Větší nádrž',      icon: '⛽', max: 5, price: [150, 250, 400, 600, 900],   per: '+10 % paliva za tah', desc: 'Každá úroveň přidá 10 % paliva na tah (nejvíc +50 %).' },
-  aim:   { id: 'aim',   name: 'Přesnost míření',  icon: '🎯', max: 5, price: [100, 200, 350, 550, 800],   per: 'delší vodicí tečky',  desc: 'Bílé vodicí tečky ukazují dál dráhu střely. Bez vylepšení jen krátký kousek, na maximu celý oblouk.' },
+  aim:   { id: 'aim',   name: 'Přesnost míření',  icon: '🎯', max: 5, price: [100, 200, 350, 550, 800],   per: 'delší vodicí tečky',  desc: 'Bílé vodicí tečky ukazují dál dráhu střely. Bez vylepšení 10 teček, na maximu 40 (celý oblouk).' },
   armor: { id: 'armor', name: 'Pancíř',           icon: '🛡️', max: 5, price: [200, 350, 550, 800, 1200], per: '−4 % přijatého poškození', desc: 'Každá úroveň ubere 4 % z poškození, které tank dostane (nejvíc −20 %).' },
   regen: { id: 'regen', name: 'Opravárenská četa', icon: '🔧', max: 5, price: [250, 400, 650, 950, 1400], per: '+2 životy na začátku tahu', desc: 'Na začátku každého tvého tahu si tank sám opraví 2 životy za úroveň (nejvíc +10).' },
   loot:  { id: 'loot',  name: 'Válečná kořist',   icon: '💰', max: 5, price: [200, 350, 550, 800, 1100], per: '+6 % coinů z výher', desc: 'Každá úroveň přidá 6 % k tankovým coinům za zápas (nejvíc +30 %).' },
@@ -23,7 +23,7 @@ export const UPGRADES = {
 export const UPGRADE_IDS = Object.keys(UPGRADES);
 const upl = (l, max = 5) => Math.max(0, Math.min(max, Math.floor(Number(l) || 0)));
 export const fuelMaxOf = (l) => Math.round(190 * (1 + 0.1 * upl(l)));
-export const AIM_DOTS = [3, 6, 10, 15, 21, 30];     // počet bílých teček podle úrovně Přesnosti míření
+export const AIM_DOTS = [10, 14, 19, 25, 32, 40];     // počet bílých teček podle úrovně Přesnosti míření
 export const aimDotsOf = (l) => AIM_DOTS[upl(l)];
 export const armorOf = (l) => 0.04 * upl(l);        // podíl poškození, který pancíř zachytí
 export const regenOf = (l) => 2 * upl(l);

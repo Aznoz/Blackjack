@@ -265,7 +265,7 @@ function findHit(room, i, w = 'std') {
 {
   assert.deepEqual(P.UPGRADE_IDS, ['tank', 'aim', 'armor', 'regen', 'loot']);
   for (let l = 1; l <= 5; l++) { assert.ok(P.aimDotsOf(l) > P.aimDotsOf(l - 1), 'víc úrovní = víc teček'); assert.ok(P.fuelMaxOf(l) > P.fuelMaxOf(l - 1)); assert.ok(P.armorOf(l) > P.armorOf(l - 1)); }
-  assert.equal(P.aimDotsOf(0), 3); assert.ok(P.aimDotsOf(5) >= 26, 'maximum ukazuje aspoň tolik jako dřív'); assert.equal(P.fuelMaxOf(0), P.FUEL_MAX); assert.equal(P.fuelMaxOf(5), Math.round(P.FUEL_MAX * 1.5)); assert.equal(P.aimDotsOf(99), P.aimDotsOf(5), 'úroveň se ořízne');
+  assert.equal(P.aimDotsOf(0), 10); assert.equal(P.aimDotsOf(5), 40); assert.ok(P.aimDotsOf(5) >= 26, 'maximum ukazuje aspoň tolik jako dřív'); assert.equal(P.fuelMaxOf(0), P.FUEL_MAX); assert.equal(P.fuelMaxOf(5), Math.round(P.FUEL_MAX * 1.5)); assert.equal(P.aimDotsOf(99), P.aimDotsOf(5), 'úroveň se ořízne');
   for (const id of P.UPGRADE_IDS) { const u = P.UPGRADES[id]; assert.equal(u.price.length, u.max); assert.ok(u.price.every((x, k) => k === 0 || x > u.price[k - 1]), 'ceny rostou ' + id); }
   // pancíř ubírá poškození (dry simulace)
   const h = P.genTerrain(99); const tk = () => [{ x: 300, hp: 100 }, { x: 420, hp: 100 }];
