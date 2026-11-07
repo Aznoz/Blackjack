@@ -34,9 +34,11 @@ export const CARDS = {
   bomber:    { id: 'bomber',    name: 'Sapér',        icon: '💣', cost: 3, lvl: 6,  n: 1, hp: 210, dmg: 500, as: 1.0,  speed: 98, range: 4,  r: 7,  tt: 'building', kind: 'bomber', splash: 38, desc: 'Rychle doběhne k věži a vybuchne. Na jednotky nezaútočí.' },
   berserker: { id: 'berserker', name: 'Berserkři',    icon: '🪓', cost: 6, lvl: 9,  n: 3, hp: 390, dmg: 64,  as: 0.75,  speed: 58, range: 16, r: 9,  tt: 'ground', desc: 'Tři zuřiví válečníci. Drtí cokoli na zemi.' },
   priest:    { id: 'priest',    name: 'Kněz',         icon: '⛑️', cost: 4, lvl: 12, n: 1, hp: 310, dmg: 0,   as: 1.2,  speed: 48, range: 40, r: 8,  tt: 'ground', kind: 'healer', heal: 70, healR: 80, desc: 'Nebojuje, ale doprovází spojence a léčí je.' },
-  farm:      { id: 'farm',      name: 'Elixírová farma', icon: '🧪', cost: 5, lvl: 1, n: 1, hp: 600, dmg: 0, as: 4, speed: 0, range: 0, r: 11, tt: 'ground', kind: 'farm', gen: 1, desc: 'Budova: po položení každé 4 s přidá 1 elixír. Soupeř ji ale může zničit.' },
+  troll:     { id: 'troll',     name: 'Trol',         icon: '👹', cost: 5, lvl: 99, n: 1, hp: 1900, dmg: 125, as: 1.7, speed: 34, range: 22, r: 13, tt: 'ground', splash: 26, desc: 'Obří trol s kyjem. Hodně životů a plošné rány na zemi, bojuje s tím, co potká.' },
+  ent:       { id: 'ent',       name: 'Dřevěný ent',  icon: '🌳', cost: 6, lvl: 99, n: 1, hp: 1750, dmg: 92, as: 1.9, speed: 28, range: 66, r: 14, tt: 'all', desc: 'Pomalý strom-obr, který hází kmeny na dálku (i do vzduchu). Obrovský počet životů.' },
+  farm:      { id: 'farm',      name: 'Elixírová farma', icon: '🧪', cost: 5, lvl: 1, n: 1, hp: 600, dmg: 0, as: 4, speed: 0, range: 0, r: 11, tt: 'ground', kind: 'farm', gen: 1, life: 25, desc: 'Budova: každé 4 s přidá 1 elixír, ale sama chátrá a po 25 s zanikne. Soupeř ji může zničit dřív.' },
 };
-export const CARD_ORDER = ['soldier', 'skeletons', 'skelarmy', 'archer', 'knight', 'bats', 'fireball', 'musketeer', 'wizard', 'golem', 'farm', 'dragon', 'bomber', 'berserker', 'priest'];
+export const CARD_ORDER = ['soldier', 'skeletons', 'skelarmy', 'archer', 'knight', 'bats', 'fireball', 'musketeer', 'wizard', 'golem', 'troll', 'ent', 'farm', 'dragon', 'bomber', 'berserker', 'priest'];
 export const STARTER = ['soldier', 'archer', 'knight', 'skeletons', 'fireball', 'golem', 'wizard', 'bats', 'musketeer'];
 
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));

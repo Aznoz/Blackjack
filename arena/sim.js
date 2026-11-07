@@ -29,7 +29,8 @@ const inBand = (y) => y >= RIVER.y0 && y <= RIVER.y1;
 const dist = (a, b) => sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y));
 const alive = (e) => e && e.hp > 0 && !e.dead;
 /** Smí jednotka `u` napadnout cíl `e` (jednotku)? */
-function canHit(u, e) { if (u.tt === 'building') return false; if (u.tt === 'ground') return !e.fly; return true; }
+function canHit(u, e) { if (u.tt === 'building') return e.k === 'farm';   // golem a sapér jdou na věže, ale cestou zničí i farmu
+  if (u.tt === 'ground') return !e.fly; return true; }
 
 // ------------------------------------------------------------------ karty a jednotky
 /** Položí kartu z ruky (index 0–2) na (x, y) (absolutní souřadnice arény). Vrací chybovou hlášku nebo null. */
@@ -56,7 +57,7 @@ export function play(s, pi, hi, x, y) {
     const ux = C.clamp(x + Math.cos(ang) * rad, 6, W - 6); const uy = pi === 0 ? C.clamp(y + Math.sin(ang) * rad, RIVER.y1 + 4, H - 6) : C.clamp(y + Math.sin(ang) * rad, 6, RIVER.y0 - 4);
     const u = {
       id: s.nextId++, kind: 'unit', o: pi, card: card.id, k: card.kind || 'unit', x: ux, y: uy, hp: Math.round(card.hp * mul), max: Math.round(card.hp * mul), dmg: Math.round(card.dmg * mul), as: card.as, speed: card.speed, range: card.range, r: card.r,
-      tt: card.tt, fly: !!card.fly, splash: card.splash || 0, cd: 0, wait: C.DEPLOY_S, tgt: null, gen: card.gen || 0, fcd: card.as, heal: card.heal ? Math.round(card.heal * mul) : 0, healR: card.healR || 0, hcd: 0,
+      tt: card.tt, fly: !!card.fly, splash: card.splash || 0, cd: 0, wait: C.DEPLOY_S, tgt: null, gen: card.gen || 0, life: card.life || 0, fcd: card.as, heal: card.heal ? Math.round(card.heal * mul) : 0, healR: card.healR || 0, hcd: 0,
     };
     s.units.push(u); s.ev.push(['s', u.id, u.card, pi, Math.round(ux), Math.round(uy)]);
   }
@@ -107,7 +108,7 @@ function walk(u, tgt) {
 // ------------------------------------------------------------------ cílení
 function pickTarget(s, u) {
   let best = null, bd = 1e9;
-  if (u.tt !== 'building') for (const e of s.units) {
+  for (const e of s.units) {
     if (e.o === u.o || !alive(e) || !canHit(u, e)) continue;
     const d = dist(u, e) - e.r; if (d < AGGRO && d < bd) { bd = d; best = e; }
   }
@@ -138,6 +139,8 @@ function stepUnit(s, u) {
   walk(u, t);
 }
 function stepFarm(s, u) {
+  if (u.life > 0) hurt(s, u, u.max * DT / u.life, -1);   // budova chátrá a po `life` sekundách zanikne
+  if (u.hp <= 0) return;
   u.fcd -= DT;
   if (u.fcd <= 0) { u.fcd += u.as; const p = s.pl[u.o]; p.elixir = Math.min(C.ELIXIR_MAX, p.elixir + u.gen); s.ev.push(['e', u.id, u.o]); }
 }
