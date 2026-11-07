@@ -129,6 +129,17 @@ function cleanTank(t) {
   return out;
 }
 
+const ARENA_CARD_IDS = ['soldier', 'skeletons', 'archer', 'knight', 'bats', 'fireball', 'musketeer', 'wizard', 'golem', 'dragon', 'bomber', 'berserker', 'priest'];   // karty Arény věží (shodně s CARDS v arena/cards.js)
+function cleanArena(t) {   // Aréna věží: zkušenosti, výhry, coiny, balíček 9 karet a úrovně karet (podrobná kontrola je v arena/arena.js, arenaOf)
+  t = t && typeof t === 'object' ? t : {};
+  const n = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);
+  const out = { xp: n(t.xp, 1e7), wins: n(t.wins, 1e6), losses: n(t.losses, 1e6), streak: n(t.streak, 1e5), best: n(t.best, 1e5) };
+  if (Number.isFinite(t.coins)) out.coins = n(t.coins, 1e9);   // bez `coins` začíná hráč na startovních 200
+  const lv = {}; for (const id of ARENA_CARD_IDS) { const l = n(t.lv && t.lv[id], 10); if (l > 1) lv[id] = l; } if (Object.keys(lv).length) out.lv = lv;
+  if (Array.isArray(t.deck)) { const d = []; for (const id of t.deck) if (ARENA_CARD_IDS.includes(id) && !d.includes(id)) d.push(id); if (d.length) out.deck = d.slice(0, 9); }
+  return out;
+}
+
 function makeAccount(key, d = {}) {
   return {
     key,
@@ -145,6 +156,7 @@ function makeAccount(key, d = {}) {
     avatar: typeof d.avatar === 'string' && (AVATAR_PRESET_RE.test(d.avatar) || AVATAR_CUSTOM_RE.test(d.avatar)) ? d.avatar : randomPreset(),
     custom: typeof d.custom === 'string' && /^[0-9a-f]{16}$/.test(d.custom) ? d.custom : null, // nahraný vlastní obrázek (hash)
     tank: cleanTank(d.tank), // Tankové souboje: zkušenosti, výhry, koupená munice, barva tanku
+    arena: cleanArena(d.arena), // Aréna věží: zkušenosti, coiny, balíček a úrovně karet
     lastUpload: 0,
     createdAt: d.createdAt || Date.now(),
     lastSeen: d.lastSeen || Date.now(),
@@ -163,7 +175,7 @@ async function loadAccounts() {
     for (const [key, a] of Object.entries(raw)) {
       if (!a || typeof a.balance !== 'number') continue;
       // úklid: anonymní účty, které nikdy nehrály a 30 dní se neozvaly (účty propojené s Googlem se nemažou)
-      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && (a.lastSeen || 0) < cutoff) continue;
+      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && !(a.arena && a.arena.xp) && (a.lastSeen || 0) < cutoff) continue;
       accounts.set(key, makeAccount(key, a));
     }
     console.log(`Načteno ${accounts.size} účtů.`);
@@ -287,7 +299,7 @@ function saveNow() {
   try {
     const out = {};
     for (const [k, a] of accounts) {
-      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
+      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, arena: a.arena, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
     }
     store.write('players', JSON.stringify(out));
     const g = {};
@@ -1146,6 +1158,11 @@ async function handleApi(req, res, p) {
       const r = tanks.api(p.slice('/api/tanks/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p.startsWith('/api/arena/') && req.method === 'POST') { // Aréna věží: me / deck / upgrade (profil, balíček, vylepšení karty)
+      if (!arena) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = arena.api(p.slice('/api/arena/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1245,6 +1262,10 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
     return res.end(JSON.stringify({ ok: true, ...(tanks ? tanks.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
+  if (p === '/arena/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ ok: true, ...(arena ? arena.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
   if (p === '/sachy/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ ok: true, ...(sachy ? sachy.stats() : {}), uptime: Math.round(process.uptime()) }));
@@ -1342,6 +1363,12 @@ let tanks = null;
 import('./tanks/tanks.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); tanks = m; console.log('Tanky: načteno (WebSocket /tanks).'); }).catch((e) => console.error('Tanky se nenačetly:', e.message));
 twss.on('connection', (ws) => { if (!tanks) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } tanks.handleConnection(ws); });
 
+// desátá cesta: /arena = Aréna věží 1v1 (složka arena/): bot nebo online, postup (XP, coiny, balíček, úrovně karet) se ukládá v účtu
+const awss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
+let arena = null;
+import('./arena/arena.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); arena = m; console.log('Aréna věží: načteno (WebSocket /arena).'); }).catch((e) => console.error('Aréna věží se nenačetla:', e.message));
+awss.on('connection', (ws) => { if (!arena) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } arena.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1349,7 +1376,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : p === '/arena' ? awss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });
