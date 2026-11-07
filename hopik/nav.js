@@ -39,7 +39,7 @@ function expand(W, key) {
 
 /** Postaví graf z místa startu. Vrací { dist: Map(klíč → ticků k cíli), edges, start, reachable }. */
 export function buildNav(W) {
-  const W2 = { ...W, movers: [], cannons: [], flames: [], noFx: true };   // pohyblivé a časované věci graf nezná (bot se jim vyhýbá až za běhu)
+  const W2 = { ...W, noFx: true }; for (const k of P.TIMED) W2[k] = [];   // pohyblivé a časované věci graf nezná (bot se jim vyhýbá až za běhu)
   const S = W.stage; const sx = Math.floor(S.spawn[0]), sy = Math.floor(S.spawn[1] - P.PH / 2);
   const start = sy * COLS + sx; const edges = new Map(); const queue = [start]; const seen = new Set([start]);
   while (queue.length) {

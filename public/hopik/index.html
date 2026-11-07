@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ffc928' stroke='%232b2118' stroke-width='4'/%3E%3Cellipse cx='32' cy='36' rx='20' ry='17' fill='%23fff4d6' stroke='%232b2118' stroke-width='4'/%3E%3Ccircle cx='38' cy='31' r='3.5' fill='%232b2118'/%3E%3Cpath d='M26 14l4 8 5-9 4 9 5-7' fill='%23e8433c' stroke='%232b2118' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="hopik.css?v=2">
+<link rel="stylesheet" href="hopik.css?v=3">
 </head>
 <body>
 
@@ -32,6 +32,7 @@
     <div class="prof" id="prof" hidden>
       <div class="pname" id="pName">Hráč</div>
       <div class="prec" id="pRec"></div>
+      <div class="coinchip" id="pCoins"><i class="coin"></i><b>0</b></div>
     </div>
     <label class="field" id="nameField" hidden>Tvoje jméno
       <input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza">
@@ -45,7 +46,10 @@
       <button class="btn" id="bCreate" type="button"><b>Vytvořit hru</b><small>kód pro kamarády</small></button>
     </div>
     <form class="join" id="joinForm"><label for="code">Mám kód od kamaráda</label><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti"><button type="submit">Připojit</button></form>
-    <button class="btn small" id="bHow" type="button"><b>Jak se hraje</b><small>kola, kusy a body</small></button>
+    <div class="row2">
+      <button class="btn shopbtn" id="bShop" type="button"><b>Obchod</b><small id="shopSub">čepice, brýle, boty, záda</small></button>
+      <button class="btn small" id="bHow" type="button"><b>Jak se hraje</b><small>kola, kusy a body</small></button>
+    </div>
     <p class="status" id="menuStatus"></p>
   </div>
 </main>
@@ -62,6 +66,16 @@
     <div class="stages" id="botStages"></div>
     <button class="btn main go" id="botGo" type="button"><b>Začít zápas</b></button>
     <button class="link" data-close type="button">Zpět</button>
+  </div>
+</div>
+
+<!-- obchod s kosmetikou -->
+<div class="modal" id="shopModal" hidden>
+  <div class="sheet shop">
+    <div class="shead"><h2>Obchod</h2><div class="coinchip"><i class="coin"></i><b id="shopCoins">0</b></div><button class="x" data-close type="button" aria-label="Zavřít">✕</button></div>
+    <div class="shopTop"><img id="shopPrev" alt="" width="112" height="112"><div class="shopInfo"><b id="shopName"></b><small id="shopHint"></small><button class="btn small" id="shopBuy" type="button" hidden><b></b></button></div></div>
+    <div class="tabs" id="shopTabs"></div>
+    <div class="shopGrid" id="shopGrid"></div>
   </div>
 </div>
 
@@ -164,6 +178,6 @@
 <div class="conn" id="conn" hidden>Připojuji…</div>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script src="config.js"></script>
-<script type="module" src="hopik.js?v=2"></script>
+<script type="module" src="hopik.js?v=3"></script>
 </body>
 </html>

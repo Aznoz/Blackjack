@@ -1,6 +1,6 @@
 // HOPÍK – animovaná scéna v hlavním menu: louka, po které zvířátka běhají a přeskakují bedny a bodáky. Čistě dekorace.
-import { drawAnimal, drawBackground, drawPieceShape, flagShape, sawShape, INK, SEAT } from './art.js?v=2';
-import * as K from './shared.js?v=2';
+import { drawAnimal, drawBackground, drawPieceShape, flagShape, sawShape, INK, SEAT } from './art.js?v=3';
+import * as K from './shared.js?v=3';
 let raf = 0, cv = null, g = null, W = 0, H = 0, dpr = 1, last = 0, t = 0, bg = null, actors = [];
 const VIEW_W = 21;                                    // kolik políček široká je scéna
 const GROUND = 6.2;                                   // výška země ve scéně (v políčkách odshora)

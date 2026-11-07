@@ -14,19 +14,34 @@ const FALL = -1;                                        // kód smrti pádem (os
 // ------------------------------------------------------------------ svět
 export function buildWorld(stageIdx, pieces) {
   const S = K.STAGES[K.stageIdx(stageIdx)];
-  const W = { stage: S, g: new Uint8Array(COLS * ROWS), occ: new Uint8Array(COLS * ROWS), gone: new Uint8Array(COLS * ROWS), movers: [], spikes: [], saws: [], cannons: [], flames: [], grp: new Map(), crumbleAt: new Map(), groups: [], onCrumble: null, noFx: false, pieces: (pieces || []).slice() };
+  const W = { stage: S, g: new Uint8Array(COLS * ROWS), occ: new Uint8Array(COLS * ROWS), gone: new Uint8Array(COLS * ROWS), sp: new Uint8Array(COLS * ROWS), hasSp: false, movers: [], spikes: [], saws: [], cannons: [], flames: [], blades: [], pends: [], thwomps: [], lasers: [], rsaws: [], fans: [], grp: new Map(), crumbleAt: new Map(), groups: [], onCrumble: null, noFx: false, pieces: (pieces || []).slice() };
   for (const [x, y, w, h, t] of S.rects) for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) { W.g[j * COLS + i] = t; W.occ[j * COLS + i] = 1; }
   for (const p of W.pieces) addPiece(W, p);
-  for (const c of W.cannons) c.life = bulletLife(W, c);
+  refreshBeams(W);
   return W;
 }
 /** Doplní do už postaveného světa další kus (a přepočítá dolet kulek, protože nový kus může stát v cestě). */
-export function addPlaced(W, p) { W.pieces.push(p); addPiece(W, p); for (const c of W.cannons) c.life = bulletLife(W, c); }
+export function addPlaced(W, p) { W.pieces.push(p); addPiece(W, p); refreshBeams(W); }
+/** Dolet kulek, paprsků a větru závisí na pevných věcech v cestě, takže se po každém novém kusu přepočítá. */
+function refreshBeams(W) {
+  for (const c of W.cannons) c.life = bulletLife(W, c);
+  for (const l of W.lasers) { l.len = freeRun(W, l.sx, l.sy, l.vx, l.vy, 60, l.x, l.y); setBeamRect(l, l.len, K.LASER_R); }
+  for (const f of W.fans) { f.len = freeRun(W, f.sx, f.sy, f.vx, f.vy, K.FAN.len, f.x, f.y); setBeamRect(f, f.len, K.FAN.half); }
+}
+/** Jak daleko (v políčkách, nejvýš max) se od (sx, sy) ve směru (vx, vy) dojde, než se narazí na pevnou dlaždici (vlastní políčko zařízení se nepočítá). */
+function freeRun(W, sx, sy, vx, vy, max, ex, ey) {
+  let d = 0; while (d < max) { const x = Math.floor(sx + vx * d), y = Math.floor(sy + vy * d); if (x < 0 || y < 0 || x >= COLS || y >= ROWS) break; if (W.g[y * COLS + x] > 0 && !W.gone[y * COLS + x] && !(x === ex && y === ey)) break; d += 0.1; }
+  return d;
+}
+function setBeamRect(o, len, hw) {
+  const { vx, vy } = o; const x1 = o.sx + vx * len, y1 = o.sy + vy * len;
+  o.rect = [Math.min(o.sx, x1) - (vx ? 0 : hw), Math.min(o.sy, y1) - (vy ? 0 : hw), Math.max(o.sx, x1) + (vx ? 0 : hw), Math.max(o.sy, y1) + (vy ? 0 : hw)];
+}
 function addPiece(W, p) {
   const P = K.PIECES[p.type]; const cells = K.pieceCells(p.type, p.r); const face = K.faceOf(p.type, p.r);
   for (const [dx, dy] of cells) { const x = p.x + dx, y = p.y + dy; if (x < 0 || y < 0 || x >= COLS || y >= ROWS) continue; W.occ[y * COLS + x] = 1; }
   if (P.kind === 'solid') {
-    const gi = []; for (const [dx, dy] of cells) { const k = (p.y + dy) * COLS + p.x + dx; W.g[k] = P.tile; gi.push(k); }
+    const gi = []; for (const [dx, dy] of cells) { const k = (p.y + dy) * COLS + p.x + dx; W.g[k] = P.tile; gi.push(k); if (p.type === 'bounce' && face !== 0) { W.sp[k] = face + 1; W.hasSp = true; } }   // otočené odrazovadlo je pružina na stěně: vystřelí do strany (nebo dolů)
     if (P.tile === T.CRUMBLE) { const id = W.groups.length; W.groups.push(gi); for (const k of gi) W.grp.set(k, id); }
   } else if (p.type === 'mover') {
     const ax = p.r % 2 === 0 ? 0 : 1;
@@ -39,6 +54,18 @@ function addPiece(W, p) {
     }
   } else if (p.type === 'saw') {
     W.saws.push({ x: p.x + 1, y: p.y + 1, r: 0.9, owner: p.owner });
+  } else if (p.type === 'blades') {
+    W.g[p.y * COLS + p.x] = T.DEVICE; W.blades.push({ px: p.x + 0.5, py: p.y + 0.5, dir: p.id % 2 ? 1 : -1, phase: (p.id * 41) % K.BLADE_PERIOD, owner: p.owner, id: p.id });
+  } else if (p.type === 'pendulum') {
+    W.g[p.y * COLS + p.x] = T.DEVICE; W.pends.push({ px: p.x + 0.5, py: p.y + 0.5, phase: (p.id * 47) % K.PEND_PERIOD, owner: p.owner, id: p.id });
+  } else if (p.type === 'thwomp') {
+    W.thwomps.push({ x: p.x, y: p.y, phase: (p.id * 31) % K.THW.period, owner: p.owner, id: p.id });
+  } else if (p.type === 'rsaw') {
+    W.rsaws.push({ x: p.x, y: p.y, ax: p.r % 2, phase: (p.id * 37) % K.RSAW_PERIOD, owner: p.owner, id: p.id });
+  } else if (p.type === 'laser' || p.type === 'fan') {
+    const x = p.x, y = p.y; W.g[y * COLS + x] = T.DEVICE; const [vx, vy] = K.DIRV[face];
+    const o = { x, y, dir: face, vx, vy, sx: x + 0.5 + vx * 0.55, sy: y + 0.5 + vy * 0.55, owner: p.owner, id: p.id, len: 0, rect: [0, 0, 0, 0], phase: p.type === 'laser' ? (p.id * 53) % K.LASER_PERIOD : (p.id * 29) % K.FAN.period };
+    (p.type === 'laser' ? W.lasers : W.fans).push(o);
   } else if (p.type === 'cannon' || p.type === 'flame') {
     const x = p.x, y = p.y; W.g[y * COLS + x] = T.DEVICE;
     const [vx, vy] = K.DIRV[face]; const ph = (p.id * 23) % K.CANNON_PERIOD;
@@ -68,6 +95,25 @@ export function moverBox(m, tick, out = [0, 0, 0, 0]) {
   out[0] = x0; out[1] = y0; out[2] = x0 + 3; out[3] = y0 + 1; return out;
 }
 export const flameOn = (f, tick) => ((tick + f.phase) % K.FLAME_PERIOD) < K.FLAME_ON;
+const TAU2 = Math.PI * 2;
+/** Úhel vrtule (rad) v daném ticku. */
+export const bladeAngle = (b, tick) => b.dir * TAU2 * ((tick + b.phase) / K.BLADE_PERIOD);
+/** Koule kyvadla: [x, y, úhel]. */
+export function pendBall(p, tick) { const a = K.PEND_AMP * Math.sin(TAU2 * ((tick + p.phase) / K.PEND_PERIOD)); return [p.px + Math.sin(a) * K.PEND_LEN, p.py + Math.cos(a) * K.PEND_LEN, a]; }
+/** Jak hluboko (v políčkách od horní polohy) je padací kámen v daném ticku. */
+export function thwompOff(t, tick) {
+  const H = K.THW, travel = H.h - H.s; const u = (((tick + t.phase) % H.period) + H.period) % H.period;
+  if (u < H.wait) return 0; if (u < H.wait + H.fall) { const k = (u - H.wait) / H.fall; return travel * k * k; }
+  if (u < H.wait + H.fall + H.rest) return travel; const k = (u - H.wait - H.fall - H.rest) / (H.period - H.wait - H.fall - H.rest); return travel * (1 - k);
+}
+export function thwompBox(t, tick, out = [0, 0, 0, 0]) { const o = thwompOff(t, tick); out[0] = t.x; out[1] = t.y + o; out[2] = t.x + K.THW.s; out[3] = t.y + o + K.THW.s; return out; }
+/** Stav laseru: 0 nic, 1 varuje (bliká), 2 pálí. */
+export function laserState(l, tick) { const u = (((tick + l.phase) % K.LASER_PERIOD) + K.LASER_PERIOD) % K.LASER_PERIOD; return u < K.LASER_PERIOD - K.LASER_WARN - K.LASER_ON ? 0 : u < K.LASER_PERIOD - K.LASER_ON ? 1 : 2; }
+/** Střed pily na kolejnici. */
+export function rsawPos(s, tick, out = [0, 0]) { const d = (K.RSAW_LEN - 1) * (0.5 + 0.5 * Math.sin(TAU2 * ((tick + s.phase) / K.RSAW_PERIOD))); out[0] = s.x + 0.5 + (s.ax === 0 ? d : 0); out[1] = s.y + 0.5 + (s.ax === 1 ? d : 0); return out; }
+export const fanOn = (f, tick) => ((((tick + f.phase) % K.FAN.period) + K.FAN.period) % K.FAN.period) < K.FAN.on;
+/** Pole věcí, jejichž stav závisí na čase (navigační graf bota s nimi nepočítá). */
+export const TIMED = ['movers', 'cannons', 'flames', 'blades', 'pends', 'thwomps', 'lasers', 'rsaws', 'fans'];
 /** Je kulka z děla `c` v ticku `tick`? Vrací polohy aktivních kulek (pole [x, y]) – pro kreslení i kolize. */
 export function bulletsOf(c, tick, out = []) {
   const age0 = (tick + c.phase) % K.CANNON_PERIOD;
@@ -91,11 +137,11 @@ export function canPlace(W, type, r, x, y) {
 }
 
 // ------------------------------------------------------------------ tělo postavy
-export function newBody(x, y) { return { x, y, vx: 0, vy: 0, face: 1, gr: false, coy: 0, buf: 0, jh: false, wall: 0, wlock: 0, rise: false, ice: false, stand: -1, crush: false }; }
+export function newBody(x, y) { return { x, y, vx: 0, vy: 0, face: 1, gr: false, coy: 0, buf: 0, jh: false, wall: 0, wlock: 0, rise: false, ice: false, stand: -1, crush: false, sc: 0 }; }
 export const copyBody = (p) => ({ ...p });
 
 let ox0 = 0, ox1 = 0, oy0 = 0, oy1 = 0;
-const mb = [0, 0, 0, 0];
+const mb = [0, 0, 0, 0], rp = [0, 0];
 /** Překrývá tělo se středem (x, y) nějakou pevnou věc? Mezní hodnoty překryvu zůstanou v ox0..oy1. */
 function overlap(W, x, y, tick) {
   const x0 = x - PW / 2, x1 = x + PW / 2, y0 = y - PH / 2, y1 = y + PH / 2;
@@ -128,6 +174,12 @@ export function hazardAt(W, x, y, tick, shrink = 0.08) {
       const nx = Math.max(x0, Math.min(bx, x1)), ny = Math.max(y0, Math.min(by, y1)); const dx = nx - bx, dy = ny - by; if (dx * dx + dy * dy < K.BULLET_R * K.BULLET_R) return c.owner + 1;
     }
   }
+  const circ = (cx, cy, r) => { const nx = Math.max(x0, Math.min(cx, x1)), ny = Math.max(y0, Math.min(cy, y1)); const dx = nx - cx, dy = ny - cy; return dx * dx + dy * dy < r * r; };
+  for (const b of W.blades) { const a = bladeAngle(b, tick), ca = Math.cos(a), sa = Math.sin(a); for (let u = -K.BLADE_LEN; u <= K.BLADE_LEN + 1e-6; u += 0.25) if (circ(b.px + ca * u, b.py + sa * u, K.BLADE_R)) return b.owner + 1; }
+  for (const p of W.pends) { const q = pendBall(p, tick); if (circ(q[0], q[1], K.PEND_R * 0.88)) return p.owner + 1; }
+  for (const t of W.thwomps) { thwompBox(t, tick, mb); if (x0 < mb[2] && x1 > mb[0] && y0 < mb[3] && y1 > mb[1]) return t.owner + 1; }
+  for (const l of W.lasers) if (laserState(l, tick) === 2 && x0 < l.rect[2] && x1 > l.rect[0] && y0 < l.rect[3] && y1 > l.rect[1]) return l.owner + 1;
+  for (const s of W.rsaws) { rsawPos(s, tick, rp); if (circ(rp[0], rp[1], K.RSAW_R * 0.92)) return s.owner + 1; }
   return 0;
 }
 export function inGoal(W, p) { const [gx, gy, gw, gh] = W.stage.goal; return p.x + PW / 2 > gx && p.x - PW / 2 < gx + gw && p.y + PH / 2 > gy && p.y - PH / 2 < gy + gh; }
@@ -162,12 +214,25 @@ function probe(W, p, tick) {
   const fy = p.y + PH / 2 + 0.05, row = Math.floor(fy), x0 = p.x - PW / 2 + 0.02, x1 = p.x + PW / 2 - 0.02;
   if (row >= 0 && row < ROWS) for (let cx = Math.floor(x0); cx <= Math.floor(x1); cx++) {
     if (cx < 0 || cx >= COLS) continue; const k = row * COLS + cx; const t = W.g[k]; if (t === 0 || W.gone[k]) continue;
-    p.gr = true; if (t === T.ICE) p.ice = true; else if (t === T.BOUNCE) bounce = true;
+    p.gr = true; if (t === T.ICE) p.ice = true; else if (t === T.BOUNCE && !W.sp[k]) bounce = true;
     if (t === T.CRUMBLE && !W.noFx) { const gid = W.grp.get(k); if (triggerCrumble(W, gid, tick) && W.onCrumble) W.onCrumble(gid, tick); }
   }
   for (let i = 0; i < W.movers.length; i++) { moverBox(W.movers[i], tick, mb); if (x0 < mb[2] && x1 > mb[0] && fy >= mb[1] && fy < mb[1] + 0.3 && p.y + PH / 2 <= mb[1] + 0.12) { p.gr = true; p.stand = i; break; } }
   p.wall = 0; if (!p.gr) { if (overlap(W, p.x + 0.07, p.y, tick)) p.wall = 1; else if (overlap(W, p.x - 0.07, p.y, tick)) p.wall = -1; }
   return bounce;
+}
+export const SPRING_VX = 24, SPRING_VY = -9;
+/** Boční pružina (otočené odrazovadlo): kdo se dotkne její vnější strany, je vystřelen pryč (do strany, nebo dolů od stropní). */
+function springPush(W, p, fx) {
+  const r0 = Math.floor(p.y - PH / 2 + 0.05), r1 = Math.floor(p.y + PH / 2 - 0.05);
+  const at = (cx, cy) => (cx < 0 || cx >= COLS || cy < 0 || cy >= ROWS ? 0 : W.sp[cy * COLS + cx]);
+  const cr = Math.floor(p.x + PW / 2 + 0.06), cl = Math.floor(p.x - PW / 2 - 0.06);
+  for (let y = r0; y <= r1; y++) {
+    if (at(cr, y) === 4) { p.vx = -SPRING_VX; p.vy = SPRING_VY; p.wlock = 6; p.face = -1; p.sc = 10; p.buf = 0; if (fx) fx.push('b'); return; }
+    if (at(cl, y) === 2) { p.vx = SPRING_VX; p.vy = SPRING_VY; p.wlock = 6; p.face = 1; p.sc = 10; p.buf = 0; if (fx) fx.push('b'); return; }
+  }
+  const ch = Math.floor(p.y - PH / 2 - 0.06);
+  for (let x = Math.floor(p.x - PW / 2 + 0.02); x <= Math.floor(p.x + PW / 2 - 0.02); x++) if (at(x, ch) === 3) { p.vy = SPRING_VX; p.sc = 10; if (fx) fx.push('b'); return; }
 }
 const approach = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
 
@@ -182,7 +247,14 @@ export function stepBody(W, p, inp, tick, fx) {
     if (dir !== 0) { let acc = p.gr ? (p.ice ? ACC_ICE : ACC_G) : ACC_A; if (p.vx * dir < 0) acc *= TURN; p.vx = approach(p.vx, dir * RUN, acc * DT); p.face = dir; }
     else p.vx = approach(p.vx, 0, (p.gr ? (p.ice ? FR_ICE : FR_G) : FR_A) * DT);
   }
-  p.vy = Math.min(MAXFALL, p.vy + GRAV * DT);
+  p.vy = Math.min(MAXFALL, p.vy + GRAV * (W.stage.grav || 1) * DT);
+  let windX = 0;
+  for (let i = 0; i < W.fans.length; i++) {
+    const f = W.fans[i]; if (!fanOn(f, tick)) continue;
+    if (p.x - PW / 2 < f.rect[2] && p.x + PW / 2 > f.rect[0] && p.y - PH / 2 < f.rect[3] && p.y + PH / 2 > f.rect[1]) {
+      if (f.dir === 0) p.vy = Math.max(-9, p.vy - K.FAN.lift * DT); else if (f.dir === 2) p.vy = Math.min(MAXFALL, p.vy + 80 * DT); else windX += f.dir === 1 ? K.FAN.wind : -K.FAN.wind;
+    }
+  }
   if (!p.gr && p.wall !== 0 && dir === p.wall && p.vy > SLIDE_V) p.vy = SLIDE_V;
   if (p.gr) p.coy = COYOTE_T; else if (p.coy > 0) p.coy--;
   if (p.buf > 0) {
@@ -191,9 +263,10 @@ export function stepBody(W, p, inp, tick, fx) {
   }
   if (!J && p.rise && p.vy < 0) { p.vy *= CUT; p.rise = false; } else if (p.vy >= 0) p.rise = false;
   p.jh = !!J;
-  moveX(W, p, p.vx * DT, tick);
+  moveX(W, p, p.vx * DT + windX * DT, tick);
   const wasFalling = p.vy > 0, wasAir = !p.gr; const hit = moveY(W, p, p.vy * DT, tick);
   const bounce = probe(W, p, tick);
+  if (p.sc > 0) p.sc--; else if (W.hasSp) springPush(W, p, fx);
   if (hit === 1 && wasFalling) { if (bounce) { p.vy = -BOUNCE_V; p.gr = false; p.coy = 0; p.rise = false; if (fx) fx.push('b'); } else if (fx && wasAir) fx.push('l'); }
   if (p.x < PW / 2) p.x = PW / 2; if (p.x > COLS - PW / 2) p.x = COLS - PW / 2;
   if (p.y < -8) { p.y = -8; if (p.vy < 0) p.vy = 0; }

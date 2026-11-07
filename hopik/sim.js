@@ -55,7 +55,7 @@ function endPick(g) {
 export function setGhost(g, i, x, y, r) { if (g.phase !== 'place' || g.players[i].left || g.placed[i]) return; g.ghost[i] = { x: Math.round(x) | 0, y: Math.round(y) | 0, r: ((r | 0) % 4 + 4) % 4 }; }
 export function placePiece(g, i, x, y, r) {
   if (g.phase !== 'place' || g.placed[i] || g.players[i].left) return 'no';
-  x = Math.round(x); y = Math.round(y); r = ((Math.round(r) % 4) + 4) % 4; const type = g.piece[i];
+  x = Math.round(x); y = Math.round(y); r = ((Math.round(r) % 4) + 4) % 4; const type = g.piece[i]; if (type && !K.rotatable(type)) r = 0;
   if (!type || !Number.isFinite(x) || !Number.isFinite(y)) return 'no';
   if (!P.canPlace(g.W, type, r, x, y)) return 'invalid';
   const pc = { id: g.nextId++, type, r, x, y, owner: i, round: g.round }; g.pieces.push(pc); P.addPlaced(g.W, pc); g.placed[i] = true; g.ev.push(['pl', i, pc]);

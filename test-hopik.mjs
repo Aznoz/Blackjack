@@ -21,7 +21,7 @@ assert.equal(JSON.parse(fs.readFileSync('./hopik/package.json', 'utf8')).type, '
   assert.equal(K.faceOf('spikes', 0), 0); assert.equal(K.faceOf('spikes', 1), 1); assert.equal(K.faceOf('cannon', 1), 2); assert.equal(K.faceOf('cannon', 3), 0);
   assert.equal(K.rotatable('saw'), false); assert.equal(K.rotatable('plank3'), true);
   for (const p of Object.values(K.PIECES)) assert.ok(p.w > 0 && p.name && p.desc);
-  assert.equal(K.CHARS.length, 8); assert.equal(K.charIdx(7), 7); assert.equal(K.charIdx(8), -1); assert.equal(K.charIdx('x'), -1); assert.equal(K.stageIdx(99), 0); assert.equal(K.stageIdx(2), 2); assert.equal(K.STAGES.length, 5); assert.equal(K.stageIdx(4), 4); assert.equal(K.stageIdx(5), 0);
+  assert.equal(K.CHARS.length, 8); assert.equal(K.charIdx(7), 7); assert.equal(K.charIdx(8), -1); assert.equal(K.charIdx('x'), -1); assert.equal(K.stageIdx(99), 0); assert.equal(K.stageIdx(2), 2); assert.equal(K.STAGES.length, 10); assert.equal(K.stageIdx(9), 9); assert.equal(K.stageIdx(10), 0);
 }
 
 // --- fyzika
@@ -107,6 +107,37 @@ const harmless = (g, i) => { for (let k = 0; k < 400; k++) { const x = (k * 7 + 
   for (let k = 0; k < 120; k++) { const f = []; P.stepBody(W, b, k === 60 ? P.IN.J : 0, k, f); for (const e of f) ev.push([k, e]); }
   assert.ok(ev.filter(([k, e]) => e === 'l' && k > 3 && k < 60).length === 0, 'na zemi se nehlásí dopad'); assert.ok(ev.some(([k, e]) => e === 'j' && k === 60)); assert.ok(ev.some(([k, e]) => e === 'l' && k > 60 && k < 90), 'po skoku jeden dopad');
 }
+{ // boční pružina: otočené odrazovadlo (r = 1 doprava, 3 doleva, 2 dolů) vystřelí do strany; vzhůru zůstává stará pružina
+  const pc = (r, x, y) => ({ id: 1, type: 'bounce', r, x, y, owner: 0, round: 1 });
+  const W = P.buildWorld(0, [pc(1, 10, 14)]); assert.ok(W.hasSp && W.sp[14 * K.COLS + 10] === 2 && W.sp[15 * K.COLS + 10] === 2, 'pružina doprava je na stěně');
+  const b = P.newBody(11.36, 16 - P.PH / 2 - 0.001); b.gr = true; P.stepBody(W, b, 0, 0, null); assert.ok(b.vx > 15, 'vpravo od pružiny doprava (' + b.vx + ')');
+  const W3 = P.buildWorld(0, [pc(3, 10, 14)]); const c = P.newBody(9.64, 16 - P.PH / 2 - 0.001); c.gr = true; P.stepBody(W3, c, 0, 0, null); assert.ok(c.vx < -15, 'vlevo od pružiny doleva');
+  const d = P.newBody(9.64, 16 - P.PH / 2 - 0.001); d.gr = true; P.stepBody(W, d, 0, 0, null); assert.ok(Math.abs(d.vx) < 5, 'ze zadní strany nic');
+  const W0 = P.buildWorld(0, [pc(0, 10, 15)]); assert.ok(!W0.hasSp, 'vzhůru je obyčejné odrazovadlo'); assert.deepEqual(K.pieceCells('bounce', 1).sort(), [[0, 0], [0, 1]], 'otočené odrazovadlo je svislé');
+  const W2 = P.buildWorld(0, [pc(2, 10, 5)]); const e = P.newBody(10.5, 6 + P.PH / 2 + 0.001); e.vy = -2; P.stepBody(W2, e, 0, 0, null); assert.ok(e.vy > 15, 'stropní pružina tlačí dolů (' + e.vy + ')');
+}
+{ // nové pasti: vrtule, kyvadlo, padací kámen, laser, pila na kolejnici, ventilátor – čisté funkce ticku
+  const pcs = [{ id: 2, type: 'blades', r: 0, x: 10, y: 5, owner: 1, round: 1 }, { id: 3, type: 'pendulum', r: 0, x: 25, y: 0, owner: 0, round: 1 }, { id: 4, type: 'thwomp', r: 0, x: 8, y: 2, owner: 2, round: 1 },
+    { id: 5, type: 'laser', r: 0, x: 2, y: 8, owner: 3, round: 1 }, { id: 6, type: 'rsaw', r: 0, x: 16, y: 12, owner: 1, round: 1 }, { id: 7, type: 'fan', r: 0, x: 4, y: 15, owner: 0, round: 1 }];
+  const W = P.buildWorld(0, pcs); assert.equal(W.blades.length, 1); assert.equal(W.pends.length, 1); assert.equal(W.thwomps.length, 1); assert.equal(W.lasers.length, 1); assert.equal(W.rsaws.length, 1); assert.equal(W.fans.length, 1);
+  const hz = (x, y, tk) => P.hazardAt(W, x, y, tk, 0.08);
+  const Wb = P.buildWorld(0, [pcs[0]]); const hzb = (x, y, tk) => P.hazardAt(Wb, x, y, tk, 0.08); const bl = Wb.blades[0]; for (const tk of [0, 17, 60, 111]) { const a = P.bladeAngle(bl, tk); assert.equal(hzb(bl.px + Math.cos(a) * 1.8, bl.py + Math.sin(a) * 1.8, tk), 2, 'špička vrtule zabíjí'); assert.equal(hzb(bl.px + Math.cos(a + 1.57) * 1.8, bl.py + Math.sin(a + 1.57) * 1.8, tk), 0, 'mezi lopatkami je volno'); }
+  const pe = W.pends[0]; for (const tk of [0, 30, 77]) { const q = P.pendBall(pe, tk); assert.equal(hz(q[0], q[1], tk), 1, 'koule kyvadla zabíjí'); }
+  const th = W.thwomps[0]; let top = -1, bot = -1; for (let k = 0; k < 240; k++) { const o = P.thwompOff(th, k); if (top < 0 && o === 0) top = k; if (bot < 0 && o === 4) bot = k; }
+  assert.ok(top >= 0 && bot >= 0); assert.equal(hz(9, 3, top), 3, 'kámen nahoře zabíjí'); assert.equal(hz(9, 7, top), 0, 'dole je v tu chvíli volno'); assert.equal(hz(9, 7, bot), 3, 'kámen dole zabíjí'); assert.equal(hz(9, 3, bot), 0, 'nahoře je v tu chvíli volno');
+  const ls = W.lasers[0]; assert.ok(ls.len > 10, 'paprsek letí až ke zdi (' + ls.len + ')'); let on = -1, off = -1, warn = -1; for (let k = 0; k < K.LASER_PERIOD; k++) { const s2 = P.laserState(ls, k); if (s2 === 2 && on < 0) on = k; if (s2 === 0 && off < 0) off = k; if (s2 === 1 && warn < 0) warn = k; }
+  assert.ok(on >= 0 && off >= 0 && warn >= 0); assert.equal(hz(8, 8.5, on), 4, 'laser pálí'); assert.equal(hz(8, 8.5, warn), 0, 'varování nezabíjí'); assert.equal(hz(8, 8.5, off), 0);
+  const rs = W.rsaws[0]; const p0 = P.rsawPos(rs, 0, [0, 0]); let mn = 99, mx = -99; for (let k = 0; k < K.RSAW_PERIOD; k++) { const q = P.rsawPos(rs, k, [0, 0]); mn = Math.min(mn, q[0]); mx = Math.max(mx, q[0]); assert.equal(hz(q[0], q[1], k), 2, 'pila zabíjí tam, kde je'); } assert.ok(mx - mn > 4.5, 'pila jezdí po dráze'); void p0;
+  const fa = W.fans[0]; assert.ok(fa.len >= 4, 'dosah ventilátoru'); let onk = -1, offk = -1; for (let k = 0; k < K.FAN.period; k++) { if (P.fanOn(fa, k) && onk < 0) onk = k; if (!P.fanOn(fa, k) && offk < 0) offk = k; }
+  const b = P.newBody(4.5, 15 - P.PH / 2 - 1); b.vy = 0; for (let k = 0; k < 3; k++) P.stepBody(W, b, 0, onk, null); assert.ok(b.vy < 0, 'ventilátor nahoru zvedá (' + b.vy + ')');
+  const b2 = P.newBody(4.5, 15 - P.PH / 2 - 1); b2.vy = 0; for (let k = 0; k < 3; k++) P.stepBody(W, b2, 0, offk, null); assert.ok(b2.vy > 0, 'vypnutý ventilátor nefouká');
+  const Wf = P.buildWorld(0, [{ id: 9, type: 'fan', r: 1, x: 4, y: 14, owner: 0, round: 1 }]); const b3 = P.newBody(6.5, 14.5); b3.gr = true; const onT = [...Array(K.FAN.period).keys()].find((k) => P.fanOn(Wf.fans[0], k)); const x0 = b3.x; P.stepBody(Wf, b3, 0, onT, null); assert.ok(b3.x > x0 + 0.1, 'boční ventilátor odfoukne doprava');
+  const N0 = N.buildNav(W); assert.ok(N0.reachable, 'časované pasti navigační graf ignoruje');
+  // neotočitelné kusy se otočí zpátky na 0, rozměry
+  assert.ok(!K.rotatable('thwomp') && !K.rotatable('blades') && !K.rotatable('pendulum') && K.rotatable('laser') && K.rotatable('rsaw') && K.rotatable('fan'));
+  assert.deepEqual(K.pieceSize('thwomp', 0), [2, 6]); assert.deepEqual(K.pieceSize('rsaw', 0), [6, 1]); assert.deepEqual(K.pieceSize('rsaw', 1), [1, 6]);
+  assert.ok(K.PIECE_IDS.filter((id) => K.PIECES[id].kind === 'hazard').length >= 10, 'aspoň 6 nových pastí k původním čtyřem');
+}
 // --- všechny tratě jdou dokončit a boti na nich něco dokážou
 for (let s = 0; s < K.STAGES.length; s++) {
   const W = P.buildWorld(s, []); const nv = N.buildNav(W); assert.ok(nv.reachable, 'trať ' + K.STAGES[s].name + ' je dosažitelná'); assert.ok(N.pathOf(nv).length >= 5);
@@ -138,6 +169,17 @@ const TK = ['a', 'b', 'c', 'd', 'e'].map((ch) => ch.repeat(24)), TX = 'x'.repeat
   const r = A.api('me', { token: TK[0] }); assert.equal(r.status, 200); assert.equal(r.json.hopik.char, -1); assert.equal(r.json.hopik.games, 0); assert.equal(A.api('nic', { token: TK[0] }).status, 404);
   assert.equal(A.api('char', { token: TX, char: 1 }).status, 401); assert.equal(A.api('char', { token: TK[0], char: 99 }).status, 400); assert.equal(A.api('char', { token: TK[0], char: 'x' }).status, 400);
   assert.equal(A.api('char', { token: TK[0], char: 4 }).json.hopik.char, 4); assert.equal(A.hopikOf(accs[TK[0]]).char, 4); const t = A.hopikOf(accs[TK[0]]); t.wins = -5; t.char = 77; A.hopikOf(accs[TK[0]]); assert.equal(t.wins, 0, 'sanitizace'); assert.equal(t.char, -1); t.char = 4;
+}
+{ // měna a obchod: startovních 100 coinů, koupě za coiny, výběr originálu / koupené věci, neplatné věci se zahodí
+  const me = A.api('me', { token: TK[0] }).json.hopik; assert.equal(me.coins, 100); assert.deepEqual(me.own, []); assert.deepEqual(Object.keys(me.eq), ['hat', 'glasses', 'boots', 'back']);
+  assert.equal(A.api('buy', { token: TX, cat: 'hat', id: 'beanie' }).status, 401); assert.equal(A.api('buy', { token: TK[0], cat: 'nic', id: 'beanie' }).status, 400); assert.equal(A.api('buy', { token: TK[0], cat: 'hat', id: 'nic' }).status, 400);
+  assert.equal(A.api('buy', { token: TK[0], cat: 'back', id: 'angel' }).status, 402, 'na andělská křídla (300) coiny nestačí');
+  const b = A.api('buy', { token: TK[0], cat: 'hat', id: 'beanie' }); assert.equal(b.status, 200); assert.equal(b.json.hopik.coins, 60); assert.equal(b.json.hopik.eq.hat, 'beanie'); assert.ok(b.json.hopik.own.includes('hat:beanie'));
+  assert.equal(A.api('buy', { token: TK[0], cat: 'hat', id: 'beanie' }).status, 409, 'dvakrát nekoupí');
+  assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: 'tophat' }).status, 403, 'nekoupené nasadit nejde'); assert.equal(A.api('equip', { token: TK[0], cat: 'boots', id: '-' }).status, 403, '„bez“ umí jen čepice');
+  assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: '-' }).json.hopik.eq.hat, '-'); assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: '' }).json.hopik.eq.hat, ''); assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: 'beanie' }).json.hopik.eq.hat, 'beanie');
+  const ta = A.hopikOf(accs[TK[0]]); ta.eq.glasses = 'shades'; ta.coins = 'x'; const ta2 = A.hopikOf(accs[TK[0]]); assert.equal(ta2.eq.glasses, '', 'nekoupená výbava se zahodí'); assert.equal(ta2.coins, 100, 'poškozené coiny začnou znovu'); ta2.coins = 60;
+  for (const cat of K.COSM_SLOTS) assert.ok(K.COSM[cat].length >= 10, 'aspoň deset věcí v kategorii ' + cat);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function client() {
@@ -181,7 +223,7 @@ function client() {
   assert.equal(new Set(st.players.map((p) => p.char)).size, 3);
   const g0 = A.hopikOf(accs[TK[0]]).games; const phases = new Set(); for (let i = 0; i < 40000 && room.phase === 'play'; i++) { A.advance(room, 1); phases.add(room.game.phase); }
   assert.equal(room.phase, 'over', 'zápas skončí (max 12 kol)'); for (const ph of ['pick', 'place', 'reveal', 'count', 'run', 'score']) assert.ok(phases.has(ph), 'fáze ' + ph);
-  const fin = a.last('state'); assert.equal(fin.phase, 'over'); assert.ok(fin.result.rounds >= 1 && fin.result.pts.length === 3); assert.equal(A.hopikOf(accs[TK[0]]).games, g0 + 1); assert.ok(a.last('game').ph === 'over' || a.last('game').ph === 'score');
+  const fin = a.last('state'); assert.equal(fin.phase, 'over'); assert.ok(fin.result.rounds >= 1 && fin.result.pts.length === 3); assert.equal(A.hopikOf(accs[TK[0]]).games, g0 + 1); assert.ok(fin.result.coins && fin.result.coins[0] && fin.result.coins[0].gain >= A.COINS.play, 'za zápas jsou coiny'); assert.equal(A.hopikOf(accs[TK[0]]).coins, 60 + fin.result.coins[0].gain); assert.ok(a.last('game').ph === 'over' || a.last('game').ph === 'score');
   a.say({ t: 'rematch' }); assert.equal(a.last('state').phase, 'play'); assert.equal(room.game.round, 1); a.say({ t: 'leave' }); assert.ok(!A.rooms.has(st.code));
 }
 { // odpojení a návrat, pak vzdání

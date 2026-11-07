@@ -152,3 +152,23 @@ body { background-image: radial-gradient(rgba(43, 33, 24, .09) 1.4px, transparen
 }
 .rothint { display: none; }
 @media (orientation: portrait) and (max-width: 700px) { .rothint { display: block; position: absolute; left: 0; right: 0; bottom: -2px; text-align: center; font-size: 12px; font-weight: 800; color: var(--mut); } .gfield { align-items: flex-start; padding-top: 8px; } }
+
+/* ----- obchod s kosmetikou (coiny Hopíku) */
+.coin { display: inline-block; width: 15px; height: 15px; border-radius: 50%; flex: none; vertical-align: -2px; margin-right: 3px; background: radial-gradient(circle at 35% 30%, #fff6b8, #ffc928 55%, #e09a10); border: 2.5px solid var(--ink); }
+.coinchip { display: inline-flex; align-items: center; gap: 2px; background: #fff; border: 3px solid var(--ink); border-radius: 12px; box-shadow: var(--sh2); padding: 3px 10px; font-weight: 900; font-size: 15px; white-space: nowrap; }
+.shopbtn { background: var(--sun); }
+.sheet.shop { width: min(580px, 100%); overflow: hidden; }
+.shop .shead, .shopTop, .tabs { flex: none; }
+.shop .shead h2 { flex: 1; }
+.shopTop { display: flex; gap: 12px; align-items: center; background: var(--paper2); border: 3px solid var(--ink); border-radius: 14px; padding: 6px 12px 6px 6px; }
+.shopTop img { width: 112px; height: 112px; flex: none; background: radial-gradient(circle at 50% 60%, #fff, transparent 75%); border-radius: 12px; }
+.shopInfo { display: flex; flex-direction: column; gap: 5px; min-width: 0; align-items: flex-start; } .shopInfo b { font-size: 18px; } .shopInfo small { color: var(--mut); font-size: 12.5px; line-height: 1.3; font-weight: 700; }
+.shopInfo .btn { min-height: 44px; padding: 4px 18px; flex-direction: row; } .shopInfo .btn b { font-size: 16px; }
+.tabs { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.tabs button { background: #fff; border: 3px solid var(--ink); border-radius: 10px; padding: 8px 2px; font-weight: 900; font-size: 14px; } .tabs button.on { background: var(--sun); box-shadow: var(--sh2); }
+.shopGrid { overflow-y: auto; flex: 1 1 auto; min-height: 120px; padding: 3px; touch-action: pan-y; -webkit-overflow-scrolling: touch; display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; align-content: start; }
+.si { display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px 2px 5px; background: #fff; border: 3px solid var(--ink); border-radius: 12px; } .si img { width: 100%; max-width: 84px; aspect-ratio: 1; background: radial-gradient(circle at 50% 55%, var(--paper2), transparent 75%); border-radius: 8px; }
+.si b { font-size: 12px; line-height: 1.15; } .si small { font-size: 11.5px; font-weight: 800; color: var(--mut); }
+.si.on { background: var(--sun); box-shadow: var(--sh2); } .si.own small { color: #1f8a43; } .si.poor { opacity: .72; }
+.orow .cg { color: #a86a00; font-size: 12.5px; font-weight: 900; display: block; }
+@media (max-height: 720px) { .shopTop img { width: 84px; height: 84px; } }

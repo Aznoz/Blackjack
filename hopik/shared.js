@@ -26,11 +26,23 @@ export const PIECES = {
   saw: { name: 'Pila', desc: 'Točivá pila 2 × 2, dotek znamená konec.', kind: 'hazard', cells: [[0, 0], [1, 0], [0, 1], [1, 1]], w: 7 },
   cannon: { name: 'Dělo', desc: 'Každé dvě vteřiny vystřelí kulku.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 1, w: 6 },
   flame: { name: 'Plamenomet', desc: 'Střídavě chrlí oheň do vzdálenosti 3 políček.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 0, w: 5 },
+  blades: { name: 'Vrtule', desc: 'Dvě dlouhé lopatky se točí dokola, dotek znamená konec.', kind: 'hazard', tile: 5, cells: [[0, 0]], w: 5 },
+  pendulum: { name: 'Kyvadlo', desc: 'Ostnatá koule se houpá na řetězu z jednoho políčka.', kind: 'hazard', tile: 5, cells: [[0, 0]], w: 5 },
+  thwomp: { name: 'Padací kámen', desc: 'Skála visí nahoře, pak se zřítí na dno sloupce (2 × 6) a zase vyjede.', kind: 'hazard', cells: Array.from({ length: 12 }, (_, i) => [i % 2, Math.floor(i / 2)]), w: 4 },
+  laser: { name: 'Laser', desc: 'Střídavě vyšle dlouhý paprsek až k první zdi. Před výstřelem bliká.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 1, w: 5 },
+  rsaw: { name: 'Pila na kolejnici', desc: 'Pila jezdí sem a tam po dráze dlouhé 6 políček (otočením svisle).', kind: 'hazard', cells: [[0, 0]], w: 5 },
+  fan: { name: 'Ventilátor', desc: 'Střídavě fouká do vzdálenosti 5 políček: zvedá nebo odfoukne.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 0, w: 4 },
 };
 export const PIECE_IDS = Object.keys(PIECES);
 export const MOVER_AMP = 3, MOVER_PERIOD = 150;        // pojízdná plošina: rozkmit v políčkách a perioda v ticcích
 export const CANNON_PERIOD = 60, BULLET_SPEED = 9, BULLET_R = 0.28;
 export const FLAME_PERIOD = 90, FLAME_ON = 30, FLAME_LEN = 3;
+export const BLADE_PERIOD = 150, BLADE_LEN = 2.2, BLADE_R = 0.2;                       // vrtule: oběh v ticcích, délka lopatky od osy, tloušťka (poloměr)
+export const PEND_PERIOD = 130, PEND_LEN = 3.2, PEND_AMP = 1.15, PEND_R = 0.5;          // kyvadlo: perioda, délka řetězu, výkyv (rad), poloměr koule
+export const THW = { period: 120, wait: 60, fall: 5, rest: 20, w: 2, h: 6, s: 2 };     // padací kámen: sloupec w × h, kámen s × s
+export const LASER_PERIOD = 120, LASER_WARN = 20, LASER_ON = 40, LASER_R = 0.11;       // laser: perioda, varování (bliká), výstřel, polotloušťka paprsku
+export const RSAW_LEN = 6, RSAW_PERIOD = 130, RSAW_R = 0.5;                            // pila na kolejnici: délka dráhy, perioda, poloměr
+export const FAN = { period: 120, on: 80, len: 5, half: 0.85, wind: 5.5, lift: 100 };  // ventilátor: perioda, doba fouknutí, dosah, poloviční šířka, odfuk (políček/s), zrychlení vzhůru
 export const CRUMBLE_T = 14;                           // tiků od došlápnutí do propadnutí
 
 /** Buňky kusu po otočení o r × 90° (normalizované, min x = min y = 0). Pojízdná plošina vrací celý rezervovaný pás. */
@@ -41,6 +53,8 @@ export function pieceCells(type, r) {
     if (r % 2 === 0) for (let i = 0; i < n; i++) out.push([i, 0]); else for (let i = 0; i < n; i++) for (let j = 0; j < 3; j++) out.push([j, i]);
     return out;
   }
+  if (type === 'rsaw') { const out = []; for (let i = 0; i < RSAW_LEN; i++) out.push(r % 2 === 0 ? [i, 0] : [0, i]); return out; }
+  if (type === 'thwomp') return P.cells.map(([x, y]) => [x, y]);
   let c = P.cells.map(([x, y]) => [x, y]);
   for (let k = 0; k < r; k++) c = c.map(([x, y]) => [-y, x]);
   const mx = Math.min(...c.map((q) => q[0])), my = Math.min(...c.map((q) => q[1]));
@@ -49,7 +63,7 @@ export function pieceCells(type, r) {
 /** Směr pasti po otočení (0 nahoru, 1 doprava, 2 dolů, 3 doleva). */
 export const faceOf = (type, r) => ((PIECES[type].face || 0) + (((r % 4) + 4) % 4)) % 4;
 export const DIRV = [[0, -1], [1, 0], [0, 1], [-1, 0]];
-export const rotatable = (type) => type !== 'saw' && type !== 'block';
+export const rotatable = (type) => !['saw', 'block', 'blades', 'pendulum', 'thwomp'].includes(type);
 /** Rozměr (šířka, výška) rezervované oblasti kusu. */
 export function pieceSize(type, r) { const c = pieceCells(type, r); return [Math.max(...c.map((q) => q[0])) + 1, Math.max(...c.map((q) => q[1])) + 1]; }
 
@@ -71,6 +85,21 @@ export const STAGES = [
   { id: 'oblaka', name: 'Oblaka', theme: 'sky', desc: 'Plovoucí mraky vysoko nad zemí. Pod mezerou je odrazovadlo, které tě vystřelí zpátky.',
     rects: [[0, 11, 5, 2, 1], [7, 10, 3, 1, 1], [12, 8, 3, 1, 1], [17, 6, 4, 1, 1], [20, 14, 3, 1, 3], [24, 8, 3, 1, 2], [29, 11, 3, 3, 1]],
     spawn: [2.5, 11], goal: [29, 7, 3, 4], flag: [30.5, 11], forbid: [[0, 6, 6, 5], [28, 6, 4, 5]] },
+  { id: 'les', name: 'Les', theme: 'forest', desc: 'Z mechu na pařezy, po klacích a kmenech nahoru a pak dolů k vlajce.',
+    rects: [[0, 15, 6, 3, 1], [8, 13, 2, 5, 1], [12, 11, 2, 7, 1], [16, 9, 4, 1, 1], [22, 7, 2, 11, 1], [26, 11, 2, 1, 1], [29, 13, 3, 5, 1]],
+    spawn: [2.5, 15], goal: [29, 9, 3, 4], flag: [30.5, 13], forbid: [[0, 10, 6, 5], [28, 8, 4, 5]] },
+  { id: 'sopka', name: 'Sopka', theme: 'volcano', desc: 'Úzké kamenné stupně nad lávou, kdo spadne, shoří.',
+    rects: [[0, 13, 5, 5, 1], [7, 12, 2, 1, 1], [11, 10, 2, 1, 1], [15, 12, 3, 1, 1], [20, 9, 2, 1, 1], [24, 11, 2, 1, 1], [28, 8, 4, 10, 1]],
+    spawn: [2.5, 13], goal: [28, 4, 4, 4], flag: [29.5, 8], forbid: [[0, 8, 5, 5], [27, 3, 5, 5]] },
+  { id: 'cukrovi', name: 'Cukroví', theme: 'candy', desc: 'Cukrová krajina: kluzká poleva, gumový trampolínový cukr a duha nad hlavou.',
+    rects: [[0, 14, 6, 4, 1], [8, 12, 3, 1, 2], [13, 13, 3, 1, 3], [18, 6, 4, 1, 1], [24, 9, 3, 1, 2], [28, 12, 4, 6, 1]],
+    spawn: [2.5, 14], goal: [28, 8, 4, 4], flag: [29.5, 12], forbid: [[0, 9, 6, 5], [27, 7, 5, 5]] },
+  { id: 'mesic', name: 'Měsíc', theme: 'space', grav: 0.6, desc: 'Nízká gravitace: skáčeš výš a dál, ale pasti jsou stejně smrtící.',
+    rects: [[0, 15, 5, 3, 1], [9, 12, 3, 1, 1], [16, 8, 3, 1, 1], [22, 12, 4, 1, 1], [28, 14, 4, 4, 1]],
+    spawn: [2.5, 15], goal: [28, 10, 4, 4], flag: [29.5, 14], forbid: [[0, 10, 5, 5], [27, 9, 5, 5]] },
+  { id: 'plaz', name: 'Pláž', theme: 'beach', desc: 'Pískové ostrůvky v moři s palmami, mezi nimi se nedá šlápnout.',
+    rects: [[0, 14, 6, 4, 1], [8, 15, 3, 3, 1], [13, 13, 3, 5, 1], [18, 11, 3, 7, 1], [23, 13, 2, 5, 1], [27, 10, 5, 8, 1]],
+    spawn: [2.5, 14], goal: [27, 6, 5, 4], flag: [29.5, 10], forbid: [[0, 9, 6, 5], [26, 5, 6, 5]] },
 ];
 export const stageIdx = (v) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 0 && n < STAGES.length ? n : 0; };
 
@@ -86,6 +115,49 @@ export const CHARS = [
   { name: 'Kachna', body: '#ffd53d', belly: '#ffe98a', dark: '#c99a0b', acc: '#ff8a1f', ear: 'tuft', nose: 'duck', beak: '#ff8a1f', desc: 'Žlutá s oranžovým zobáčkem.' },
   { name: 'Koza', body: '#d9d0c2', belly: '#f1ebe0', dark: '#9c917f', acc: '#6a5a46', ear: 'goat', nose: 'goat', desc: 'Rohy a bradka.' },
 ];
+// Kosmetika (obchod za coiny Hopíku): čepice, brýle, boty, záda. U každé kategorie si hráč vybere originál skinu, nebo vlastní koupenou věc.
+// Uložené je `own` (pole 'kategorie:id') a `eq` (kategorie -> '' originál skinu | '-' bez čepice (jen čepice) | id věci). Vzhled kreslí klient (cosm.js a art.js).
+export const COSM_CATS = [
+  { id: 'hat', name: 'Čepice', orig: 'Originál skinu', none: 'Bez čepice' },
+  { id: 'glasses', name: 'Brýle', orig: 'Žádné' },
+  { id: 'boots', name: 'Boty', orig: 'Originál skinu' },
+  { id: 'back', name: 'Záda', orig: 'Nic' },
+];
+export const COSM = {
+  hat: [
+    { id: 'beanie', name: 'Kulich', price: 40 }, { id: 'backcap', name: 'Kšiltovka', price: 50 }, { id: 'beret', name: 'Baret', price: 60 },
+    { id: 'straw', name: 'Slaměňák', price: 70 }, { id: 'hardhat', name: 'Stavební helma', price: 80 }, { id: 'sombrero', name: 'Sombrero', price: 90 },
+    { id: 'cat', name: 'Kočičí uši', price: 100 }, { id: 'bunny', name: 'Králičí uši', price: 100 }, { id: 'tophat', name: 'Cylindr', price: 120 },
+    { id: 'propeller', name: 'Vrtulka', price: 130 }, { id: 'horns', name: 'Ďábelské rohy', price: 150 }, { id: 'halo', name: 'Svatozář', price: 200 },
+  ],
+  glasses: [
+    { id: 'round', name: 'Kulaté', price: 40 }, { id: 'nerd', name: 'Hranaté', price: 50 }, { id: 'shades', name: 'Sluneční', price: 60 },
+    { id: 'eyepatch', name: 'Pirátská páska', price: 70 }, { id: 'd3', name: '3D brýle', price: 80 }, { id: 'aviator', name: 'Pilotky', price: 90 },
+    { id: 'mask', name: 'Maska', price: 100 }, { id: 'heart', name: 'Srdíčka', price: 110 }, { id: 'star', name: 'Hvězdy', price: 110 },
+    { id: 'monocle', name: 'Monokl', price: 120 }, { id: 'goggles', name: 'Lyžařské', price: 140 }, { id: 'visor', name: 'Cyber visor', price: 220 },
+  ],
+  boots: [
+    { id: 'sneakR', name: 'Červené tenisky', price: 50 }, { id: 'sneakB', name: 'Modré tenisky', price: 50 }, { id: 'rain', name: 'Gumáky', price: 60 },
+    { id: 'slipper', name: 'Papuče', price: 70 }, { id: 'neon', name: 'Neonové tenisky', price: 90 }, { id: 'cowboy', name: 'Kovbojky', price: 110 },
+    { id: 'ninja', name: 'Ninja tabi', price: 120 }, { id: 'roller', name: 'Brusle', price: 140 }, { id: 'rainbow', name: 'Duhové boty', price: 180 },
+    { id: 'rocket', name: 'Raketové boty', price: 220 }, { id: 'gold', name: 'Zlaté boty', price: 250 }, { id: 'winged', name: 'Okřídlené boty', price: 260 },
+  ],
+  back: [
+    { id: 'pack', name: 'Batoh', price: 60 }, { id: 'fox', name: 'Liščí ocas', price: 70 }, { id: 'cape', name: 'Plášť', price: 80 },
+    { id: 'quiver', name: 'Toulec', price: 90 }, { id: 'shell', name: 'Želví krunýř', price: 100 }, { id: 'surf', name: 'Surf', price: 110 },
+    { id: 'guitar', name: 'Kytara', price: 120 }, { id: 'royal', name: 'Královský plášť', price: 200 }, { id: 'fly', name: 'Motýlí křídla', price: 220 },
+    { id: 'jet', name: 'Jetpack', price: 260 }, { id: 'bat', name: 'Netopýří křídla', price: 280 }, { id: 'angel', name: 'Andělská křídla', price: 300 },
+  ],
+};
+export const COSM_SLOTS = COSM_CATS.map((c) => c.id);
+export const cosmItem = (cat, id) => (COSM[cat] || []).find((x) => x.id === id) || null;
+/** Výběr po kategoriích očištěný od neplatného a nekoupeného (`own` = Set 'kategorie:id'). */
+export function cleanEq(eq, own) {
+  const o = {};
+  for (const c of COSM_SLOTS) { const v = eq && typeof eq[c] === 'string' ? eq[c] : ''; o[c] = v === '' || (v === '-' && c === 'hat') || (cosmItem(c, v) && own.has(c + ':' + v)) ? v : ''; }
+  return o;
+}
+
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 export const charIdx = (v) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 0 && n < CHARS.length ? n : -1; };
 export const idx = (x, y) => y * COLS + x;

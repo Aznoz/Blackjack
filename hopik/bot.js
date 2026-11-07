@@ -36,7 +36,12 @@ export function botPlace(g, i, level) {
       const [cx, cy] = node();
       if (type === 'spikes') cands.push({ x: cx - rnd(g, 3), y: cy, r: 0 });
       else if (type === 'saw') cands.push({ x: cx - rnd(g, 2), y: cy - 1, r: 0 });
-      else if (type === 'cannon') { const s = g.rng() < 0.5 ? 1 : -1, d = 4 + rnd(g, 6); cands.push({ x: cx + s * d, y: cy, r: s > 0 ? rotFor(type, 3) : rotFor(type, 1) }); }
+      else if (type === 'blades') cands.push({ x: cx, y: cy - 1 - rnd(g, 2), r: 0 });
+      else if (type === 'pendulum') cands.push({ x: cx - 1 + rnd(g, 3), y: cy - 3 - rnd(g, 2), r: 0 });
+      else if (type === 'thwomp') cands.push({ x: cx - rnd(g, 2), y: cy - 4 - rnd(g, 2), r: 0 });
+      else if (type === 'rsaw') cands.push({ x: cx - rnd(g, 5), y: cy, r: rnd(g, 4) < 3 ? 0 : 1 });
+      else if (type === 'fan') cands.push({ x: cx - 1 + rnd(g, 3), y: cy, r: rnd(g, 4) });
+      else if (type === 'cannon' || type === 'laser') { const s = g.rng() < 0.5 ? 1 : -1, d = 4 + rnd(g, 6); cands.push({ x: cx + s * d, y: cy, r: s > 0 ? rotFor(type, 3) : rotFor(type, 1) }); }
       else if (type === 'flame') cands.push({ x: cx, y: cy - 1, r: rotFor(type, 2) });
       else if (type === 'bounce') cands.push({ x: cx - rnd(g, 2), y: cy, r: 0 });
       else if (type === 'mover') { const r = rnd(g, 2); cands.push({ x: cx - 4 + rnd(g, 3), y: cy - 1 - rnd(g, 3), r }); }

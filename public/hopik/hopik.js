@@ -1,10 +1,10 @@
 // HOPÍK – klient: menu s výběrem postavičky, čekárna, a hra (výběr kusu → pokládání → běh) na canvasu. Pohyb vlastní postavy se počítá tady v prohlížeči
 // (stejná fyzika jako na serveru, phys.js) a každých pár ticků se hlásí serveru; ostatní hráči se zobrazují z jeho snímků a mezi nimi se plynule dopočítávají.
-import * as K from './shared.js?v=2';
-import * as P from './phys.js?v=2';
-import * as A from './art.js?v=2';
-import { startScene, stopScene } from './scene.js?v=2';
-import { createMusic } from './music.js?v=2';
+import * as K from './shared.js?v=3';
+import * as P from './phys.js?v=3';
+import * as A from './art.js?v=3';
+import { startScene, stopScene } from './scene.js?v=3';
+import { createMusic } from './music.js?v=3';
 const { COLS, ROWS, TPS, CHARS, STAGES } = K;
 
 const CFG = window.HOPIK_CONFIG || {};
@@ -126,7 +126,46 @@ function renderProfile() {
   $('prof').hidden = !ok; $('nameField').hidden = ok && prof.linked;
   if (!ok) return;
   $('pName').textContent = prof.name || 'Hráč'; $('pRec').textContent = `${prof.hopik.wins} výher · ${prof.hopik.games} zápasů`;
+  $('pCoins').lastElementChild.textContent = prof.hopik.coins; $('shopSub').textContent = `máš ${prof.hopik.coins} coinů`;
 }
+
+// ------------------------------------------------------------------ obchod s kosmetikou
+let shopCat = 'hat', trying = null;   // trying = { cat, id }: věc, kterou si hráč zkouší, ale ještě ji nemá
+const coinI = '<i class="coin"></i>';
+const owns = (cat, id) => !!(prof && prof.account && prof.hopik.own.includes(cat + ':' + id));
+function renderShop() {
+  const ok = !!(prof && prof.account); const b = ok ? prof.hopik : null; const sk = myChar;
+  $('shopCoins').textContent = ok ? b.coins : 0;
+  $('shopTabs').innerHTML = K.COSM_CATS.map((c) => `<button type="button" class="${c.id === shopCat ? 'on' : ''}" data-cat="${c.id}">${esc(c.name)}</button>`).join('');
+  const cat = K.COSM_CATS.find((c) => c.id === shopCat); const eq = ok ? b.eq : {};
+  const look = { ...eq }; if (trying) look[trying.cat] = trying.id;
+  $('shopPrev').src = A.portraitURL(sk, 112, '', look);
+  if (!ok) { $('shopGrid').innerHTML = '<p class="muted">Do obchodu se musíš přihlásit (účet se vytvoří při otevření portálu).</p>'; $('shopName').textContent = ''; $('shopHint').textContent = ''; $('shopBuy').hidden = true; return; }
+  const tile = (id, name, price, thumbId) => {
+    const own = id === '' || id === '-' || owns(cat.id, id); const cur = eq[cat.id] || ''; const on = trying ? (trying.cat === cat.id && trying.id === id) : cur === id;
+    const sub = id === '' || id === '-' ? (cur === id && !trying ? 'nasazeno' : 'zdarma') : own ? (cur === id && !trying ? 'nasazeno' : 'máš') : `${coinI}${price}`;
+    const poor = !own && b.coins < price;
+    return `<button type="button" class="si${on ? ' on' : ''}${own ? ' own' : ''}${poor ? ' poor' : ''}" data-id="${esc(id)}"><img src="${A.cosmURL(cat.id, thumbId, sk)}" alt=""><b>${esc(name)}</b><small>${sub}</small></button>`;
+  };
+  let html = tile('', cat.orig, 0, '');
+  if (cat.none) html += tile('-', cat.none, 0, '-');
+  html += K.COSM[cat.id].map((it) => tile(it.id, it.name, it.price, it.id)).join('');
+  $('shopGrid').innerHTML = html;
+  const it = trying ? K.cosmItem(trying.cat, trying.id) : null; const buy = $('shopBuy');
+  if (it) { $('shopName').textContent = it.name; const need = it.price - b.coins; $('shopHint').textContent = need > 0 ? `Chybí ti ${need} coinů. Hraj zápasy a vyděláš je.` : 'Zatím ji jen zkoušíš, koupíš ji tlačítkem.'; buy.hidden = false; buy.disabled = need > 0; buy.firstElementChild.innerHTML = `Koupit za ${coinI}${it.price}`; }
+  else { buy.hidden = true; const cur = eq[shopCat]; const ci = cur && cur !== '-' ? K.cosmItem(shopCat, cur) : null; $('shopName').textContent = `${cat.name}: ${ci ? ci.name : cur === '-' ? cat.none : cat.orig}`; $('shopHint').textContent = 'Klepni na věc: vlastní se nasadí hned, ostatní si nejdřív vyzkoušíš.'; }
+}
+$('bShop').onclick = async () => { audio(); await refreshProfile(); trying = null; renderShop(); openModal('shopModal'); };
+$('shopTabs').addEventListener('click', (e) => { const b = e.target.closest('[data-cat]'); if (!b) return; shopCat = b.dataset.cat; trying = null; sfx.click(); renderShop(); });
+$('shopGrid').addEventListener('click', async (e) => {
+  const b = e.target.closest('[data-id]'); if (!b || !prof || !prof.account) return; const id = b.dataset.id;
+  if (id === '' || id === '-' || owns(shopCat, id)) { trying = null; try { prof = await call('equip', { cat: shopCat, id }); renderProfile(); renderShop(); sfx.pick(); } catch (x) { sfx.err(); toast(x.message); } }
+  else { trying = { cat: shopCat, id }; sfx.click(); renderShop(); }
+});
+$('shopBuy').onclick = async () => {
+  if (!trying) return; const t = trying;
+  try { prof = await call('buy', { cat: t.cat, id: t.id }); trying = null; renderProfile(); renderShop(); sfx.pick(); toast('Koupeno a nasazeno.'); } catch (x) { sfx.err(); toast(x.message); renderShop(); }
+};
 function renderBotModal() {
   for (const b of $('botN').children) b.classList.toggle('on', +b.dataset.n === botPick.n);
   $('botStages').innerHTML = STAGES.map((s, i) => `<button type="button" class="st${i === botPick.stage ? ' on' : ''}" data-st="${i}"><img src="${A.stageThumb(i, 160)}" alt=""><b>${esc(s.name)}</b></button>`).join('');
@@ -307,7 +346,7 @@ function banner(html, ms, extra) { const el = $('banner'); el.innerHTML = html +
 // ------------------------------------------------------------------ čekárna
 function renderLobby(s) {
   $('roomCode').textContent = s.code; $('lobbyTitle').textContent = s.quick ? 'Rychlá hra' : 'Vlastní hra';
-  $('slots').innerHTML = [0, 1, 2, 3].map((i) => { const p = s.players[i]; if (!p) return '<div class="slot empty">volné místo</div>'; return `<div class="slot${i === s.you ? ' me' : ''}"><img src="${A.portraitURL(p.char, 72)}" alt=""><div><b><i class="seat" style="--c:${A.SEAT[i]}"></i>${esc(p.name)}</b><small>${i === s.host && !s.quick ? 'zakladatel · ' : ''}${p.bot ? 'bot' : p.connected ? esc(CHARS[p.char].name) : 'odpojen'}</small></div></div>`; }).join('');
+  $('slots').innerHTML = [0, 1, 2, 3].map((i) => { const p = s.players[i]; if (!p) return '<div class="slot empty">volné místo</div>'; return `<div class="slot${i === s.you ? ' me' : ''}"><img src="${A.portraitURL(p.char, 72, '', p.cs)}" alt=""><div><b><i class="seat" style="--c:${A.SEAT[i]}"></i>${esc(p.name)}</b><small>${i === s.host && !s.quick ? 'zakladatel · ' : ''}${p.bot ? 'bot' : p.connected ? esc(CHARS[p.char].name) : 'odpojen'}</small></div></div>`; }).join('');
   const taken = {}; s.players.forEach((p, i) => { if (p.char >= 0) taken[p.char] = i; });
   $('lobbyChars').innerHTML = charCards(s.players[s.you] ? s.players[s.you].char : -1, taken, true);
   const n = s.players.length; const host = s.you === s.host && !s.quick;
@@ -337,7 +376,7 @@ function renderChips() {
   $('pchips').innerHTML = S.players.map((p, i) => {
     const flags = last && (ph === 'run' || ph === 'count') ? last[i][4] : 1; const dead = last && ph === 'run' ? !(flags & 1) : false; const fin = last && ph === 'run' ? !!(flags & 2) : false;
     const ready = g && ((ph === 'pick' && g.offers.some((o) => o[1] === i)) || (ph === 'place' && g.placed[i]));
-    return `<div class="pc${i === me ? ' me' : ''}${dead ? ' dead' : ''}${fin ? ' fin' : ''}${p.left ? ' left' : ''}${ready ? ' ready' : ''}" style="--c:${A.SEAT[i]}"><img src="${A.portraitURL(p.char, 48)}" alt=""><div style="min-width:0"><span class="nm">${esc(p.name)}</span><span class="pt">${g ? g.pts[i] : 0} b.</span></div></div>`;
+    return `<div class="pc${i === me ? ' me' : ''}${dead ? ' dead' : ''}${fin ? ' fin' : ''}${p.left ? ' left' : ''}${ready ? ' ready' : ''}" style="--c:${A.SEAT[i]}"><img src="${A.portraitURL(p.char, 48, '', p.cs)}" alt=""><div style="min-width:0"><span class="nm">${esc(p.name)}</span><span class="pt">${g ? g.pts[i] : 0} b.</span></div></div>`;
   }).join('');
 }
 function renderPicks() {
@@ -361,7 +400,7 @@ function renderHint() {
 }
 
 // ------------------------------------------------------------------ výsledky kola a zápasu
-function rowHtml(i, extra) { const p = S.players[i]; return `<div class="orow${extra.win ? ' win' : ''}" style="--c:${A.SEAT[i]}"><img src="${A.portraitURL(p.char, 56, extra.win ? 'win' : '')}" alt=""><div class="nm">${esc(p.name)}${i === me ? ' (ty)' : ''}<small>${extra.sub}</small>${extra.bar !== undefined ? `<div class="bar"><i style="width:${clamp(extra.bar, 0, 100)}%"></i></div>` : ''}</div><span class="tot">${extra.tot}</span></div>`; }
+function rowHtml(i, extra) { const p = S.players[i]; return `<div class="orow${extra.win ? ' win' : ''}" style="--c:${A.SEAT[i]}"><img src="${A.portraitURL(p.char, 56, extra.win ? 'win' : '', p.cs)}" alt=""><div class="nm">${esc(p.name)}${i === me ? ' (ty)' : ''}<small>${extra.sub}</small>${extra.coins ? `<span class="cg">${coinI}+${extra.coins}</span>` : ''}${extra.bar !== undefined ? `<div class="bar"><i style="width:${clamp(extra.bar, 0, 100)}%"></i></div>` : ''}</div><span class="tot">${extra.tot}</span></div>`; }
 function showScore() {
   const g = GS; if (!g || !g.res || !S) return; const r = g.res;
   $('sTitle').textContent = `Kolo ${r.n}`;
@@ -377,7 +416,7 @@ function renderOver() {
   const t = $('oTitle'); t.textContent = won ? 'VÝHRA' : r.winner < 0 ? 'REMÍZA' : 'PROHRA'; t.className = 'otitle' + (won ? '' : r.winner < 0 ? ' draw' : ' lose');
   $('oReason').textContent = w ? `${won ? 'Vyhrál jsi' : 'Zápas vyhrál ' + w.name} po ${r.rounds}. kole.` : `Po ${r.rounds} kolech nikdo nevyhrál.`;
   const order = s.players.map((p, i) => i).sort((x, y) => r.pts[y] - r.pts[x]);
-  $('oTable').innerHTML = order.map((i) => rowHtml(i, { sub: `doběhů: ${r.fins[i]}`, tot: r.pts[i], win: i === r.winner })).join('');
+  $('oTable').innerHTML = order.map((i) => rowHtml(i, { sub: `doběhů: ${r.fins[i]}`, tot: r.pts[i], win: i === r.winner, coins: r.coins && r.coins[i] ? r.coins[i].gain : 0 })).join('');
   const again = $('oAgain'); const rm = s.rematch || []; const mine = !!rm[me]; const humansIn = s.players.filter((p) => !p.bot && !p.left).length; const ready = s.players.filter((p, i) => !p.bot && !p.left && rm[i]).length;
   $('oAgainTxt').textContent = s.solo ? 'Hrát znovu' : mine ? `Čekám na ostatní (${ready}/${humansIn})` : 'Odveta'; again.disabled = !s.solo && mine;
   $('oHint').textContent = s.solo ? '' : humansIn <= 1 ? 'Ostatní hráči odešli.' : '';
@@ -493,6 +532,12 @@ function drawWorld(now, t) {
   }
   for (const m of W.movers) { const b = P.moverBox(m, tk); A.moverShape(g, b[0], b[1], seatColor(m.owner), t); }
   for (const c of W.cannons) { const bl = P.bulletsOf(c, tk); for (const [bx, by] of bl) A.bulletShape(g, bx, by, c.vx, c.vy, t); }
+  for (const l of W.lasers) A.laserDyn(g, l, tk, t);
+  for (const s2 of W.rsaws) A.rsawDyn(g, s2, tk, t, seatColor(s2.owner));
+  for (const f2 of W.fans) A.fanDyn(g, f2, tk, t);
+  for (const b2 of W.blades) A.bladeDyn(g, b2, tk, t, seatColor(b2.owner));
+  for (const p2 of W.pends) A.pendDyn(g, p2, tk, t, seatColor(p2.owner));
+  for (const h2 of W.thwomps) A.thwDyn(g, h2, tk, t, seatColor(h2.owner));
   for (const f of W.flames) { const ph2 = (tk + f.phase) % K.FLAME_PERIOD; A.flameBurst(g, f, ph2 < K.FLAME_ON, ph2 > K.FLAME_PERIOD - 9, t); }
   // postavičky
   drawPlayers(now, t, tk);
@@ -521,7 +566,7 @@ function drawPlayers(now, t, tk) {
     } else { const q = interp(i, now); if (!q) continue; if (!(q[4] & 1)) continue; st = { x: q[0], y: q[1], vx: q[2], vy: q[3], gr: !!(q[4] & 4), wall: q[4] & 8 ? 1 : q[4] & 16 ? -1 : 0, face: q[5], fin: !!(q[4] & 2) }; }
     if (!st) continue;
     if (i === me && ph === 'run' && run.dead) continue;
-    A.drawAnimal(g, p.char, st.x, st.y, { face: st.face, t: t + i, gr: st.gr, vx: st.vx, vy: st.vy, wall: st.wall, dance: st.fin });
+    A.drawAnimal(g, p.char, st.x, st.y, { face: st.face, t: t + i, gr: st.gr, vx: st.vx, vy: st.vy, wall: st.wall, dance: st.fin, cs: p.cs });
     if (ph !== 'pick' && ph !== 'place' && ph !== 'reveal') label(i === me ? 'Ty' : p.name, st.x, st.y - 0.85 - (i % 2) * 0.38, seatColor(i));
   }
 }

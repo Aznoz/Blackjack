@@ -20,13 +20,18 @@ export function init(d) { deps = d; }
 const dirty = () => { try { deps && deps.markDirty(); } catch { /* nic */ } };
 
 // ------------------------------------------------------------------ účet
+export const COINS = { play: 10, win: 30, fin: 3, kill: 4 };   // coiny Hopíku: za zápas, výhru, každý doběh do cíle a každé vyřazení soupeře pastí; utrácí se v obchodě s kosmetikou
+const START_COINS = 100;
 export function hopikOf(acc) {
   let t = acc.hopik; if (!t || typeof t !== 'object') t = acc.hopik = {};
   for (const k of ['wins', 'games', 'fin']) t[k] = Math.max(0, Math.min(1e7, Math.floor(Number(t[k]) || 0)));
   t.char = K.charIdx(t.char);   // -1 = ještě nevybráno
+  t.coins = Number.isFinite(t.coins) ? Math.max(0, Math.min(1e9, Math.floor(t.coins))) : START_COINS;   // bez `coins` začíná hráč na startovních 100
+  const own = new Set(); if (Array.isArray(t.own)) for (const k of t.own) { if (typeof k !== 'string') continue; const [c, id] = k.split(':'); if (K.cosmItem(c, id)) own.add(c + ':' + id); }
+  t.own = [...own]; t.eq = K.cleanEq(t.eq, own);
   return t;
 }
-function profileOf(acc, linked) { const t = hopikOf(acc); return { account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, hopik: { char: t.char, wins: t.wins, games: t.games, fin: t.fin } }; }
+function profileOf(acc, linked) { const t = hopikOf(acc); return { account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, hopik: { char: t.char, wins: t.wins, games: t.games, fin: t.fin, coins: t.coins, own: t.own, eq: t.eq }, coinRules: COINS }; }
 function identify(msg) {
   if (!deps || !msg || typeof msg.token !== 'string' || !deps.TOKEN_RE.test(msg.token)) return null;
   try { return deps.resolveAccount({ token: msg.token, session: typeof msg.session === 'string' ? msg.session : undefined, name: msg.name }); } catch { return null; }
@@ -38,6 +43,20 @@ export function api(action, body) {
     const ident = identify(body || {}); if (!ident) return { status: 401, json: { error: 'Pro uložení postavičky se musíš přihlásit.' } };
     const c = K.charIdx(body.char); if (c < 0) return { status: 400, json: { error: 'Neznámá postavička.' } };
     hopikOf(ident.acc).char = c; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
+  }
+  if (action === 'buy' || action === 'equip') {   // obchod: koupě věci za coiny / výběr (originál zvířátka, žádná čepice nebo vlastní koupená věc)
+    const ident = identify(body || {}); if (!ident) return { status: 401, json: { error: 'Do obchodu se musíš přihlásit.' } };
+    const t = hopikOf(ident.acc); const cat = String(body.cat ?? ''); const id = String(body.id ?? '');
+    if (!K.COSM_SLOTS.includes(cat)) return { status: 400, json: { error: 'Neznámá kategorie.' } };
+    if (action === 'equip') {
+      const ok = id === '' || (id === '-' && cat === 'hat') || (K.cosmItem(cat, id) && t.own.includes(cat + ':' + id));
+      if (!ok) return { status: 403, json: { error: 'Tuhle věc ještě nemáš.' } };
+      t.eq[cat] = id; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
+    }
+    const it = K.cosmItem(cat, id); if (!it) return { status: 400, json: { error: 'Neznámá věc.' } };
+    if (t.own.includes(cat + ':' + id)) return { status: 409, json: { error: 'Tuhle věc už máš.' } };
+    if (t.coins < it.price) return { status: 402, json: { error: `Chybí ti ${it.price - t.coins} coinů.` } };
+    t.coins -= it.price; t.own.push(cat + ':' + id); t.eq[cat] = id; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
   }
   return { status: 404, json: { error: 'Neznámá akce.' } };
 }
@@ -55,9 +74,14 @@ function freeChar(room, want, except) {
 }
 
 // ------------------------------------------------------------------ stav pro klienty
+/** Kosmetika hráče: z účtu (jen koupené), boti dostanou náhodnou. */
+function cosmOf(p) {
+  if (p.bot) return p.cs || (p.cs = Object.fromEntries(K.COSM_SLOTS.map((c) => [c, Math.random() < 0.5 ? K.COSM[c][Math.floor(Math.random() * K.COSM[c].length)].id : ''])));
+  return p.acc ? { ...hopikOf(p.acc).eq } : Object.fromEntries(K.COSM_SLOTS.map((c) => [c, '']));
+}
 function playerView(p, room) {
   const t = p.acc ? hopikOf(p.acc) : null;
-  return { name: p.name, avatar: p.acc ? p.acc.avatar : null, bot: p.bot || 0, connected: p.connected, char: p.char, left: !!p.left, wins: t ? t.wins : 0, games: t ? t.games : 0 };
+  return { cs: p.csLock && room.phase !== 'lobby' ? p.csLock : cosmOf(p), name: p.name, avatar: p.acc ? p.acc.avatar : null, bot: p.bot || 0, connected: p.connected, char: p.char, left: !!p.left, wins: t ? t.wins : 0, games: t ? t.games : 0 };
 }
 function view(room, pid) {
   return {
@@ -82,7 +106,7 @@ function broadcast(room, obj) { const json = typeof obj === 'string' ? obj : JSO
 
 // ------------------------------------------------------------------ průběh zápasu
 function startMatch(room) {
-  for (const p of room.players) { p.left = false; }
+  for (const p of room.players) { p.left = false; p.csLock = cosmOf(p); }   // kosmetika se na začátku zápasu zamkne (změny v obchodě platí od dalšího zápasu)
   room.game = G.newGame(room.players.map((p) => ({ name: p.name, char: p.char, bot: p.bot })), crypto.randomInt(1, 2 ** 31), room.stage);
   room.result = null; room.rematch = new Set(); room.matchId = (room.matchId || 0) + 1; room.autoAt = null; room.phase = 'play'; room.lastActive = now();
   room.lastPh = null; room.bst = room.players.map(() => ({})); room.bd = room.players.map(() => 0); room.tickN = 0;
@@ -94,10 +118,13 @@ function finish(room) {
   const g = room.game; room.phase = 'over';
   const winner = g.over ? g.over.winner : -1;
   const fins = g.players.map((p, i) => g.history.filter((h) => h.rows[i] && h.rows[i].fin).length);
-  room.result = { winner, pts: g.players.map((p) => p.pts), rounds: g.round, fins };
+  const kills = g.players.map((p, i) => g.history.reduce((a, h) => a + (h.rows[i] ? Math.round(h.rows[i].kills / K.PTS.kill) : 0), 0));
+  room.result = { winner, pts: g.players.map((p) => p.pts), rounds: g.round, fins, coins: {} };
   room.players.forEach((p, i) => {
     if (p.bot || !p.acc || p.left) return;
     const t = hopikOf(p.acc); t.games++; t.fin += fins[i]; if (winner === i) t.wins++; p.acc.lastSeen = now();
+    const cg = COINS.play + (winner === i ? COINS.win : 0) + Math.min(12, fins[i]) * COINS.fin + Math.min(10, kills[i]) * COINS.kill; t.coins = Math.min(1e9, t.coins + cg);
+    room.result.coins[i] = { gain: cg, total: t.coins };
   });
   dirty(); publish(room);
 }
