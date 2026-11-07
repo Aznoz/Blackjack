@@ -56,7 +56,7 @@ export function play(s, pi, hi, x, y) {
     const ux = C.clamp(x + Math.cos(ang) * rad, 6, W - 6); const uy = pi === 0 ? C.clamp(y + Math.sin(ang) * rad, RIVER.y1 + 4, H - 6) : C.clamp(y + Math.sin(ang) * rad, 6, RIVER.y0 - 4);
     const u = {
       id: s.nextId++, kind: 'unit', o: pi, card: card.id, k: card.kind || 'unit', x: ux, y: uy, hp: Math.round(card.hp * mul), max: Math.round(card.hp * mul), dmg: Math.round(card.dmg * mul), as: card.as, speed: card.speed, range: card.range, r: card.r,
-      tt: card.tt, fly: !!card.fly, splash: card.splash || 0, cd: 0, wait: C.DEPLOY_S, tgt: null, heal: card.heal ? Math.round(card.heal * mul) : 0, healR: card.healR || 0, hcd: 0,
+      tt: card.tt, fly: !!card.fly, splash: card.splash || 0, cd: 0, wait: C.DEPLOY_S, tgt: null, gen: card.gen || 0, fcd: card.as, heal: card.heal ? Math.round(card.heal * mul) : 0, healR: card.healR || 0, hcd: 0,
     };
     s.units.push(u); s.ev.push(['s', u.id, u.card, pi, Math.round(ux), Math.round(uy)]);
   }
@@ -126,6 +126,7 @@ function unitAttack(s, u, t) {
 
 function stepUnit(s, u) {
   if (u.wait > 0) { u.wait -= DT; return; }
+  if (u.k === 'farm') return stepFarm(s, u);   // budova: nehýbe se, nebojuje, jen vyrábí elixír
   if (u.cd > 0) u.cd -= DT;
   if (u.k === 'healer') return stepHealer(s, u);
   if (!alive(u.tgt) || (u.tgt.kind === 'unit' && !canHit(u, u.tgt)) || (s.tick + u.id) % 5 === 0) u.tgt = pickTarget(s, u);
@@ -133,6 +134,10 @@ function stepUnit(s, u) {
   const d = dist(u, t) - t.r - (u.k === 'bomber' ? 0 : u.r);
   if (d <= u.range) { if (u.cd <= 0) unitAttack(s, u, t); return; }
   walk(u, t);
+}
+function stepFarm(s, u) {
+  u.fcd -= DT;
+  if (u.fcd <= 0) { u.fcd += u.as; const p = s.pl[u.o]; p.elixir = Math.min(C.ELIXIR_MAX, p.elixir + u.gen); s.ev.push(['e', u.id, u.o]); }
 }
 function stepHealer(s, u) {
   if (u.hcd > 0) u.hcd -= DT;
@@ -168,7 +173,8 @@ function separate(s) { // pozemní jednotky se do sebe nesmějí slít
     if (d2 >= m * m) continue;
     const d = sqrt(d2) || 0.001; const push = (m - d) * SEP_PUSH * 0.5; const nx = d2 < 1e-6 ? 1 : dx / d, ny = d2 < 1e-6 ? 0 : dy / d;
     const wa = a.tgt && a.cd > 0 && dist(a, a.tgt) - a.tgt.r - a.r <= a.range ? 0.3 : 1; const wb = b.tgt && b.cd > 0 && dist(b, b.tgt) - b.tgt.r - b.r <= b.range ? 0.3 : 1;
-    a.x -= nx * push * wa; a.y -= ny * push * wa; b.x += nx * push * wb; b.y += ny * push * wb;
+    const fa = a.k === 'farm' ? 0 : 1, fb = b.k === 'farm' ? 0 : 1;   // farma je nehybná
+    a.x -= nx * push * wa * fa; a.y -= ny * push * wa * fa; b.x += nx * push * wb * fb; b.y += ny * push * wb * fb;
   }
   for (const u of g) { u.x = C.clamp(u.x, 5, W - 5); if (inBand(u.y)) u.x = C.clamp(u.x, BRIDGE.x0 + 6, BRIDGE.x1 - 6); }
 }
@@ -207,6 +213,7 @@ export function snapFor(s, pi) {
       case 'd': return ['d', e[1], Math.round(flipX(pi, e[2])), Math.round(flipY(pi, e[3])), e[4], mine(e[5]), e[6]];
       case 'sp': return ['sp', Math.round(flipX(pi, e[1])), Math.round(flipY(pi, e[2])), e[3], e[4], e[5], mine(e[6])];
       case 'x': return ['x', Math.round(flipX(pi, e[1])), Math.round(flipY(pi, e[2])), e[3]];
+      case 'e': return ['e', e[1], mine(e[2])];
       default: return e;
     }
   });

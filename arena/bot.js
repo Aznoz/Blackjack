@@ -15,7 +15,7 @@ export function botDeck(level, rnd = Math.random) {
   for (let tries = 0; tries < 50; tries++) {
     const ids = [...pool].sort(() => rnd() - 0.5).slice(0, C.DECK_SIZE);
     if (ids.filter((id) => CARDS[id].tt === 'all' && CARDS[id].kind !== 'spell').length < 2) continue;
-    if (!ids.some((id) => CARDS[id].cost >= 4 && CARDS[id].kind !== 'spell')) continue;
+    if (!ids.some((id) => CARDS[id].cost >= 4 && CARDS[id].kind !== 'spell' && CARDS[id].kind !== 'farm')) continue;
     return ids.map((id) => ({ id, lv: BOT_CARD_LV[level] || 1 }));
   }
   return C.STARTER.map((id) => ({ id, lv: BOT_CARD_LV[level] || 1 }));
@@ -46,7 +46,10 @@ export function botThink(s, pi, lvl) {
     if (bp && bestV >= 420 + 60 * (4 - lvl)) return { hi: fb.i, x: bp.x, y: bp.y };
     if (lvl >= 3 && enFront && enFront.hp <= fb.c.dmg * C.lvMul(fb.h.lv) * 0.4 + 5 && !enFront.dead) return { hi: fb.i, x: enFront.x, y: enFront.y };
   }
-  const units = hand.filter((x) => !isSpell(x.c));
+  // farma: když nikdo netlačí a ještě žádnou nemáme, postaví se vzadu u základny
+  const farmCard = hand.find((x) => x.c.kind === 'farm');
+  if (farmCard && lvl >= 2 && !threats.length && !mine.some((u) => u.k === 'farm') && p.elixir >= farmCard.c.cost + (lvl >= 3 ? 0 : 1) && s.tick * C.DT > 8) return { hi: farmCard.i, x: cx(W / 2 + (rnd() - 0.5) * 120), y: cy(pi === 0 ? H - 70 : 70) };
+  const units = hand.filter((x) => !isSpell(x.c) && x.c.kind !== 'farm');
   if (!units.length) return null;
 
   // 2) obrana proti jednotkám na naší polovině
