@@ -140,6 +140,12 @@ function cleanArena(t) {   // Aréna věží: zkušenosti, výhry, coiny, balí�
   return out;
 }
 
+function cleanBombic(t) {   // Bombic: zkušenosti, výhry zápasů, odehrané zápasy a zničení soupeři (podrobná kontrola je v bombic/bombic.js, bombicOf)
+  t = t && typeof t === 'object' ? t : {};
+  const n = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1e7, Math.floor(v))) : 0);
+  return { xp: n(t.xp), wins: n(t.wins), games: n(t.games), kills: n(t.kills) };
+}
+
 function makeAccount(key, d = {}) {
   return {
     key,
@@ -157,6 +163,7 @@ function makeAccount(key, d = {}) {
     custom: typeof d.custom === 'string' && /^[0-9a-f]{16}$/.test(d.custom) ? d.custom : null, // nahraný vlastní obrázek (hash)
     tank: cleanTank(d.tank), // Tankové souboje: zkušenosti, výhry, koupená munice, barva tanku
     arena: cleanArena(d.arena), // Aréna věží: zkušenosti, coiny, balíček a úrovně karet
+    bombic: cleanBombic(d.bombic), // Bombic: zkušenosti a statistiky
     lastUpload: 0,
     createdAt: d.createdAt || Date.now(),
     lastSeen: d.lastSeen || Date.now(),
@@ -175,7 +182,7 @@ async function loadAccounts() {
     for (const [key, a] of Object.entries(raw)) {
       if (!a || typeof a.balance !== 'number') continue;
       // úklid: anonymní účty, které nikdy nehrály a 30 dní se neozvaly (účty propojené s Googlem se nemažou)
-      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && !(a.arena && a.arena.xp) && (a.lastSeen || 0) < cutoff) continue;
+      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && !(a.arena && a.arena.xp) && !(a.bombic && a.bombic.xp) && (a.lastSeen || 0) < cutoff) continue;
       accounts.set(key, makeAccount(key, a));
     }
     console.log(`Načteno ${accounts.size} účtů.`);
@@ -299,7 +306,7 @@ function saveNow() {
   try {
     const out = {};
     for (const [k, a] of accounts) {
-      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, arena: a.arena, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
+      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, arena: a.arena, bombic: a.bombic, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
     }
     store.write('players', JSON.stringify(out));
     const g = {};
@@ -1163,6 +1170,11 @@ async function handleApi(req, res, p) {
       const r = arena.api(p.slice('/api/arena/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p.startsWith('/api/bombic/') && req.method === 'POST') { // Bombic: me (profil a postup)
+      if (!bombic) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = bombic.api(p.slice('/api/bombic/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1265,6 +1277,10 @@ const server = http.createServer((req, res) => {
   if (p === '/arena/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
     return res.end(JSON.stringify({ ok: true, ...(arena ? arena.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
+  if (p === '/bombic/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ ok: true, ...(bombic ? bombic.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
   if (p === '/sachy/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
@@ -1369,6 +1385,12 @@ let arena = null;
 import('./arena/arena.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE, FLOOR: CFG.FLOOR, notifyBalance: (acc) => notifyProfile(acc) }); arena = m; console.log('Aréna věží: načteno (WebSocket /arena).'); }).catch((e) => console.error('Aréna věží se nenačetla:', e.message));
 awss.on('connection', (ws) => { if (!arena) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } arena.handleConnection(ws); });
 
+// jedenáctá cesta: /bombic = Bombic (bombermanovská hra pro 2–4 hráče, složka bombic/): online nebo proti botům, postup (XP, výhry) se ukládá v účtu
+const bwss2 = new WebSocketServer({ noServer: true, maxPayload: 1024 });
+let bombic = null;
+import('./bombic/bombic.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE }); bombic = m; console.log('Bombic: načteno (WebSocket /bombic).'); }).catch((e) => console.error('Bombic se nenačetl:', e.message));
+bwss2.on('connection', (ws) => { if (!bombic) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } bombic.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1376,7 +1398,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : p === '/arena' ? awss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : p === '/arena' ? awss : p === '/bombic' ? bwss2 : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Bombic</title>
+<meta name="theme-color" content="#173d1f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23173d1f'/%3E%3Ccircle cx='30' cy='38' r='17' fill='%23252a36' stroke='%23000' stroke-width='3'/%3E%3Ccircle cx='24' cy='31' r='5' fill='%23ffffff88'/%3E%3Cpath d='M38 23q8-10 14-6' fill='none' stroke='%23e9d9ac' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='53' cy='15' r='5' fill='%23ffb02e'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="bombic.css?v=1">
+</head>
+<body>
+
+<!-- hlavní menu -->
+<main id="menu" class="screen">
+  <section class="hero">
+    <canvas id="mscene" aria-hidden="true"></canvas>
+    <header class="mtop">
+      <a class="chip" id="back" href="../">← Herna</a>
+      <button class="chip ico" id="muteBtn" type="button" aria-label="Zvuk"></button>
+    </header>
+    <h1 class="logo" aria-label="Bombic"><span>B</span><span>O</span><span>M</span><span>B</span><span>I</span><span>C</span></h1>
+  </section>
+  <div class="mwrap">
+    <div class="prof" id="prof" hidden>
+      <div class="plvl" id="pLvl">1</div>
+      <div class="pinfo">
+        <div class="pname" id="pName">Hráč</div>
+        <div class="xpbar"><i id="pXp"></i></div>
+        <div class="psub"><span id="pXpTxt"></span><span id="pRec"></span></div>
+      </div>
+    </div>
+    <label class="field" id="nameField" hidden>Tvoje jméno
+      <input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza">
+    </label>
+    <button class="plank main" id="bBot" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><g stroke="#26180f" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"><circle cx="21" cy="29" r="14" fill="#2a2f3c"/><circle cx="16" cy="24" r="4" fill="#ffffff88" stroke="none"/><path d="M29 17q6-8 12-5" fill="none" stroke="#e9d9ac" stroke-width="3.4"/><circle cx="42" cy="11" r="4.4" fill="#ffb02e"/></g></svg>
+      <span><b>Hrát proti botům</b><small>1 až 3 soupeři, tři obtížnosti</small></span>
+    </button>
+    <div class="row2">
+      <button class="plank" id="bQuick" type="button"><b>Online</b><small>rychlá hra, 2–4 hráči</small></button>
+      <button class="plank" id="bCreate" type="button"><b>Vytvořit hru</b><small>kód pro kamarády</small></button>
+    </div>
+    <form class="join" id="joinForm"><label for="code">Mám kód od kamaráda</label><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti"><button type="submit">Připojit</button></form>
+    <button class="textbtn" id="bHow" type="button">Jak se hraje a co sbírat</button>
+    <p class="status" id="menuStatus"></p>
+  </div>
+</main>
+
+<!-- boj proti botům -->
+<div class="modal" id="botModal" hidden>
+  <div class="sheet small">
+    <h2>Proti botům</h2>
+    <h3>Počet soupeřů</h3>
+    <div class="seg" id="botN"><button type="button" data-n="1">1</button><button type="button" data-n="2">2</button><button type="button" data-n="3" class="on">3</button></div>
+    <h3>Obtížnost</h3>
+    <div class="levels" id="botLevels"></div>
+    <button class="plank main go" id="botGo" type="button"><b>Začít zápas</b></button>
+    <button class="link" data-close type="button">Zpět</button>
+  </div>
+</div>
+
+<!-- návod -->
+<div class="modal" id="howModal" hidden>
+  <div class="sheet">
+    <div class="shead"><h2>Jak se hraje</h2><button class="x" data-close type="button" aria-label="Zavřít">✕</button></div>
+    <ol class="how">
+      <li>Pohybuj se po lese <b>šipkami nebo WASD</b> (na mobilu levým ovladačem) a <b>bombu</b> pokládáš mezerníkem (na mobilu tlačítkem vpravo).</li>
+      <li>Bomba po chvíli vybuchne <b>do kříže</b>, rozbije sudy a zasáhne všechno, co stojí v plamenech, i tebe. Bomby se řetězí: výbuch zapálí další bombu.</li>
+      <li>Z rozbitých sudů občas vypadnou <b>předměty</b>. Poslední stojící bombič vyhrává kolo, zápas je <b>první na 2 kola</b>.</li>
+      <li>V posledních 45 sekundách kola začnou od okraje <b>padat kameny</b>. Pozor na červeně označená políčka.</li>
+    </ol>
+    <h3>Předměty</h3>
+    <div class="items" id="howItems"></div>
+    <p class="muted small">Za zápas dostaneš zkušenosti: za odehrání, výhru, vyhraná kola a vyřazené soupeře. S úrovní roste tvůj odznak, na hře samotné to nic nemění.</p>
+  </div>
+</div>
+
+<!-- čekárna -->
+<main id="lobby" class="screen center" hidden>
+  <div class="panel">
+    <h2 id="lobbyTitle">Čekárna</h2>
+    <div class="codebox"><span>Kód místnosti</span><b id="roomCode">----</b></div>
+    <div class="slots" id="slots"></div>
+    <p class="muted" id="lobbyHint"></p>
+    <div class="hostbox" id="hostBox" hidden>
+      <label class="chk"><input type="checkbox" id="fillBots" checked> <span>Prázdná místa doplnit boty</span></label>
+      <div class="seg" id="fillLevel"><button type="button" data-l="1">Nováček</button><button type="button" data-l="2" class="on">Bojovník</button><button type="button" data-l="3">Mistr</button></div>
+      <button class="plank main go" id="startBtn" type="button"><b>Začít hru</b></button>
+    </div>
+    <button class="plank small" id="copyLink" type="button"><b>Zkopírovat odkaz</b></button>
+    <button class="link" id="leaveLobby" type="button">Odejít</button>
+  </div>
+</main>
+
+<!-- hra -->
+<main id="game" class="screen" hidden>
+  <div class="gtop">
+    <button class="chip ico" id="pauseBtn" type="button" aria-label="Menu">☰</button>
+    <div class="pchips" id="pchips"></div>
+    <div class="gtime"><b id="gTimer">2:30</b><small id="gRound"></small></div>
+  </div>
+  <div class="gfield" id="gField"><canvas id="cv" aria-label="Hřiště"></canvas><div class="banner" id="banner" hidden></div><div class="dropnote" id="dropNote" hidden></div></div>
+  <div class="ghud">
+    <div class="pad" id="pad"><i class="knob" id="knob"></i><span class="ar u"></span><span class="ar r"></span><span class="ar d"></span><span class="ar l"></span></div>
+    <div class="mine" id="mine"></div>
+    <button class="bombbtn" id="bombBtn" type="button" aria-label="Položit bombu"><svg viewBox="0 0 48 48" aria-hidden="true"><g stroke="#05060a" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><circle cx="22" cy="29" r="15" fill="#2a2f3c"/><circle cx="16" cy="23" r="4.4" fill="#ffffff99" stroke="none"/><path d="M30 16q6-8 12-5" fill="none" stroke="#e9d9ac" stroke-width="3.4"/><circle cx="43" cy="11" r="4.6" fill="#ffb02e"/></g></svg></button>
+  </div>
+  <div class="over" id="over" hidden>
+    <div class="ocard">
+      <div class="otitle" id="oTitle">VÝHRA</div>
+      <div class="oreason" id="oReason"></div>
+      <div class="otable" id="oTable"></div>
+      <div class="oxp" id="oXp" hidden><div class="xpbar"><i id="oXpBar"></i></div><div class="oxtxt" id="oXpTxt"></div></div>
+      <div class="obtns">
+        <button class="plank main" id="oAgain" type="button"><b id="oAgainTxt">Hrát znovu</b></button>
+        <button class="plank" id="oMenu" type="button"><b>Do menu</b></button>
+      </div>
+      <div class="muted" id="oHint"></div>
+    </div>
+  </div>
+  <div class="modal" id="pauseModal" hidden>
+    <div class="sheet small">
+      <h2>Menu</h2>
+      <p class="muted">Hra běží dál, zastavit se nedá.</p>
+      <button class="plank" id="pMute" type="button"><b>Zvuk</b></button>
+      <button class="plank" data-close type="button"><b>Pokračovat</b></button>
+      <button class="plank danger" id="pLeave" type="button"><b>Vzdát se a odejít</b></button>
+    </div>
+  </div>
+</main>
+
+<div class="conn" id="conn" hidden>Připojuji…</div>
+<div class="toast" id="toast" role="alert" hidden></div>
+<script src="config.js"></script>
+<script type="module" src="bombic.js?v=1"></script>
+</body>
+</html>
