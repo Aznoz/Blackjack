@@ -21,7 +21,7 @@ assert.equal(JSON.parse(fs.readFileSync('./hopik/package.json', 'utf8')).type, '
   assert.equal(K.faceOf('spikes', 0), 0); assert.equal(K.faceOf('spikes', 1), 1); assert.equal(K.faceOf('cannon', 1), 2); assert.equal(K.faceOf('cannon', 3), 0);
   assert.equal(K.rotatable('saw'), false); assert.equal(K.rotatable('plank3'), true);
   for (const p of Object.values(K.PIECES)) assert.ok(p.w > 0 && p.name && p.desc);
-  assert.equal(K.CHARS.length, 8); assert.equal(K.charIdx(7), 7); assert.equal(K.charIdx(8), -1); assert.equal(K.charIdx('x'), -1); assert.equal(K.stageIdx(99), 0); assert.equal(K.stageIdx(2), 2);
+  assert.equal(K.CHARS.length, 8); assert.equal(K.charIdx(7), 7); assert.equal(K.charIdx(8), -1); assert.equal(K.charIdx('x'), -1); assert.equal(K.stageIdx(99), 0); assert.equal(K.stageIdx(2), 2); assert.equal(K.STAGES.length, 5); assert.equal(K.stageIdx(4), 4); assert.equal(K.stageIdx(5), 0);
 }
 
 // --- fyzika
@@ -102,13 +102,18 @@ const harmless = (g, i) => { for (let k = 0; k < 400; k++) { const x = (k * 7 + 
   toPhase(g, 'run'); assert.ok(g.run.dead[2]);
 }
 
-// --- všechny tři tratě jdou dokončit a boti na nich něco dokážou
+{ // dopad ('l') se hlásí jen při skutečném dopadu, ne při každém tiku stání na zemi (dřív to dělalo oblak prachu a spam zvuku)
+  const W = P.buildWorld(0, []); const b = P.newBody(2.5, 16 - P.PH / 2 - 0.01); const ev = [];
+  for (let k = 0; k < 120; k++) { const f = []; P.stepBody(W, b, k === 60 ? P.IN.J : 0, k, f); for (const e of f) ev.push([k, e]); }
+  assert.ok(ev.filter(([k, e]) => e === 'l' && k > 3 && k < 60).length === 0, 'na zemi se nehlásí dopad'); assert.ok(ev.some(([k, e]) => e === 'j' && k === 60)); assert.ok(ev.some(([k, e]) => e === 'l' && k > 60 && k < 90), 'po skoku jeden dopad');
+}
+// --- všechny tratě jdou dokončit a boti na nich něco dokážou
 for (let s = 0; s < K.STAGES.length; s++) {
   const W = P.buildWorld(s, []); const nv = N.buildNav(W); assert.ok(nv.reachable, 'trať ' + K.STAGES[s].name + ' je dosažitelná'); assert.ok(N.pathOf(nv).length >= 5);
   const S = K.STAGES[s]; assert.ok(S.forbid.length >= 2); const b = P.newBody(S.spawn[0], S.spawn[1] - P.PH / 2 - 0.01); assert.ok(P.fitsAt(W, b.x, b.y, 0), 'start se vejde');
 }
 for (const lv of [1, 2, 3]) {
-  const g = G.newGame([{ name: 'a', char: 0, bot: lv }, { name: 'b', char: 1, bot: lv }, { name: 'c', char: 2, bot: lv }], 7 + lv, lv % 3); const st = g.players.map(() => ({})); let fin = 0, errs = 0;
+  const g = G.newGame([{ name: 'a', char: 0, bot: lv }, { name: 'b', char: 1, bot: lv }, { name: 'c', char: 2, bot: lv }], 7 + lv, [0, 3, 4][lv - 1]); const st = g.players.map(() => ({})); let fin = 0, errs = 0;
   for (let n = 0; n < 9000 && g.round <= 3; n++) {
     const ph = g.phase;
     try {

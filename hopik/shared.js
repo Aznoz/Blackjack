@@ -65,6 +65,12 @@ export const STAGES = [
   { id: 'jeskyne', name: 'Jeskyně', theme: 'cave', desc: 'Strop, podlaha a uprostřed skalní stěna, přes kterou je potřeba přelézt.',
     rects: [[0, 16, 32, 2, 1], [0, 0, 32, 2, 1], [14, 6, 4, 10, 1], [8, 13, 3, 1, 1], [11, 10, 3, 1, 1], [12, 8, 2, 1, 1], [19, 9, 3, 1, 1], [22, 12, 3, 1, 1]],
     spawn: [2.5, 16], goal: [28, 12, 4, 4], flag: [29.5, 16], forbid: [[0, 11, 5, 5], [26, 11, 6, 5]] },
+  { id: 'pust', name: 'Poušť', theme: 'desert', desc: 'Pískové ostrůvky mezi propastmi, v poslední jámě je odrazovadlo.',
+    rects: [[0, 15, 7, 3, 1], [10, 15, 4, 3, 1], [16, 13, 3, 5, 1], [20, 17, 3, 1, 3], [25, 10, 3, 8, 1], [29, 12, 3, 6, 1]],
+    spawn: [2.5, 15], goal: [29, 8, 3, 4], flag: [30.5, 12], forbid: [[0, 10, 6, 5], [28, 6, 4, 6]] },
+  { id: 'oblaka', name: 'Oblaka', theme: 'sky', desc: 'Plovoucí mraky vysoko nad zemí. Pod mezerou je odrazovadlo, které tě vystřelí zpátky.',
+    rects: [[0, 11, 5, 2, 1], [7, 10, 3, 1, 1], [12, 8, 3, 1, 1], [17, 6, 4, 1, 1], [20, 14, 3, 1, 3], [24, 8, 3, 1, 2], [29, 11, 3, 3, 1]],
+    spawn: [2.5, 11], goal: [29, 7, 3, 4], flag: [30.5, 11], forbid: [[0, 6, 6, 5], [28, 6, 4, 5]] },
 ];
 export const stageIdx = (v) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 0 && n < STAGES.length ? n : 0; };
 

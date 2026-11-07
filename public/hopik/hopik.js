@@ -1,9 +1,10 @@
 // HOPÍK – klient: menu s výběrem postavičky, čekárna, a hra (výběr kusu → pokládání → běh) na canvasu. Pohyb vlastní postavy se počítá tady v prohlížeči
 // (stejná fyzika jako na serveru, phys.js) a každých pár ticků se hlásí serveru; ostatní hráči se zobrazují z jeho snímků a mezi nimi se plynule dopočítávají.
-import * as K from './shared.js?v=1';
-import * as P from './phys.js?v=1';
-import * as A from './art.js?v=1';
-import { startScene, stopScene } from './scene.js?v=1';
+import * as K from './shared.js?v=2';
+import * as P from './phys.js?v=2';
+import * as A from './art.js?v=2';
+import { startScene, stopScene } from './scene.js?v=2';
+import { createMusic } from './music.js?v=2';
 const { COLS, ROWS, TPS, CHARS, STAGES } = K;
 
 const CFG = window.HOPIK_CONFIG || {};
@@ -73,9 +74,22 @@ const sfx = {
   err() { tone(160, .14, 'square', .05); },
   pop() { tone(440, .08, 'sine', .08, 500); },
 };
-function syncMute() { $('muteBtn').innerHTML = svgSpeaker(muted); $('pMute').innerHTML = `<b>Zvuk: ${muted ? 'vypnutý' : 'zapnutý'}</b>`; }
-const toggleMute = () => { muted = !muted; LS.set('hopik_mute', muted ? '1' : '0'); syncMute(); if (!muted) sfx.click(); };
-$('muteBtn').onclick = toggleMute; $('pMute').onclick = toggleMute; syncMute();
+// hudba (music.js): vlastní přepínač, ztlumení zvuku vypne i hudbu
+let musicOn = LS.get('hopik_music') !== '0';
+const music = createMusic(() => (ac && ac.state === 'running' ? ac : null), () => !muted && musicOn && !document.hidden);
+const svgNote = (off) => `<svg class="svgi" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 17.5V5.5l10-2v12" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"/><ellipse cx="6.5" cy="17.8" rx="3" ry="2.3" fill="currentColor"/><ellipse cx="16.5" cy="15.8" rx="3" ry="2.3" fill="currentColor"/>${off ? '<path d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/>' : ''}</svg>`;
+function syncMute() { $('muteBtn').innerHTML = svgSpeaker(muted); $('pMute').innerHTML = `<b>Zvuk: ${muted ? 'vypnutý' : 'zapnutý'}</b>`; $('musicBtn').innerHTML = svgNote(!musicOn || muted); $('pMusic').innerHTML = `<b>Hudba: ${musicOn && !muted ? 'zapnutá' : 'vypnutá'}</b>`; }
+const toggleMute = () => { muted = !muted; LS.set('hopik_mute', muted ? '1' : '0'); syncMute(); if (!muted) sfx.click(); syncMusic(); };
+const toggleMusic = () => { audio(); musicOn = !musicOn; if (musicOn && muted) { muted = false; LS.set('hopik_mute', '0'); } LS.set('hopik_music', musicOn ? '1' : '0'); syncMute(); syncMusic(); };
+$('muteBtn').onclick = toggleMute; $('pMute').onclick = toggleMute; $('musicBtn').onclick = toggleMusic; $('pMusic').onclick = toggleMusic; syncMute();
+// nálada podle obrazovky a fáze: menu a čekárna veselá, pokládání šibalské, běh hnaný, odpočet a konec ticho
+function wantMood() {
+  if (screen !== 'game') return 'menu'; const ph = phase();
+  return ph === 'pick' || ph === 'place' || ph === 'reveal' ? 'build' : ph === 'run' ? 'run' : ph === 'score' ? 'menu' : 'off';
+}
+function syncMusic() { music.set(wantMood()); }
+for (const ev of ['pointerdown', 'keydown', 'touchend']) document.addEventListener(ev, () => { if (!ac || ac.state !== 'running') { audio(); setTimeout(syncMusic, 60); } }, { passive: true });
+document.addEventListener('visibilitychange', syncMusic);
 
 // ------------------------------------------------------------------ obrazovky a okna
 let screen = 'menu';
@@ -190,11 +204,12 @@ let ghosts = [];              // cizí duchové kusů během pokládání: [x, y
 let banT = null, hintSig = '', pickSig = '', chipSig = '', shake = 0, lastBeep = -1;
 
 function resetRun() {
-  run.k = 0; run.kAt = performance.now(); run.snaps = []; run.body = null; run.prev = null; run.acc = 0; run.dead = false; run.fin = false; run.go = false; run.nrep = 0; run.tn = 0; run.firstFin = -1; run.hit = 0; run.dfx = false;
+  run.lastTk = undefined; run.k = 0; run.kAt = performance.now(); run.snaps = []; run.body = null; run.prev = null; run.acc = 0; run.dead = false; run.fin = false; run.go = false; run.nrep = 0; run.tn = 0; run.firstFin = -1; run.hit = 0; run.dfx = false;
   fx.length = 0; ghosts = []; pl = { x: 14, y: 8, r: 0, ok: false, sent: false, last: 0, sig: '', moved: false }; hintSig = ''; pickSig = ''; chipSig = ''; shake = 0; lastBeep = -1;
 }
 const phase = () => (GS ? GS.ph : '');
 const nowTick = () => run.k + Math.floor(((performance.now() - run.kAt) * TPS) / 1000);
+const nowTickF = () => run.k + ((performance.now() - run.kAt) * TPS) / 1000;   // zlomkový tik jen pro plynulé kreslení
 function secsLeft() {
   if (!GS) return 0; const el = GS.gt / TPS + (performance.now() - GS.at) / 1000; const T = K.TIME;
   switch (GS.ph) {
@@ -423,7 +438,7 @@ function die(cause) {
   if (run.dead || run.fin) return; run.dead = true; run.dfx = true; const b = run.body; sendMsg({ t: 'die', c: cause }); deathFx(me, b.x, b.y, cause); chipSig = ''; renderChips(); renderHint();
 }
 function localTick() {
-  const b = run.body; if (!b || !W) return; const tk = nowTick(); P.stepWorld(W, tk); run.prev = { x: b.x, y: b.y };
+  const b = run.body; if (!b || !W) return; const tk = nowTick(); run.lastTk = tk; P.stepWorld(W, tk); run.prev = { x: b.x, y: b.y };
   const f = []; P.stepBody(W, b, mask(), tk, f);
   for (const e of f) { if (e === 'j') { sfx.jump(); dust(b.x, b.y + 0.45, 3); } else if (e === 'w') { sfx.jump(); dust(b.x - b.face * 0.3, b.y, 3); } else if (e === 'b') { sfx.bounce(); } else if (e === 'l') { sfx.land(); dust(b.x, b.y + 0.45, 4); } }
   if (b.crush) return die(0);
@@ -459,7 +474,9 @@ function interp(i, now) {
   return [p[0] + (q[0] - p[0]) * u, p[1] + (q[1] - p[1]) * u, q[2], q[3], q[4], q[5]];
 }
 function drawWorld(now, t) {
-  const stage = GS.stage; const S_ = STAGES[stage]; ensureBg(stage); const tk = phase() === 'run' || phase() === 'count' ? nowTick() : 0; const ph = phase();
+  const stage = GS.stage; const S_ = STAGES[stage]; ensureBg(stage); const ph = phase();
+  // čas pro kreslení pastí: zlomkový tik (plynulé plošiny a kulky); při vlastním běhu přesně ve stejném čase jako interpolovaná postava
+  const mine = ph === 'run' && run.go && run.body && !run.dead && !run.fin && run.lastTk !== undefined; const tk = ph === 'run' || ph === 'count' ? (mine ? run.lastTk - 1 + clamp(run.acc * TPS, 0, 1) : nowTickF()) : 0;
   g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(bgCache, 0, 0);
   const s = cv.width / COLS; const sh = shake > 0 ? (Math.random() - 0.5) * shake * 0.5 : 0; g.setTransform(s, 0, 0, s, sh * s, (shake > 0 ? (Math.random() - 0.5) * shake * 0.5 : 0) * s); g.lineJoin = 'round'; g.lineCap = 'round';
   // zakázané oblasti při pokládání
@@ -524,6 +541,7 @@ function drawOverlayCount() {
 }
 function frame(now) {
   requestAnimationFrame(frame);
+  if (now - (frame.mu || 0) > 250) { frame.mu = now; syncMusic(); }
   if (screen !== 'game' || !cw || !GS || !W) { lastNow = now; return; }
   const dt = Math.min(0.1, (now - lastNow) / 1000 || 0.016);
   stepLocal(dt); drawWorld(now, now / 1000); drawOverlayCount();

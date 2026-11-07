@@ -1,6 +1,6 @@
 // HOPÍK – grafika: všechno je nakreslené vektorově (zvířátka, terén, kusy, pasti, kulky, plameny, vlajka, pozadí) v jednotkách políček.
 // Volající nastaví transformaci canvasu tak, aby 1 jednotka = 1 políčko. Žádné emoji ani obrázky.
-import * as K from './shared.js?v=1';
+import * as K from './shared.js?v=2';
 const { COLS, ROWS } = K;
 export const INK = '#2b2118';
 export const SEAT = ['#ff5a4f', '#2f9cff', '#ffc928', '#46c46a'];          // barva místa u stolu (obrys jména, pecky na kusech)
@@ -84,9 +84,12 @@ export const THEMES = {
   meadow: { sky: ['#8fd8ff', '#d9f4ff'], top: '#62d05a', topDk: '#3da13a', body: '#b0713d', bodyDk: '#8a5628', ice: '#bfeeff', pebble: '#d6a46a' },
   snow: { sky: ['#6e86c8', '#d3dcf5'], top: '#ffffff', topDk: '#c9d6ee', body: '#66748f', bodyDk: '#4b5873', ice: '#b5ecff', pebble: '#8d9bb7' },
   cave: { sky: ['#1d1534', '#3b2a63'], top: '#a07be6', topDk: '#7b55c4', body: '#4f4378', bodyDk: '#382e5a', ice: '#9ee7ff', pebble: '#7a6aa8' },
+  desert: { sky: ['#ffcf8a', '#fff1cf'], top: '#f4d27c', topDk: '#d9a94c', body: '#d49a52', bodyDk: '#b57a32', ice: '#bfeeff', pebble: '#ecc383', noBlades: true },
+  sky: { sky: ['#4aaeff', '#d9f2ff'], top: '#ffffff', topDk: '#cfe1fb', body: '#eef5ff', bodyDk: '#cfe0f8', ice: '#b5ecff', pebble: '#ffffff', noBlades: true },
 };
 function terrainCell(g, th, x, y, kind, up, left, right, down) {
   const T = THEMES[th];
+  if (kind === K.T.BOUNCE) { solidCell(g, K.T.BOUNCE, x, y, '#fff', {}); return; }
   if (kind === K.T.ICE) { rrect(g, x + 0.02, y + 0.02, 0.96, 0.96, 0.12, T.ice, 0.055); g.fillStyle = 'rgba(255,255,255,.7)'; g.fillRect(x + 0.12, y + 0.14, 0.5, 0.08); g.fillRect(x + 0.12, y + 0.3, 0.22, 0.06); return; }
   g.fillStyle = T.body; g.fillRect(x, y, 1, 1);
   g.fillStyle = T.bodyDk; for (let i = 0; i < 3; i++) { const h = hash(x, y, i + 1); ell(g, x + 0.15 + h * 0.7, y + 0.2 + hash(x, y, i + 9) * 0.65, 0.08 + h * 0.06, 0.06, T.pebble, 0); }
@@ -95,7 +98,7 @@ function terrainCell(g, th, x, y, kind, up, left, right, down) {
   if (!down) { g.beginPath(); g.moveTo(x, y + 1); g.lineTo(x + 1, y + 1); g.stroke(); }
   if (!left) { g.beginPath(); g.moveTo(x, y); g.lineTo(x, y + 1); g.stroke(); }
   if (!right) { g.beginPath(); g.moveTo(x + 1, y); g.lineTo(x + 1, y + 1); g.stroke(); }
-  if (!up) { g.fillStyle = T.top; g.fillRect(x - (left ? 0 : -0.03), y + 0.03, 1 + (left ? 0 : -0.03) + (right ? 0 : -0.03), 0.26); g.fillStyle = T.topDk; g.fillRect(x, y + 0.26, 1, 0.07); if (th !== 'snow') for (let i = 0; i < 3; i++) { const bx = x + 0.12 + i * 0.3 + hash(x, y, i) * 0.1; poly(g, [[bx, y + 0.33], [bx + 0.06, y + 0.4 + hash(x, y, i + 4) * 0.08], [bx + 0.12, y + 0.33]], T.topDk, 0); } g.strokeStyle = INK; g.lineWidth = 0.055; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 1, y); g.stroke(); }
+  if (!up) { g.fillStyle = T.top; g.fillRect(x - (left ? 0 : -0.03), y + 0.03, 1 + (left ? 0 : -0.03) + (right ? 0 : -0.03), 0.26); g.fillStyle = T.topDk; g.fillRect(x, y + 0.26, 1, 0.07); if (!T.noBlades && th !== 'snow') for (let i = 0; i < 3; i++) { const bx = x + 0.12 + i * 0.3 + hash(x, y, i) * 0.1; poly(g, [[bx, y + 0.33], [bx + 0.06, y + 0.4 + hash(x, y, i + 4) * 0.08], [bx + 0.12, y + 0.33]], T.topDk, 0); } g.strokeStyle = INK; g.lineWidth = 0.055; g.beginPath(); g.moveTo(x, y); g.lineTo(x + 1, y); g.stroke(); }
 }
 /** Pevná část hřiště (rects stage) – kreslí se jednou do mezipaměti. */
 export function drawTerrain(g, S) {
@@ -113,6 +116,17 @@ export function drawBackground(g, th, t = 0) {
   } else if (th === 'snow') {
     for (const [cx, h, w] of [[5, 9, 6], [13, 11, 7], [24, 10, 7], [31, 8, 5]]) { poly(g, [[cx - w, 17], [cx, 17 - h], [cx + w, 17]], '#9aa9d6', 0.07); poly(g, [[cx - w * 0.36, 17 - h * 0.64], [cx, 17 - h], [cx + w * 0.36, 17 - h * 0.64], [cx + w * 0.12, 17 - h * 0.7], [cx, 17 - h * 0.6], [cx - w * 0.15, 17 - h * 0.7]], '#ffffff', 0.05); }
     for (let i = 0; i < 40; i++) { const x = hash(i, 1) * COLS, y = hash(i, 2) * ROWS; ell(g, x, y, 0.06 + hash(i, 3) * 0.05, 0.06 + hash(i, 3) * 0.05, 'rgba(255,255,255,.8)', 0); }
+  } else if (th === 'desert') {
+    ell(g, 5.5, 4, 1.7, 1.7, '#ffb62e', 0.07); ell(g, 5.5, 4, 1.15, 1.15, '#ffd45c', 0);
+    for (const [cx, w, h] of [[19, 5, 5.5], [25.5, 3.4, 3.6]]) { poly(g, [[cx - w, 16.5], [cx, 16.5 - h], [cx + w, 16.5]], '#e8bd6b', 0.07); poly(g, [[cx, 16.5 - h], [cx + w, 16.5], [cx + w * 0.25, 16.5]], '#cf9c4a', 0); g.beginPath(); g.moveTo(cx - w, 16.5); g.lineTo(cx, 16.5 - h); g.lineTo(cx + w, 16.5); g.lineWidth = 0.07; g.strokeStyle = INK; g.stroke(); }
+    for (const [cx, w, h, c] of [[8, 9, 3.2, '#f3cf82'], [22, 12, 3.8, '#efc673'], [32, 8, 3, '#f3cf82']]) { g.beginPath(); g.ellipse(cx, 16.4, w, h, 0, Math.PI, TAU); g.fillStyle = c; g.fill(); g.lineWidth = 0.06; g.strokeStyle = INK; g.stroke(); }
+    for (const [cx, by, hh] of [[8.5, 15.8, 2.6], [14.8, 15.6, 2], [23.8, 15.9, 2.4]]) { rrect(g, cx - 0.22, by - hh, 0.44, hh, 0.2, '#58b45a', 0.06); rrect(g, cx - 0.9, by - hh * 0.62, 0.34, 0.3, 0.14, '#58b45a', 0.05); rrect(g, cx - 0.9, by - hh * 0.62 - 0.55, 0.3, 0.7, 0.14, '#58b45a', 0.05); rrect(g, cx + 0.56, by - hh * 0.42, 0.34, 0.3, 0.14, '#58b45a', 0.05); rrect(g, cx + 0.6, by - hh * 0.42 - 0.5, 0.3, 0.68, 0.14, '#58b45a', 0.05); }
+    for (let i = 0; i < 6; i++) { const x = 2 + i * 5.2 + hash(i, 3) * 2, y = 1.5 + hash(i, 4) * 5; g.beginPath(); g.ellipse(x, y, 1.1, 0.22, 0, 0, TAU); g.fillStyle = 'rgba(255,255,255,.55)'; g.fill(); }
+  } else if (th === 'sky') {
+    ell(g, 27, 3.2, 1.5, 1.5, '#fff2a8', 0.07);
+    for (const [cx, cy, s] of [[5, 3, 1.1], [14, 1.8, 0.8], [21, 3.6, 1.2], [29.5, 6.4, 0.9], [9, 7, 0.9]]) for (const [dx, dy, r] of [[-1, 0.25, 0.7], [0, -0.2, 1], [1.05, 0.25, 0.75], [0.1, 0.35, 0.9]]) ell(g, cx + dx * s, cy + dy * s, r * s, r * s * 0.78, 'rgba(255,255,255,.92)', 0);
+    for (const [cx, cy] of [[11, 16.2], [19, 16.8], [27, 16.4], [3, 16.9], [32, 16.8]]) for (const [dx, dy, r] of [[-1.7, 0.2, 1.5], [0, -0.4, 2.1], [1.8, 0.2, 1.6]]) ell(g, cx + dx, cy + dy, r, r * 0.85, '#f2f9ff', 0.07);
+    for (const [bx, by] of [[8, 5], [22, 2.2], [25, 12]]) { g.beginPath(); g.moveTo(bx - 0.35, by); g.quadraticCurveTo(bx - 0.15, by - 0.3, bx, by); g.quadraticCurveTo(bx + 0.15, by - 0.3, bx + 0.35, by); g.lineWidth = 0.07; g.strokeStyle = '#2b3b5e'; g.lineCap = 'round'; g.stroke(); }
   } else {
     for (let i = 0; i < 14; i++) { const x = i * 2.4 + hash(i, 5) * 1.4, h = 1 + hash(i, 6) * 2.6; poly(g, [[x - 0.7, 2], [x + 0.7, 2], [x, 2 + h]], '#2a1f48', 0.06); }
     for (const [cx, cy, c] of [[4, 12, '#6fe0ff'], [28, 14, '#ff8ae0'], [23, 5, '#7dffb0'], [10, 5, '#ffe36f']]) { poly(g, [[cx - 0.3, cy + 1], [cx - 0.1, cy], [cx + 0.1, cy + 1]], c, 0.05); poly(g, [[cx + 0.0, cy + 1], [cx + 0.25, cy + 0.3], [cx + 0.45, cy + 1]], c, 0.05); }

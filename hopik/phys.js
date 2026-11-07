@@ -192,9 +192,9 @@ export function stepBody(W, p, inp, tick, fx) {
   if (!J && p.rise && p.vy < 0) { p.vy *= CUT; p.rise = false; } else if (p.vy >= 0) p.rise = false;
   p.jh = !!J;
   moveX(W, p, p.vx * DT, tick);
-  const wasFalling = p.vy > 0; const hit = moveY(W, p, p.vy * DT, tick);
+  const wasFalling = p.vy > 0, wasAir = !p.gr; const hit = moveY(W, p, p.vy * DT, tick);
   const bounce = probe(W, p, tick);
-  if (hit === 1 && wasFalling) { if (bounce) { p.vy = -BOUNCE_V; p.gr = false; p.coy = 0; p.rise = false; if (fx) fx.push('b'); } else if (fx) fx.push('l'); }
+  if (hit === 1 && wasFalling) { if (bounce) { p.vy = -BOUNCE_V; p.gr = false; p.coy = 0; p.rise = false; if (fx) fx.push('b'); } else if (fx && wasAir) fx.push('l'); }
   if (p.x < PW / 2) p.x = PW / 2; if (p.x > COLS - PW / 2) p.x = COLS - PW / 2;
   if (p.y < -8) { p.y = -8; if (p.vy < 0) p.vy = 0; }
 }

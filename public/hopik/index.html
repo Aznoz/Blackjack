@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ffc928' stroke='%232b2118' stroke-width='4'/%3E%3Cellipse cx='32' cy='36' rx='20' ry='17' fill='%23fff4d6' stroke='%232b2118' stroke-width='4'/%3E%3Ccircle cx='38' cy='31' r='3.5' fill='%232b2118'/%3E%3Cpath d='M26 14l4 8 5-9 4 9 5-7' fill='%23e8433c' stroke='%232b2118' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="hopik.css?v=1">
+<link rel="stylesheet" href="hopik.css?v=2">
 </head>
 <body>
 
@@ -18,7 +18,7 @@
     <canvas id="mscene" aria-hidden="true"></canvas>
     <header class="mtop">
       <a class="chip" id="back" href="../">← Herna</a>
-      <button class="chip ico" id="muteBtn" type="button" aria-label="Zvuk"></button>
+      <span class="mbtns"><button class="chip ico" id="musicBtn" type="button" aria-label="Hudba"></button><button class="chip ico" id="muteBtn" type="button" aria-label="Zvuk"></button></span>
     </header>
     <h1 class="logo" aria-label="Hopík"><span>H</span><span>O</span><span>P</span><span>Í</span><span>K</span></h1>
     <p class="tag">Postav trať. Přeskoč ji. Podraž ostatním.</p>
@@ -154,6 +154,7 @@
       <h2>Menu</h2>
       <p class="muted">Hra běží dál, zastavit se nedá.</p>
       <button class="btn" id="pMute" type="button"><b>Zvuk</b></button>
+      <button class="btn" id="pMusic" type="button"><b>Hudba</b></button>
       <button class="btn" data-close type="button"><b>Pokračovat</b></button>
       <button class="btn danger" id="pLeave" type="button"><b>Vzdát se a odejít</b></button>
     </div>
@@ -163,6 +164,6 @@
 <div class="conn" id="conn" hidden>Připojuji…</div>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script src="config.js"></script>
-<script type="module" src="hopik.js?v=1"></script>
+<script type="module" src="hopik.js?v=2"></script>
 </body>
 </html>
