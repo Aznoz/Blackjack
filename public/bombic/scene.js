@@ -1,6 +1,6 @@
 // BOMBIC – animovaná scéna v hlavním menu: kousek lesa, po kterém pobíhají bombeři a občas něco vybuchne. Čistě dekorace.
-import { drawTile, drawBomb, drawFlame, drawPlayer } from './art.js';
-import { T } from './shared.js';
+import { drawTile, drawBomb, drawFlame, drawPlayer } from './art.js?v=4';
+import { T } from './shared.js?v=4';
 let raf = 0, cv = null, g = null, W = 0, H = 0, ts = 40, cols = 0, rows = 0, grid = [], bg = null, actors = [], bombs = [], flames = [], regrow = [], last = 0, t = 0, dpr = 1;
 const D = [[0, -1], [1, 0], [0, 1], [-1, 0]];
 const hash = (x, y) => { let h = (x * 374761393 + y * 668265263) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };

@@ -166,14 +166,16 @@ const cell = (s, i) => [Math.floor(s.pl[i].x), Math.floor(s.pl[i].y)];
   assert.equal(K.mapIdx(99), 0); assert.equal(K.mapIdx('x'), 0); assert.equal(K.mapIdx(2), 2); assert.equal(G.newRound(['a', 'b'], 1, { map: 3 }).map, 3);
   const a = G.newRound(['a', 'b'], 5, { map: 0 }).grid, b = G.newRound(['a', 'b'], 5, { map: 2 }).grid; assert.notDeepEqual([...a], [...b], 'mapy se liší');
 }
-{ // skateboard: po sebrání sám vystřeluje bomby ve směru pohledu, ty se nepočítají do limitu, po 15 s skončí
+{ // skateboard: po sebrání bombu vystřelí jen stisk bomby (mezerník) ve směru pohledu; sám nic nestřílí, výstřely se nepočítají do limitu, po 15 s skončí
   const s = blank(2); put(s, 0, 3, 1); s.pl[0].face = 2; s.items.push({ x: 3, y: 1, type: 'skate' }); G.step(s); assert.ok(s.pl[0].skateUntil > 0, 'skateboard sebrán'); assert.ok(s.ev.some((e) => e[0] === 'i' && e[1] === 'skate'));
-  run(s, 8); assert.equal(s.bombs.length, 1, 'první výstřel'); const b = s.bombs[0]; assert.equal(b.dx, 1); assert.equal(b.dy, 0); assert.ok(b.moving); assert.equal(s.pl[0].placed, 0, 'výstřel nepočítá do limitu'); assert.ok(b.cx >= 3);
-  run(s, 10); assert.ok(s.bombs[0].cx >= 5, 'bomba letí pryč'); put(s, 0, 3, 1); s.pl[0].placed = 0; G.wantBomb(s, 0); G.step(s); assert.equal(s.pl[0].placed, 1, 'obyčejná bomba funguje dál');
-  const n0 = s.bombs.length; run(s, G.SHOT_T + 2); assert.ok(s.bombs.length >= n0, 'střílí dál');
-  const t = blank(2); put(t, 0, 1, 1); t.pl[0].skateUntil = 5; run(t, 8); assert.equal(t.pl[0].skateUntil, 0, 'skateboard vyprší'); const cnt = t.bombs.length; run(t, 40); assert.equal(t.bombs.filter((q) => q.free).length <= cnt, true);
-  const w = blank(2); put(w, 0, 1, 1); w.pl[0].face = 4; w.pl[0].skateUntil = 9999; run(w, 30); assert.equal(w.bombs.length, 0, 'do zdi se nestřílí');
-  const e = blank(2); put(e, 0, 1, 1); put(e, 1, 13, 11); e.pl[0].face = 2; e.pl[0].skateUntil = 9999; e.pl[0].shootAt = 0; run(e, 2); const f = e.bombs[0]; assert.ok(f && f.free); run(e, G.FUSE_T + 2); assert.ok(e.flames.length > 0 || e.bombs.length > 0); assert.equal(e.pl[0].placed, 0, 'po výbuchu se placed nesnižuje do mínusu');
+  run(s, 60); assert.equal(s.bombs.length, 0, 'sám nic nestřílí ani nepokládá');
+  G.wantBomb(s, 0); G.step(s); assert.equal(s.bombs.length, 1, 'výstřel na stisk'); const b = s.bombs[0]; assert.equal(b.dx, 1); assert.equal(b.dy, 0); assert.ok(b.moving && b.free); assert.equal(s.pl[0].placed, 0, 'výstřel nepočítá do limitu'); assert.ok(b.cx >= 3);
+  G.wantBomb(s, 0); G.step(s); assert.equal(s.bombs.length, 1, 'mezi výstřely je krátká prodleva'); run(s, G.SHOT_T); G.wantBomb(s, 0); G.step(s); assert.equal(s.bombs.length, 2, 'další výstřel po prodlevě'); assert.equal(s.pl[0].placed, 0);
+  run(s, 10); assert.ok(s.bombs[0].cx >= 5, 'bomba letí pryč'); s.pl[0].face = 3; put(s, 0, 3, 3); s.pl[0].shootAt = 0; G.wantBomb(s, 0); G.step(s); assert.ok(s.bombs.some((q) => q.dy === 1 && q.free), 'střílí ve směru pohledu (dolů)');
+  const t = blank(2); put(t, 0, 1, 1); t.pl[0].skateUntil = 5; run(t, 8); assert.equal(t.pl[0].skateUntil, 0, 'skateboard vyprší'); G.wantBomb(t, 0); G.step(t); assert.equal(t.bombs.length, 1); assert.equal(t.bombs[0].moving, false, 'po skončení se bomba zase pokládá'); assert.equal(t.pl[0].placed, 1);
+  const w = blank(2); put(w, 0, 1, 1); w.pl[0].face = 4; w.pl[0].skateUntil = 9999; G.wantBomb(w, 0); G.step(w); assert.equal(w.bombs.length, 1, 'před zdí se položí obyčejná bomba'); assert.equal(w.bombs[0].moving, false); assert.equal(w.pl[0].placed, 1);
+  const c = blank(2); put(c, 0, 1, 1); c.pl[0].face = 2; c.pl[0].skateUntil = 9999; c.pl[0].curse = { k: 'nobomb', until: 1e9 }; G.wantBomb(c, 0); G.step(c); assert.equal(c.bombs.length, 0, 'prokletí bez bomb platí i na skateboardu');
+  const e = blank(2); put(e, 0, 1, 1); put(e, 1, 13, 11); e.pl[0].face = 2; e.pl[0].skateUntil = 9999; G.wantBomb(e, 0); run(e, 1); const f = e.bombs[0]; assert.ok(f && f.free); run(e, G.FUSE_T + 2); assert.ok(e.flames.length > 0 || e.bombs.length > 0); assert.equal(e.pl[0].placed, 0, 'po výbuchu se placed nesnižuje do mínusu');
   assert.equal(G.snap(s, false).p[0][12] > 0, true, 'snímek nese zbývající čas skateboardu');
 }
 { // zelená lebka: prokletí dostanou všichni živí soupeři, sběratel ne
@@ -261,7 +263,7 @@ const room4 = () => { const cs = TK.slice(0, 4).map(() => client()); cs[0].say({
   const kill = (i) => { G.forfeit(room.game, i); }; kill(1); A.advance(room, G.FREEZE_T + 45); assert.equal(room.phase, 'between'); assert.deepEqual(a.last('state').round_result.wins, [1, 0]); assert.equal(a.last('state').round_result.winner, 0);
   A.advance(room, 61); assert.equal(room.phase, 'play'); assert.equal(room.round, 2); assert.ok(a.all('snap').filter((x) => x.k === 0).every((x) => x.g) && a.all('snap').filter((x) => x.k === 0).length === 2, 'nové kolo = nová mřížka');
   kill(1); A.advance(room, G.FREEZE_T + 45); assert.equal(room.phase, 'over'); const res = a.last('state').result; assert.equal(res.winner, 0); assert.deepEqual(res.wins, [2, 0]);
-  assert.equal(res.xp[0].gain, 20 + 60 + 2 * 10); assert.equal(res.xp[1].gain, 20); assert.equal(A.bombicOf(accs[TK[0]]).wins, wins0 + 1); assert.equal(A.bombicOf(accs[TK[0]]).xp, xpA + 100);
+  assert.equal(res.xp[0].gain, 20 + 60 + 2 * 10); assert.equal(res.xp[1].gain, 20); assert.equal(res.xp[0].coins, 10 + 30 + 2 * 5); assert.equal(res.xp[1].coins, 10); assert.equal(res.xp[0].coinsTotal, A.bombicOf(accs[TK[0]]).coins, 'coiny za zápas se připsaly'); assert.equal(A.bombicOf(accs[TK[0]]).wins, wins0 + 1); assert.equal(A.bombicOf(accs[TK[0]]).xp, xpA + 100);
   a.say({ t: 'rematch' }); assert.equal(a.last('state').phase, 'over'); assert.deepEqual(a.last('state').rematch, [true, false]); b.say({ t: 'rematch' }); assert.equal(a.last('state').phase, 'play'); assert.equal(a.last('state').round, 1); assert.deepEqual(a.last('state').players.map((p) => p.wins), [0, 0]);
   a.say({ t: 'leave' }); b.say({ t: 'leave' }); assert.ok(!A.rooms.has(room.code));
 }
@@ -293,6 +295,30 @@ const room4 = () => { const cs = TK.slice(0, 4).map(() => client()); cs[0].say({
   A.advance(room, 1); a.say({ t: 'leave' }); b.say({ t: 'leave' });
   const q1 = client(), q2 = client(); q1.say({ t: 'quick', token: TK[0], name: 'Honza' }); q2.say({ t: 'quick', token: TK[1], name: 'Eva' }); const qr = A.rooms.get(q1.last('joined').code); assert.ok(qr.map >= 0 && qr.map < K.MAPS.length); q1.say({ t: 'map', map: 1 }); assert.equal(qr.map === 1 && false, false); q1.say({ t: 'leave' }); q2.say({ t: 'leave' });
   const c = client(); c.say({ t: 'bot', token: TK[0], name: 'Honza', n: 2, level: 1, map: 4 }); assert.equal(c.last('state').map, 4); assert.equal(A.rooms.get(c.last('state').code).game.map, 4); c.say({ t: 'leave' });
+}
+{ // kosmetika: katalog (aspoň 10 věcí v kategorii), nákup za coiny, výběr originál / vlastní, uložení v účtu, zamčení při startu zápasu
+  assert.deepEqual(K.COSM_CATS.map((c) => c.id), K.COSM_SLOTS); assert.ok(K.COSM_SLOTS.length >= 4);
+  for (const c of K.COSM_SLOTS) { assert.ok(K.COSM[c].length >= 10, 'aspoň deset věcí: ' + c); assert.equal(new Set(K.COSM[c].map((x) => x.id)).size, K.COSM[c].length, 'unikátní id'); for (const it of K.COSM[c]) assert.ok(it.name && it.price > 0 && /^[A-Za-z0-9]{2,12}$/.test(it.id)); }
+  const t = A.bombicOf(accs[TK[0]]); t.xp = 0; t.skin = -1; t.coins = 100; t.own = []; t.eq = {};
+  const me0 = A.api('me', { token: TK[0] }).json; assert.equal(me0.bombic.coins, 100); assert.deepEqual(me0.bombic.own, []); assert.deepEqual(me0.bombic.eq, { hat: '', glasses: '', boots: '', back: '' }); assert.equal(me0.coinRules.win, 30);
+  assert.equal(A.api('buy', { token: TX, cat: 'hat', id: 'beanie' }).status, 401); assert.equal(A.api('buy', { token: TK[0], cat: 'x', id: 'beanie' }).status, 400); assert.equal(A.api('buy', { token: TK[0], cat: 'hat', id: 'nope' }).status, 400);
+  let r = A.api('buy', { token: TK[0], cat: 'hat', id: 'beanie' }); assert.equal(r.status, 200); assert.equal(r.json.bombic.coins, 60); assert.deepEqual(r.json.bombic.own, ['hat:beanie']); assert.equal(r.json.bombic.eq.hat, 'beanie', 'koupená věc se rovnou nasadí');
+  assert.equal(A.api('buy', { token: TK[0], cat: 'hat', id: 'beanie' }).status, 409, 'dvakrát ne'); assert.equal(A.api('buy', { token: TK[0], cat: 'hat', id: 'halo' }).status, 402, 'nedostatek coinů'); assert.equal(A.bombicOf(accs[TK[0]]).coins, 60, 'neúspěšný nákup nic nestrhne');
+  assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: 'tophat' }).status, 403, 'nekoupené nejde nasadit'); assert.equal(A.api('equip', { token: TK[0], cat: 'boots', id: '-' }).status, 403, 'bez bot neexistuje');
+  assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: '' }).json.bombic.eq.hat, '', 'originál skinu'); assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: '-' }).json.bombic.eq.hat, '-', 'bez čepice'); assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: 'beanie' }).json.bombic.eq.hat, 'beanie');
+  t.coins = 5000; for (const [c, id] of [['glasses', 'shades'], ['boots', 'rocket'], ['back', 'jet']]) assert.equal(A.api('buy', { token: TK[0], cat: c, id }).status, 200); assert.deepEqual(A.bombicOf(accs[TK[0]]).eq, { hat: 'beanie', glasses: 'shades', boots: 'rocket', back: 'jet' });
+  // poškozená data v účtu se očistí
+  t.own = ['hat:nope', 'zzz', 'hat:beanie', 5, 'hat:beanie']; t.eq = { hat: 'tophat', glasses: 'shades', boots: 5, back: 'x' }; const cl = A.bombicOf(accs[TK[0]]); assert.deepEqual(cl.own, ['hat:beanie']); assert.deepEqual(cl.eq, { hat: '', glasses: '', boots: '', back: '' }, 'nekoupené a neplatné se zahodí');
+  t.own = ['hat:beanie', 'glasses:shades']; t.eq = { hat: 'beanie', glasses: 'shades' };
+  // stav místnosti nese výbavu, boti dostanou náhodnou, při startu se výbava zamkne
+  const a = client(), b = client(); a.say({ t: 'create', token: TK[0], name: 'Honza' }); b.say({ t: 'join', code: a.last('joined').code, token: TK[1], name: 'Eva' });
+  let pl = a.last('state').players; assert.deepEqual(pl[0].cs, { hat: 'beanie', glasses: 'shades', boots: '', back: '' }); assert.deepEqual(pl[1].cs, { hat: '', glasses: '', boots: '', back: '' });
+  a.say({ t: 'start', fill: true, level: 1 }); pl = a.last('state').players; assert.equal(pl.length, 4);
+  for (const p of pl.slice(2)) for (const c of K.COSM_SLOTS) assert.ok(p.cs[c] === '' || K.cosmItem(c, p.cs[c]), 'bot má platnou věc');
+  assert.equal(A.api('equip', { token: TK[0], cat: 'hat', id: '-' }).status, 200); assert.equal(a.last('state').players[0].cs.hat, 'beanie', 'změna během zápasu se projeví až v dalším');
+  a.say({ t: 'leave' }); b.say({ t: 'leave' }); A.api('equip', { token: TK[0], cat: 'hat', id: '' });
+  const gst = client(); gst.say({ t: 'bot', name: 'Host', n: 1, level: 1 }); assert.deepEqual(gst.last('state').players[0].cs, { hat: '', glasses: '', boots: '', back: '' }, 'host bez účtu = originál'); gst.say({ t: 'leave' });
+  t.own = []; t.eq = {}; t.coins = 100; t.xp = 0; t.skin = -1;
 }
 assert.ok(dirty > 0);
 console.log('test-bombic: OK');

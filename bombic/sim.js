@@ -134,8 +134,9 @@ function placeBomb(s, p) {
   s.bombs.push({ id: s.nextBomb++, owner: p.i, cx, cy, tx: cx, ty: cy, moving: false, dx: 0, dy: 0, prog: 0, fuse: FUSE_T, range: rangeNow(p), pass, free: false });
   p.placed++; s.ev.push(['b', cx, cy]); return true;
 }
-/** Skateboard: bomba vyletí z pole hráče ve směru pohledu a kloužu jako kopnutá (nepočítá se do limitu bomb). */
+/** Skateboard: bomba vyletí z pole hráče ve směru pohledu a klouže jako kopnutá (nepočítá se do limitu bomb). Jen na stisk bomby. */
 function shootBomb(s, p) {
+  if (!p.alive || s.freeze > 0 || s.over || (p.curse && p.curse.k === 'nobomb')) return false;
   const cx = Math.floor(p.x), cy = Math.floor(p.y); const [dx, dy] = DIRS[p.face] || DIRS[3];
   if (s.grid[idx(cx, cy)] !== T.FLOOR || bombOcc(s, cx, cy)) return false;
   const nx = cx + dx, ny = cy + dy; if (!canBombEnter(s, nx, ny)) return false;
@@ -188,7 +189,7 @@ function applyItem(s, p, type) {
   else if (type === 'speed') p.spLv = Math.min(K.MAX_SPEED_LV, p.spLv + 1);
   else if (type === 'kick') p.kick = true;
   else if (type === 'gskull') { for (const q of s.pl) if (q.alive && q.i !== p.i) { q.curse = { k: K.CURSES[Math.floor(s.rng() * K.CURSES.length)], until: s.tick + CURSE_T }; q.autoAt = s.tick + 8; } }
-  else if (type === 'skate') { p.skateUntil = s.tick + SKATE_T; p.shootAt = s.tick + 6; }
+  else if (type === 'skate') { p.skateUntil = s.tick + SKATE_T; p.shootAt = 0; }
   else if (type === 'skull') { p.curse = { k: K.CURSES[Math.floor(s.rng() * K.CURSES.length)], until: s.tick + CURSE_T }; p.autoAt = s.tick + 8; }
   s.ev.push(['i', type, p.i]);
 }
@@ -232,8 +233,11 @@ export function step(s) {
     if (p.curse && s.tick >= p.curse.until) p.curse = null;
     if (p.curse && p.curse.k === 'auto' && s.tick >= p.autoAt) { p.autoAt = s.tick + 12; placeBomb(s, p); }
     if (p.skateUntil && s.tick >= p.skateUntil) p.skateUntil = 0;
-    if (p.skateUntil && s.tick >= p.shootAt && shootBomb(s, p)) p.shootAt = s.tick + SHOT_T;
-    if (p.want) { p.want = false; placeBomb(s, p); }
+    if (p.want) {   // na skateboardu bomba vyletí ve směru pohledu (po krátké prodlevě); když je před hráčem překážka, položí se normálně
+      p.want = false;
+      if (p.skateUntil) { if (s.tick >= p.shootAt) { if (shootBomb(s, p)) p.shootAt = s.tick + SHOT_T; else placeBomb(s, p); } }
+      else placeBomb(s, p);
+    }
     movePlayer(s, p);
   }
   for (const b of s.bombs) for (const i of [...b.pass]) { const q = s.pl[i]; if (!q || !q.alive || !overlapsCell(q, b.cx, b.cy)) b.pass.delete(i); }

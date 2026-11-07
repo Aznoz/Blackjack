@@ -144,7 +144,12 @@ function cleanBombic(t) {   // Bombic: zkušenosti, výhry zápasů, odehrané z
   t = t && typeof t === 'object' ? t : {};
   const n = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1e7, Math.floor(v))) : 0);
   const sk = Math.floor(Number(t.skin));
-  return { xp: n(t.xp), wins: n(t.wins), games: n(t.games), kills: n(t.kills), skin: Number.isFinite(sk) && sk >= 0 && sk < 64 ? sk : -1 };
+  const out = { xp: n(t.xp), wins: n(t.wins), games: n(t.games), kills: n(t.kills), skin: Number.isFinite(sk) && sk >= 0 && sk < 64 ? sk : -1 };
+  if (Number.isFinite(t.coins)) out.coins = n(t.coins);   // bez `coins` začíná hráč na startovních 100 (bombic/bombic.js)
+  const KEY = /^[a-z]{2,10}:[A-Za-z0-9]{2,12}$/;   // koupená kosmetika 'kategorie:id' a vybraná výbava (přesná kontrola je v bombicOf)
+  if (Array.isArray(t.own)) out.own = [...new Set(t.own.filter((k) => typeof k === 'string' && KEY.test(k)))].slice(0, 80);
+  if (t.eq && typeof t.eq === 'object') { const eq = {}; for (const c of ['hat', 'glasses', 'boots', 'back']) if (typeof t.eq[c] === 'string' && /^(-|[A-Za-z0-9]{0,12})$/.test(t.eq[c])) eq[c] = t.eq[c]; out.eq = eq; }
+  return out;
 }
 
 function makeAccount(key, d = {}) {

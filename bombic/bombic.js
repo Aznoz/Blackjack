@@ -14,6 +14,8 @@ const AUTO_START_MS = Number(process.env.BOMBIC_AUTO_MS) || 12_000;       // ryc
 const EMPTY_ROOM_MS = 120_000;
 const BETWEEN_T = 60;                                                      // pauza mezi koly (tiky)
 export const XP = { play: 20, win: 60, round: 10, kill: 8 };
+export const COINS = { play: 10, win: 30, round: 5, kill: 4 };   // coiny Bombicu za zápas (ve stejných položkách jako XP); utrácí se v obchodě s kosmetikou
+const START_COINS = 100;
 const CODE_CHARS = 'ABCDEFGHJKLMNPRSTUVXYZ';
 
 const rooms = new Map();
@@ -26,12 +28,15 @@ export function bombicOf(acc) {
   let t = acc.bombic; if (!t || typeof t !== 'object') t = acc.bombic = {};
   for (const k of ['xp', 'wins', 'games', 'kills']) t[k] = Math.max(0, Math.min(1e7, Math.floor(Number(t[k]) || 0)));
   const sk = Math.floor(Number(t.skin)); t.skin = Number.isFinite(sk) && sk >= 0 && sk < K.SKINS.length ? sk : -1;   // -1 = automaticky podle místa u stolu
+  t.coins = Number.isFinite(t.coins) ? Math.max(0, Math.min(1e9, Math.floor(t.coins))) : START_COINS;   // bez `coins` začíná hráč na startovních 100
+  const own = new Set(); if (Array.isArray(t.own)) for (const k of t.own) { if (typeof k !== 'string') continue; const [c, id] = k.split(':'); if (K.cosmItem(c, id)) own.add(c + ':' + id); }
+  t.own = [...own]; t.eq = K.cleanEq(t.eq, own);
   return t;
 }
 const dirty = () => { try { deps && deps.markDirty(); } catch { /* nic */ } };
 function profileOf(acc, linked) {
   const t = bombicOf(acc); const lvl = K.levelOf(t.xp);
-  return { account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, bombic: { xp: t.xp, lvl, from: K.xpFor(lvl), next: lvl >= K.MAX_LEVEL ? null : K.xpFor(lvl + 1), wins: t.wins, games: t.games, kills: t.kills, skin: t.skin }, xpRules: XP };
+  return { account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, bombic: { xp: t.xp, lvl, from: K.xpFor(lvl), next: lvl >= K.MAX_LEVEL ? null : K.xpFor(lvl + 1), wins: t.wins, games: t.games, kills: t.kills, skin: t.skin, coins: t.coins, own: t.own, eq: t.eq }, xpRules: XP, coinRules: COINS };
 }
 function identify(msg) {
   if (!deps || !msg || typeof msg.token !== 'string' || !deps.TOKEN_RE.test(msg.token)) return null;
@@ -47,6 +52,20 @@ export function api(action, body) {
     if (want >= 0 && K.SKINS[want].lvl > K.levelOf(t.xp)) return { status: 403, json: { error: `Tenhle skin se odemkne na úrovni ${K.SKINS[want].lvl}.` } };
     t.skin = want; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
   }
+  if (action === 'buy' || action === 'equip') {   // obchod: koupě věci za coiny / výběr (originál skinu, žádná čepice nebo vlastní koupená věc)
+    const ident = identify(body || {}); if (!ident) return { status: 401, json: { error: 'Do obchodu se musíš přihlásit.' } };
+    const t = bombicOf(ident.acc); const cat = String(body.cat ?? ''); const id = String(body.id ?? '');
+    if (!K.COSM_SLOTS.includes(cat)) return { status: 400, json: { error: 'Neznámá kategorie.' } };
+    if (action === 'equip') {
+      const ok = id === '' || (id === '-' && cat === 'hat') || (K.cosmItem(cat, id) && t.own.includes(cat + ':' + id));
+      if (!ok) return { status: 403, json: { error: 'Tuhle věc ještě nemáš.' } };
+      t.eq[cat] = id; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
+    }
+    const it = K.cosmItem(cat, id); if (!it) return { status: 400, json: { error: 'Neznámá věc.' } };
+    if (t.own.includes(cat + ':' + id)) return { status: 409, json: { error: 'Tuhle věc už máš.' } };
+    if (t.coins < it.price) return { status: 402, json: { error: `Chybí ti ${it.price - t.coins} coinů.` } };
+    t.coins -= it.price; t.own.push(cat + ':' + id); t.eq[cat] = id; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
+  }
   return { status: 404, json: { error: 'Neznámá akce.' } };
 }
 
@@ -58,9 +77,14 @@ const humans = (room) => room.players.filter((p) => !p.bot);
 const live = (room) => room.players.filter((p) => p.connected && !p.bot);
 
 // ------------------------------------------------------------------ stav pro klienty
+/** Kosmetika hráče: z účtu (jen koupené), boti dostanou náhodnou. */
+function cosmOf(p) {
+  if (p.bot) return p.cs || (p.cs = Object.fromEntries(K.COSM_SLOTS.map((c) => [c, Math.random() < 0.5 ? K.COSM[c][Math.floor(Math.random() * K.COSM[c].length)].id : ''])));
+  return p.acc ? { ...bombicOf(p.acc).eq } : Object.fromEntries(K.COSM_SLOTS.map((c) => [c, '']));
+}
 function playerView(p, room) {
   const t = p.acc ? bombicOf(p.acc) : null;
-  return { name: p.name, avatar: p.acc ? p.acc.avatar : null, bot: p.bot || 0, connected: p.connected, lvl: t ? K.levelOf(t.xp) : 1, skin: p.skin >= 0 ? p.skin : 0, left: !!p.left, wins: room.wins[room.players.indexOf(p)] || 0 };
+  return { cs: p.csLock && room.phase !== 'lobby' ? p.csLock : cosmOf(p), name: p.name, avatar: p.acc ? p.acc.avatar : null, bot: p.bot || 0, connected: p.connected, lvl: t ? K.levelOf(t.xp) : 1, skin: p.skin >= 0 ? p.skin : 0, left: !!p.left, wins: room.wins[room.players.indexOf(p)] || 0 };
 }
 function view(room, pid) {
   const you = room.players.findIndex((p) => p.id === pid);
@@ -100,7 +124,7 @@ function startRound(room) {
   publish(room); sendSnaps(room);
 }
 function startMatch(room) {
-  assignSkins(room);
+  assignSkins(room); for (const p of room.players) p.csLock = cosmOf(p);   // kosmetika se na začátku zápasu zamkne (změny v obchodě platí od dalšího zápasu)
   room.wins = room.players.map(() => 0); room.round = 0; room.result = null; room.rematch = new Set(); room.matchId = (room.matchId || 0) + 1; room.autoAt = null;
   room.kills = room.players.map(() => 0); room.roundsPlayed = 0;
   for (const p of room.players) { p.left = false; }
@@ -125,7 +149,8 @@ function finish(room, winner) {
     const t = bombicOf(p.acc); const won = winner === i;
     const gain = XP.play + (won ? XP.win : 0) + room.wins[i] * XP.round + Math.min(10, room.kills[i]) * XP.kill;
     const lvl0 = K.levelOf(t.xp); t.xp += gain; t.games++; t.kills += room.kills[i]; if (won) t.wins++; p.acc.lastSeen = now();
-    out.xp[i] = { gain, lvl: K.levelOf(t.xp), up: K.levelOf(t.xp) > lvl0 };
+    const cg = COINS.play + (won ? COINS.win : 0) + room.wins[i] * COINS.round + Math.min(10, room.kills[i]) * COINS.kill; t.coins = Math.min(1e9, t.coins + cg);
+    out.xp[i] = { gain, lvl: K.levelOf(t.xp), up: K.levelOf(t.xp) > lvl0, coins: cg, coinsTotal: t.coins };
   });
   dirty(); room.result = out; publish(room);
 }

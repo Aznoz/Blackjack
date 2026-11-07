@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23173d1f'/%3E%3Ccircle cx='30' cy='38' r='17' fill='%23252a36' stroke='%23000' stroke-width='3'/%3E%3Ccircle cx='24' cy='31' r='5' fill='%23ffffff88'/%3E%3Cpath d='M38 23q8-10 14-6' fill='none' stroke='%23e9d9ac' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='53' cy='15' r='5' fill='%23ffb02e'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="bombic.css?v=3">
+<link rel="stylesheet" href="bombic.css?v=4">
 </head>
 <body>
 
@@ -30,6 +30,7 @@
         <div class="xpbar"><i id="pXp"></i></div>
         <div class="psub"><span id="pXpTxt"></span><span id="pRec"></span></div>
       </div>
+      <div class="coinchip" id="pCoins" title="Coiny Bombicu (za zápasy, utratíš je v obchodě)"><i class="coin"></i><b>0</b></div>
     </div>
     <label class="field" id="nameField" hidden>Tvoje jméno
       <input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza">
@@ -45,8 +46,9 @@
     <form class="join" id="joinForm"><label for="code">Mám kód od kamaráda</label><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti"><button type="submit">Připojit</button></form>
     <div class="row2">
       <button class="plank" id="bSkins" type="button"><b>Skiny</b><small id="skinSub">odemykej úrovněmi</small></button>
-      <button class="plank" id="bHow" type="button"><b>Jak se hraje</b><small>pravidla a předměty</small></button>
+      <button class="plank" id="bShop" type="button"><b>Obchod</b><small id="shopSub">čepice, brýle, boty, záda</small></button>
     </div>
+    <button class="plank small" id="bHow" type="button"><b>Jak se hraje</b><small>pravidla a předměty</small></button>
     <p class="status" id="menuStatus"></p>
   </div>
 </main>
@@ -74,6 +76,17 @@
     <div class="skins" id="skinGrid"></div>
     <button class="plank small" id="skinAuto" type="button"><b>Automatický skin</b><small>podle místa u stolu</small></button>
     <p class="muted small">Nové skiny se odemykají s úrovní hráče (až do úrovně 35). Úroveň roste za odehrané zápasy, výhry a vyřazené soupeře. Každý hráč u stolu má jiný skin, při shodě dostane druhý z nich jiný.</p>
+  </div>
+</div>
+
+<!-- obchod s kosmetikou -->
+<div class="modal" id="shopModal" hidden>
+  <div class="sheet shop">
+    <div class="shead"><h2>Obchod</h2><div class="coinchip"><i class="coin"></i><b id="shopCoins">0</b></div><button class="x" data-close type="button" aria-label="Zavřít">✕</button></div>
+    <div class="shopTop"><img id="shopPrev" alt="" width="112" height="112"><div class="shopInfo"><b id="shopName"></b><small id="shopHint"></small><button class="plank small" id="shopBuy" type="button" hidden><b></b></button></div></div>
+    <div class="tabs" id="shopTabs"></div>
+    <div class="shopGrid" id="shopGrid"></div>
+    <p class="muted small">Coiny dostáváš za každý odehraný zápas, výhru, vyhraná kola a vyřazené soupeře. U každé kategorie se můžeš rozhodnout mezi originálem svého skinu a vlastní věcí. Klepnutím na věc, kterou ještě nemáš, si ji nejdřív vyzkoušíš. Změny platí od dalšího zápasu.</p>
   </div>
 </div>
 
@@ -151,6 +164,6 @@
 <div class="conn" id="conn" hidden>Připojuji…</div>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script src="config.js"></script>
-<script type="module" src="bombic.js?v=3"></script>
+<script type="module" src="bombic.js?v=4"></script>
 </body>
 </html>

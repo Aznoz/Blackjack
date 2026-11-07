@@ -1,6 +1,7 @@
 // BOMBIC – kreslená grafika (bez emoji a bez obrázků): travnatá podlaha, kameny, rozbitné sudy (pařezy), stromy na okraji, bomby, plameny,
 // předměty a malí bombeři ve čtyřech barvách. Všechno se kreslí vektorově na canvas, takže je ostré na každém displeji.
-import { SKINS, T, MAPS, COLS, ROWS } from './shared.js';
+import { SKINS, T, MAPS, COLS, ROWS } from './shared.js?v=4';
+import { hatC, glassesC, bootC, backC } from './cosm.js?v=4';
 const TAU = Math.PI * 2;
 const OL = '#26180f';
 const hash = (x, y, k = 0) => { let h = (x * 374761393 + y * 668265263 + k * 1274126177) | 0; h = (h ^ (h >>> 13)) * 1274126177; return ((h ^ (h >>> 16)) >>> 0) / 4294967296; };
@@ -197,30 +198,40 @@ function hatDraw(g, S, face, t) {
 const skinOf = (k) => SKINS[Math.max(0, Math.min(SKINS.length - 1, k | 0))];
 /** Nakreslí postavu. cx, cy = střed pole; face 1–4 (nahoru, doprava, dolů, doleva); o.dying 0–1, o.skate = stojí na skateboardu. */
 export function drawPlayer(g, skin, cx, cy, ts, face, moving, t, o = {}) {
-  const S = skinOf(skin); const s = ts / 40; const dying = o.dying || 0;
+  const S0 = skinOf(skin); const cs = o.cs || {}; const s = ts / 40; const dying = o.dying || 0;
+  const S = cs.hat ? { ...S0, hat: 'none' } : S0;   // vlastní čepice (nebo žádná): hlava se kreslí bez prvků původní čepice
   g.save(); g.translate(cx, cy);
   if (dying > 0) { g.globalAlpha = Math.max(0, 1 - dying); g.rotate(dying * 9); g.scale(1 - dying * 0.6, 1 - dying * 0.6); g.translate(0, -dying * ts * 0.4); }
   g.scale(s, s); g.lineJoin = 'round'; g.lineCap = 'round';
   const w = moving ? Math.sin(t * 16) : 0; const bob = moving ? -Math.abs(Math.sin(t * 16)) * 1.8 : Math.sin(t * 3) * 0.4;
-  if (dying === 0) ell(g, 0, 17, 11, 3.6, 'rgba(0,0,0,.3)');
+  if (dying === 0 && !o.noShadow) ell(g, 0, 17, 11, 3.6, 'rgba(0,0,0,.3)');
   if (o.skate) { g.save(); g.translate(0, 20.5); g.scale(1.25, 1.25); skateBoard(g, 11, false); g.restore(); }
   g.translate(0, bob + (o.skate ? -3.5 : 0));
-  ell(g, -5.5, 16 + Math.max(0, w) * -2, 5, 3, '#2a2a38', 1.4); ell(g, 5.5, 16 + Math.max(0, -w) * -2, 5, 3, '#2a2a38', 1.4);   // boty
+  if (cs.back) backC(g, cs.back, face, t, moving, 0);
+  const fy1 = 16 + Math.max(0, w) * -2, fy2 = 16 + Math.max(0, -w) * -2;
+  if (!cs.boots) { ell(g, -5.5, fy1, 5, 3, '#2a2a38', 1.4); ell(g, 5.5, fy2, 5, 3, '#2a2a38', 1.4); }   // boty
   rr(g, -9, 0, 18, 15, 6); g.fillStyle = S.main; g.fill(); g.strokeStyle = OL; g.lineWidth = 1.8; g.stroke(); g.fillStyle = S.dark; g.fillRect(-9, 8, 18, 3); rr(g, -2.5, 7.4, 5, 4.2, 1); g.fillStyle = '#ffd24a'; g.fill();
+  if (cs.boots) { bootC(g, cs.boots, -5.5, fy1, face, t, moving); bootC(g, cs.boots, 5.5, fy2, face, t, moving); }
+  if (cs.back) backC(g, cs.back, face, t, moving, 1);
   circ(g, -11.5, 6 + w * 2, 3.4, '#fff', 1.4); circ(g, 11.5, 6 - w * 2, 3.4, '#fff', 1.4);   // rukavice
-  headBase(g, S, face); faceDraw(g, S, face); hatDraw(g, S, face, t);
+  headBase(g, S, face); faceDraw(g, S, face); if (cs.glasses) glassesC(g, cs.glasses, face, t);
+  if (cs.hat === '-') { /* bez čepice */ } else if (cs.hat) hatC(g, cs.hat, face, t); else hatDraw(g, S, face, t);
   if (o.curse) { g.save(); g.translate(0, -37 + Math.sin(t * 6) * 1.5); skullIcon(g, 6); g.restore(); }
   if (o.you) { g.fillStyle = '#fff'; g.strokeStyle = OL; g.lineWidth = 1.4; g.beginPath(); const yy = -41 - Math.abs(Math.sin(t * 4)) * 3; g.moveTo(-4.5, yy - 5); g.lineTo(4.5, yy - 5); g.lineTo(0, yy); g.closePath(); g.fill(); g.stroke(); }
   g.restore();
 }
 const portraits = new Map();
-export function portraitURL(skin) {
-  skin = Math.max(0, Math.min(SKINS.length - 1, skin | 0)); let u = portraits.get(skin); if (u) return u;
+export function portraitURL(skin, cs) {
+  skin = Math.max(0, Math.min(SKINS.length - 1, skin | 0)); cs = cs || {}; const key = skin + '|' + (cs.hat || '') + '|' + (cs.glasses || '') + '|' + (cs.boots || '') + '|' + (cs.back || ''); let u = portraits.get(key); if (u) return u;
   const c = document.createElement('canvas'); c.width = c.height = 96; const g = c.getContext('2d'); const S = SKINS[skin];
   g.translate(48, 62); g.scale(2.1, 2.1); g.lineJoin = 'round'; g.lineCap = 'round';
+  const S2 = cs.hat ? { ...S, hat: 'none' } : S;
+  if (cs.back) backC(g, cs.back, 3, 0.5, false, 0);
   rr(g, -9, 0, 18, 15, 6); g.fillStyle = S.main; g.fill(); g.strokeStyle = OL; g.lineWidth = 1.8; g.stroke();
-  headBase(g, S, 3); faceDraw(g, S, 3); hatDraw(g, S, 3, 0.5);
-  u = c.toDataURL('image/png'); portraits.set(skin, u); return u;
+  if (cs.back) backC(g, cs.back, 3, 0.5, false, 1);
+  headBase(g, S2, 3); faceDraw(g, S2, 3); if (cs.glasses) glassesC(g, cs.glasses, 3, 0.5);
+  if (cs.hat === '-') { /* bez čepice */ } else if (cs.hat) hatC(g, cs.hat, 3, 0.5); else hatDraw(g, S, 3, 0.5);
+  u = c.toDataURL('image/png'); portraits.set(key, u); return u;
 }
 const iconCache = new Map();
 export function itemURL(type) {
@@ -241,4 +252,14 @@ export function mapThumb(i) {
     else if (ch === '.') { g.globalAlpha = 0.55; g.fillStyle = m.theme === 'snow' ? '#7fc8ee' : m.theme === 'cave' ? '#a070e0' : m.theme === 'lava' ? '#ff8a2a' : '#a8692f'; g.fillRect(x * cs + 2, y * cs + 2, cs - 4, cs - 4); g.globalAlpha = 1; }
   }
   u = c.toDataURL('image/png'); thumbs.set(i, u); return u;
+}
+
+// náhled věci z obchodu: postava ve zvoleném skinu s touhle věcí (cat = kategorie, id = '' originál / '-' bez čepice / id věci); záda se ukazují zezadu
+const cosmThumbs = new Map();
+const ZOOM = { hat: [1.9, -15], glasses: [2.5, -8], boots: [2.3, 14], back: [1.75, 5] };
+export function cosmURL(cat, id, skin = 0) {
+  const key = cat + ':' + id + ':' + skin; let u = cosmThumbs.get(key); if (u) return u;
+  const c = document.createElement('canvas'); c.width = c.height = 84; const g = c.getContext('2d'); const [z, fy] = ZOOM[cat] || [1.8, 0];
+  drawPlayer(g, skin, 42, 42 - fy * z, 40 * z, cat === 'back' ? 1 : 3, false, 0.7, { cs: { [cat]: id }, noShadow: true });
+  u = c.toDataURL('image/png'); cosmThumbs.set(key, u); return u;
 }

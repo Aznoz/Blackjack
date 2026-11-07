@@ -9,15 +9,15 @@ export const FREEZE_S = 3;                            // odpočet před začátk
 export const WINS_NEEDED = 2, MAX_ROUNDS = 5;         // zápas = první na 2 vítězná kola
 export const BASE_SPEED = 4.2, SPEED_STEP = 0.55, MAX_SPEED_LV = 5;   // pole za sekundu a o kolik víc za každé zrychlení
 export const START_BOMBS = 1, START_RANGE = 2, MAX_BOMBS = 8, MAX_RANGE = 9;
-export const CURSE_S = 12;
-export const SKATE_S = 15, SHOT_S = 1.2;              // skateboard: jak dlouho trvá a jak často sám vystřelí bombu ve směru pohledu                            // jak dlouho trvá prokletí od lebky
+export const CURSE_S = 12;                            // jak dlouho trvá prokletí od lebky
+export const SKATE_S = 15, SHOT_S = 0.6;              // skateboard: jak dlouho trvá a jaká je prodleva mezi výstřely (na stisk bomby)
 export const ITEMS = ['bomb', 'fire', 'speed', 'kick', 'skull', 'skate', 'gskull'];
 export const ITEM_INFO = {
   bomb: { name: 'Bomba navíc', desc: 'Můžeš mít položenou o jednu bombu víc.' },
   fire: { name: 'Delší plamen', desc: 'Výbuch dosáhne o pole dál.' },
   speed: { name: 'Rychlé boty', desc: 'Běháš rychleji.' },
   kick: { name: 'Kopání bomb', desc: 'Když narazíš na bombu, odkopneš ji.' },
-  skate: { name: 'Skateboard', desc: 'Na 15 s se postavíš na skateboard a bomby ti samy vyletují ve směru, kam se díváš.' },
+  skate: { name: 'Skateboard', desc: 'Na 15 s se postavíš na skateboard: mezerník (tlačítko bomby) vystřelí bombu ve směru, kam se díváš.' },
   gskull: { name: 'Zelená lebka', desc: 'Vzácná: všem soupeřům hodí náhodné prokletí na 12 s, tobě nic.' },
   skull: { name: 'Lebka', desc: 'Na 12 s tě něco postihne: zpomalení, zrychlení, žádné bomby, samovolné bomby, nebo krátký plamen.' },
 };
@@ -64,3 +64,46 @@ export const MAPS = [
     q: ['########', '#.......', '#.#.#.#.', '#.#...#.', '#.#.#.#.', '#.......', '#.#.#.#.'] },
 ];
 export const mapIdx = (v) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 0 && n < MAPS.length ? n : 0; };
+
+// Kosmetika (obchod za coiny Bombicu): čepice, brýle, boty, záda. U každé kategorie si hráč vybere originál skinu, nebo vlastní koupenou věc.
+// Uložené je `own` (pole 'kategorie:id') a `eq` (kategorie -> '' originál skinu | '-' bez čepice (jen čepice) | id věci). Vzhled kreslí klient (cosm.js).
+export const COSM_CATS = [
+  { id: 'hat', name: 'Čepice', orig: 'Originál skinu', none: 'Bez čepice' },
+  { id: 'glasses', name: 'Brýle', orig: 'Žádné' },
+  { id: 'boots', name: 'Boty', orig: 'Originál skinu' },
+  { id: 'back', name: 'Záda', orig: 'Nic' },
+];
+export const COSM = {
+  hat: [
+    { id: 'beanie', name: 'Kulich', price: 40 }, { id: 'backcap', name: 'Kšiltovka', price: 50 }, { id: 'beret', name: 'Baret', price: 60 },
+    { id: 'straw', name: 'Slaměňák', price: 70 }, { id: 'hardhat', name: 'Stavební helma', price: 80 }, { id: 'sombrero', name: 'Sombrero', price: 90 },
+    { id: 'cat', name: 'Kočičí uši', price: 100 }, { id: 'bunny', name: 'Králičí uši', price: 100 }, { id: 'tophat', name: 'Cylindr', price: 120 },
+    { id: 'propeller', name: 'Vrtulka', price: 130 }, { id: 'horns', name: 'Ďábelské rohy', price: 150 }, { id: 'halo', name: 'Svatozář', price: 200 },
+  ],
+  glasses: [
+    { id: 'round', name: 'Kulaté', price: 40 }, { id: 'nerd', name: 'Hranaté', price: 50 }, { id: 'shades', name: 'Sluneční', price: 60 },
+    { id: 'eyepatch', name: 'Pirátská páska', price: 70 }, { id: 'd3', name: '3D brýle', price: 80 }, { id: 'aviator', name: 'Pilotky', price: 90 },
+    { id: 'mask', name: 'Maska', price: 100 }, { id: 'heart', name: 'Srdíčka', price: 110 }, { id: 'star', name: 'Hvězdy', price: 110 },
+    { id: 'monocle', name: 'Monokl', price: 120 }, { id: 'goggles', name: 'Lyžařské', price: 140 }, { id: 'visor', name: 'Cyber visor', price: 220 },
+  ],
+  boots: [
+    { id: 'sneakR', name: 'Červené tenisky', price: 50 }, { id: 'sneakB', name: 'Modré tenisky', price: 50 }, { id: 'rain', name: 'Gumáky', price: 60 },
+    { id: 'slipper', name: 'Papuče', price: 70 }, { id: 'neon', name: 'Neonové tenisky', price: 90 }, { id: 'cowboy', name: 'Kovbojky', price: 110 },
+    { id: 'ninja', name: 'Ninja tabi', price: 120 }, { id: 'roller', name: 'Brusle', price: 140 }, { id: 'rainbow', name: 'Duhové boty', price: 180 },
+    { id: 'rocket', name: 'Raketové boty', price: 220 }, { id: 'gold', name: 'Zlaté boty', price: 250 }, { id: 'winged', name: 'Okřídlené boty', price: 260 },
+  ],
+  back: [
+    { id: 'pack', name: 'Batoh', price: 60 }, { id: 'fox', name: 'Liščí ocas', price: 70 }, { id: 'cape', name: 'Plášť', price: 80 },
+    { id: 'quiver', name: 'Toulec', price: 90 }, { id: 'shell', name: 'Želví krunýř', price: 100 }, { id: 'surf', name: 'Surf', price: 110 },
+    { id: 'guitar', name: 'Kytara', price: 120 }, { id: 'royal', name: 'Královský plášť', price: 200 }, { id: 'fly', name: 'Motýlí křídla', price: 220 },
+    { id: 'jet', name: 'Jetpack', price: 260 }, { id: 'bat', name: 'Netopýří křídla', price: 280 }, { id: 'angel', name: 'Andělská křídla', price: 300 },
+  ],
+};
+export const COSM_SLOTS = COSM_CATS.map((c) => c.id);
+export const cosmItem = (cat, id) => (COSM[cat] || []).find((x) => x.id === id) || null;
+/** Výběr po kategoriích očištěný od neplatného a nekoupeného (`own` = Set 'kategorie:id'). */
+export function cleanEq(eq, own) {
+  const o = {};
+  for (const c of COSM_SLOTS) { const v = eq && typeof eq[c] === 'string' ? eq[c] : ''; o[c] = v === '' || (v === '-' && c === 'hat') || (cosmItem(c, v) && own.has(c + ':' + v)) ? v : ''; }
+  return o;
+}
