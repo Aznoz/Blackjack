@@ -1,6 +1,6 @@
 // HOPÍK – animovaná scéna v hlavním menu: louka, po které zvířátka běhají a přeskakují bedny a bodáky. Čistě dekorace.
-import { drawAnimal, drawBackground, drawPieceShape, flagShape, sawShape, INK, SEAT } from './art.js?v=3';
-import * as K from './shared.js?v=3';
+import { drawAnimal, drawBackground, drawPieceShape, flagShape, sawShape, INK, SEAT } from './art.js?v=4';
+import * as K from './shared.js?v=4';
 let raf = 0, cv = null, g = null, W = 0, H = 0, dpr = 1, last = 0, t = 0, bg = null, actors = [];
 const VIEW_W = 21;                                    // kolik políček široká je scéna
 const GROUND = 6.2;                                   // výška země ve scéně (v políčkách odshora)
@@ -30,7 +30,7 @@ function draw() {
   flagShape(g, 20, 0, t);
   for (const o of OBST) {
     if (o.k === 'block') drawPieceShape(g, 'block', 0, o.x, -2, { own: SEAT[1] });
-    else if (o.k === 'spikes') drawPieceShape(g, 'spikes', 0, o.x, -1, { own: SEAT[0] });
+    else if (o.k === 'spikes') drawPieceShape(g, 'spikes', 0, o.x, -2, { own: SEAT[0] });
     else sawShape(g, o.x + 0.5, -0.9, 0.9, t, SEAT[2]);
   }
   for (const a of [...actors].sort((p, q) => p.x - q.x)) {

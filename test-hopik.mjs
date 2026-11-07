@@ -134,9 +134,62 @@ const harmless = (g, i) => { for (let k = 0; k < 400; k++) { const x = (k * 7 + 
   const Wf = P.buildWorld(0, [{ id: 9, type: 'fan', r: 1, x: 4, y: 14, owner: 0, round: 1 }]); const b3 = P.newBody(6.5, 14.5); b3.gr = true; const onT = [...Array(K.FAN.period).keys()].find((k) => P.fanOn(Wf.fans[0], k)); const x0 = b3.x; P.stepBody(Wf, b3, 0, onT, null); assert.ok(b3.x > x0 + 0.1, 'boční ventilátor odfoukne doprava');
   const N0 = N.buildNav(W); assert.ok(N0.reachable, 'časované pasti navigační graf ignoruje');
   // neotočitelné kusy se otočí zpátky na 0, rozměry
-  assert.ok(!K.rotatable('thwomp') && !K.rotatable('blades') && !K.rotatable('pendulum') && K.rotatable('laser') && K.rotatable('rsaw') && K.rotatable('fan'));
-  assert.deepEqual(K.pieceSize('thwomp', 0), [2, 6]); assert.deepEqual(K.pieceSize('rsaw', 0), [6, 1]); assert.deepEqual(K.pieceSize('rsaw', 1), [1, 6]);
-  assert.ok(K.PIECE_IDS.filter((id) => K.PIECES[id].kind === 'hazard').length >= 10, 'aspoň 6 nových pastí k původním čtyřem');
+  assert.ok(K.rotatable('thwomp') && !K.rotatable('blades') && !K.rotatable('pendulum') && K.rotatable('laser') && K.rotatable('rsaw') && K.rotatable('fan'));
+  assert.deepEqual(K.pieceSize('thwomp', 0), [2, 6]); assert.deepEqual(K.pieceSize('thwomp', 1), [6, 2]); assert.deepEqual(K.pieceSize('rsaw', 0), [6, 1]); assert.deepEqual(K.pieceSize('rsaw', 1), [1, 6]);
+  assert.ok(K.PIECE_IDS.filter((id) => K.PIECES[id].kind === 'hazard').length >= 16, 'aspoň 12 nových pastí k původním čtyřem');
+}
+
+{ // padací kámen: shora pevný (dá se na něm stát), zespodu a ze stran zabíjí; otočením se mění dráha, kámen zůstává vzpřímený
+  const mk = (r, x, y) => P.buildWorld(0, [{ id: 4, type: 'thwomp', r, x, y, owner: 2, round: 1 }]);
+  const W = mk(0, 8, 2); const th = W.thwomps[0]; assert.equal(th.dir, 2); let top = -1, bot = -1; for (let k = 0; k < 240; k++) { const o = P.thwompOff(th, k); if (top < 0 && o === 0) top = k; if (bot < 0 && o === 4) bot = k; }
+  const hz = (x, y, tk) => P.hazardAt(W, x, y, tk, 0.08);
+  assert.equal(hz(9, 2 - P.PH / 2 - 0.001, top), 0, 'stojící na kameni je v bezpečí'); assert.equal(hz(8 - P.PW / 2 - 0.01, 3, top), 3, 'dotek ze strany zabíjí'); assert.equal(hz(9, 4 + P.PH / 2 + 0.01, top), 3, 'dotek zespodu zabíjí');
+  assert.ok(!P.fitsAt(W, 9, 2 - P.PH / 2 + 0.3, top) && P.fitsAt(W, 9, 2 - P.PH / 2 - 0.01, top), 'kámen je pevný');
+  const b = P.newBody(9, 2 - P.PH / 2 - 0.002); b.vy = 0; let alive = true, minY = 99, maxY = -99; for (let k = 0; k < 160; k++) { const tk = top + k; P.stepBody(W, b, 0, tk, null); const hh = P.hazardAt(W, b.x, b.y, tk, 0.08); if (hh) alive = false; minY = Math.min(minY, b.y); maxY = Math.max(maxY, b.y); }
+  assert.ok(alive, 'kámen s hráčem na hřbetě ho nezabije'); assert.ok(maxY - minY > 3.3, 'hráč jede s kamenem dolů a nahoru (' + (maxY - minY).toFixed(2) + ')');
+  const Wl = mk(1, 8, 4); const tl = Wl.thwomps[0]; assert.equal(tl.dir, 3); assert.deepEqual(K.pieceSize('thwomp', 1), [6, 2]); const pos0 = P.thwompPos(tl, top, [0, 0]); const posB = P.thwompPos(tl, bot, [0, 0]);
+  assert.ok(Math.abs(pos0[0] - 12) < 1e-6 && Math.abs(pos0[1] - 4) < 1e-6, 'doleva míří z pravého konce dráhy (' + pos0 + ')'); assert.ok(Math.abs(posB[0] - 8) < 1e-6, 'a dojede na levý konec (' + posB + ')');
+  const Wu = mk(2, 8, 4); assert.equal(Wu.thwomps[0].dir, 0); const pu = P.thwompPos(Wu.thwomps[0], top, [0, 0]); assert.ok(Math.abs(pu[1] - 8) < 1e-6, 'nahoru začíná dole');
+  const Wr = mk(3, 8, 4); assert.equal(Wr.thwomps[0].dir, 1);
+}
+{ // bodáky: hroty zabíjejí jen na své straně, ze zbylých stran jde stát
+  const mk = (r, x, y) => P.buildWorld(0, [{ id: 1, type: 'spikes', r, x, y, owner: 1, round: 1 }]);
+  assert.deepEqual(K.pieceSize('spikes', 0), [3, 2]); assert.deepEqual(K.pieceSize('spikes', 1), [2, 3]);
+  const W = mk(0, 10, 14); assert.equal(W.g[15 * COLS + 11], K.T.SOLID, 'základ je pevný'); assert.equal(W.g[14 * COLS + 11], 0, 'řada hrotů pevná není'); assert.equal(P.hazardAt(W, 11.5, 14.6, 0, 0.08), 2, 'hroty zabíjejí');
+  const b = P.newBody(11.5, 12); for (let k = 0; k < 40; k++) P.stepBody(W, b, 0, k, null); assert.ok(P.hazardAt(W, b.x, b.y, 40, 0.08) === 2, 'shora na hroty padá do smrti');
+  const Wr = mk(1, 10, 12); const sp = K.spikeSplit('spikes', 1); assert.equal(sp.face, 1); assert.ok(sp.spike.every(([x]) => x === 1) && sp.base.every(([x]) => x === 0));
+  const c = P.newBody(10.5, 12 - P.PH / 2 - 0.001); for (let k = 0; k < 40; k++) P.stepBody(Wr, c, 0, k, null); assert.ok(c.gr && P.hazardAt(Wr, c.x, c.y, 40, 0.08) === 0 && Math.abs(c.y + P.PH / 2 - 12) < 0.02, 'na straně bez hrotů se dá stát');
+  assert.equal(P.hazardAt(Wr, 11.5, 13.5, 0, 0.08), 2, 'ze strany hrotů zabíjí');
+  for (let r = 0; r < 4; r++) { const s2 = K.spikeSplit('spikes', r); assert.equal(s2.spike.length, 3); assert.equal(s2.base.length, 3); assert.equal(s2.face, r); }
+}
+{ // nové pasti: výsuvné bodáky, rampouch, odrážeč, mizející plošina, černá díra, valoun
+  const one = (type, r, x, y) => P.buildWorld(0, [{ id: 3, type, r, x, y, owner: 1, round: 1 }]);
+  const Wr = one('retract', 0, 8, 14); const ro = Wr.rspikes[0]; const st = (k) => P.retractState(ro, k); let s0 = -1, s1 = -1, s2 = -1; for (let k = 0; k < K.RETRACT.period; k++) { if (st(k) === 0 && s0 < 0) s0 = k; if (st(k) === 1 && s1 < 0) s1 = k; if (st(k) === 2 && s2 < 0) s2 = k; }
+  assert.ok(s0 >= 0 && s1 >= 0 && s2 >= 0); assert.equal(P.hazardAt(Wr, 9.5, 14.6, s2, 0.08), 2, 'vysunuté zabíjí'); assert.equal(P.hazardAt(Wr, 9.5, 14.6, s0, 0.08), 0, 'schované ne'); assert.equal(P.hazardAt(Wr, 9.5, 14.6, s1, 0.08), 0, 'varování nezabíjí');
+  const Wi = one('icicle', 0, 10, 3); const ic = Wi.icicles[0]; assert.ok(ic.len > 8, 'rampouch padá až na zem (' + ic.len + ')'); let live = 0, dead = 0; const o = {}; for (let k = 0; k < K.ICICLE.period; k++) { P.icicleState(ic, k, o); if (o.live) { live++; assert.equal(P.hazardAt(Wi, 10.5, 4 + o.off + 0.5, k, 0.08), 2, 'rampouch zabíjí tam, kde je'); } else dead++; }
+  assert.ok(live > 60 && dead > 10, 'rampouch po dopadu přestane zabíjet'); let fell = false; for (let k = 0; k < K.ICICLE.period; k++) { P.icicleState(ic, k, o); if (o.off > 3) fell = true; } assert.ok(fell, 'rampouch spadne');
+  const Wb = one('bumper', 0, 8, 10); const bb = P.newBody(8.0, 10.5); P.stepBody(Wb, bb, 0, 0, null); assert.ok(bb.vx < -8, 'odrážeč odpálí doleva (' + bb.vx + ')'); const bb2 = P.newBody(9.0, 10.5); P.stepBody(Wb, bb2, 0, 0, null); assert.ok(bb2.vx > 8, 'a doprava (' + bb2.vx + ')'); assert.equal(P.hazardAt(Wb, 8.5, 10.5, 0), 0, 'odrážeč nezabíjí');
+  const Wv = one('vanish', 0, 8, 10); const va = Wv.vanish[0]; let solid = -1, gone = -1, warn = -1; for (let k = 0; k < K.VANISH.period; k++) { const v = P.vanishState(va, k); if (v === 0 && solid < 0) solid = k; if (v === 2 && gone < 0) gone = k; if (v === 1 && warn < 0) warn = k; }
+  assert.ok(solid >= 0 && gone >= 0 && warn >= 0); assert.ok(!P.fitsAt(Wv, 9.5, 10.5, solid) && !P.fitsAt(Wv, 9.5, 10.5, warn) && P.fitsAt(Wv, 9.5, 10.5, gone), 'plošina je pevná, kromě fáze, kdy chybí');
+  const cb = P.newBody(9.5, 10 - P.PH / 2 - 0.002); cb.vy = 0; P.stepBody(Wv, cb, 0, solid, null); assert.ok(cb.gr, 'na mizející plošině se stojí');
+  const Wh = one('hole', 0, 10, 8); const ho = Wh.holes[0]; let hon = -1, hoff = -1; for (let k = 0; k < K.HOLE.period; k++) { const v = P.holeState(ho, k); if (v === 2 && hon < 0) hon = k; if (v === 0 && hoff < 0) hoff = k; }
+  assert.equal(P.hazardAt(Wh, 10.5, 8.5, hon, 0.08), 2, 'jádro díry zabíjí'); assert.equal(P.hazardAt(Wh, 10.5, 8.5, hoff, 0.08), 0, 'klidná díra nezabíjí');
+  const h1 = P.newBody(13, 8.5); P.stepBody(Wh, h1, 0, hon, null); assert.ok(h1.vx < -0.1, 'díra přitahuje (' + h1.vx + ')'); const h2 = P.newBody(13, 8.5); P.stepBody(Wh, h2, 0, hoff, null); assert.ok(Math.abs(h2.vx) < 0.01, 'klidná nepřitahuje');
+  const Wo = one('boulder', 0, 10, 14); const bo = Wo.boulders[0]; const q = [0, 0, 0, 0]; let rolled = 0, minx = 99, maxx = -99; for (let k = 0; k < K.BOULDER.period; k++) { P.boulderPos(bo, k, q); if (q[3] === 2) { rolled++; minx = Math.min(minx, q[0]); maxx = Math.max(maxx, q[0]); assert.equal(P.hazardAt(Wo, q[0], q[1], k, 0.08), 2, 'valoun zabíjí'); } else assert.equal(P.hazardAt(Wo, q[0], q[1], k, 0.08), 0); }
+  assert.ok(rolled > 100 && maxx - minx > 5, 'valoun se kutálí po dráze'); const Wl = one('boulder', 1, 10, 14); P.boulderPos(Wl.boulders[0], 0, q); assert.ok(q[0] > 14, 'otočený valoun začíná vpravo (' + q[0] + ')');
+  assert.deepEqual(K.pieceSize('boulder', 0), [8, 1]); for (const id of ['retract', 'icicle', 'bumper', 'vanish', 'hole', 'boulder']) assert.ok(K.PIECES[id] && K.PIECES[id].kind === 'hazard', id);
+  const Wn = P.buildWorld(0, [3, 4, 5, 6, 7, 8].map((i, n) => ({ id: i, type: ['retract', 'icicle', 'bumper', 'vanish', 'hole', 'boulder'][n], r: 0, x: 6 + n * 3, y: 2 + n, owner: 0, round: 1 }))); assert.ok(N.buildNav(Wn).reachable, 'navigační graf časované pasti ignoruje');
+}
+{ // nastavení zápasu a bonusové kolo ve dvou
+  assert.deepEqual(K.cleanCfg(null), K.CFG_DEFAULT); assert.deepEqual(K.cleanCfg({ pick: 999, place: 40, win: 75, rounds: 'x', bonus: 0 }), { ...K.CFG_DEFAULT, place: 40, win: 75, bonus: 0 });
+  const g0 = G.newGame([{ name: 'a', char: 0 }, { name: 'b', char: 1 }], 3, 0, { pick: 8, place: 15, run: 20, win: 30, rounds: 6 }); assert.equal(g0.len.pick, 8 * K.TPS); assert.equal(g0.len.run, 20 * K.TPS); assert.ok(!g0.bonus, '1. kolo bonus nemá'); assert.equal(g0.cfg.win, 30);
+  const g = G.newGame([{ name: 'a', char: 0 }, { name: 'b', char: 1 }], 3, 0); const playRound = (bonusExpected) => {
+    assert.equal(g.bonus, bonusExpected, 'bonus v kole ' + g.round); const picks = []; const n = bonusExpected ? 2 : 1;
+    for (let s = 0; s < n; s++) { assert.equal(g.phase, 'pick'); assert.equal(g.sub, s); for (let i = 0; i < 2; i++) assert.ok(G.pickPiece(g, i, g.offers.findIndex((o) => o.by < 0))); assert.equal(g.phase, 'place'); for (let i = 0; i < 2; i++) assert.ok(harmless(g, i), 'položit'); }
+    assert.equal(g.phase, 'reveal'); assert.equal(g.pieces.filter((p) => p.round === g.round).length, 2 * n, 'v kole se položilo ' + 2 * n + ' kusů'); toPhase(g, 'score'); toPhase(g, 'pick');
+  };
+  playRound(false); playRound(true); playRound(false); playRound(true);
+  const g3 = G.newGame([0, 1, 2].map((i) => ({ name: 'p' + i, char: i })), 3, 0); g3.round = 1; assert.ok(!K.isBonusRound(g3.cfg, 2, 3), 've třech bonus není'); assert.ok(!K.isBonusRound({ ...g.cfg, bonus: 0 }, 2, 2), 'vypnutý bonus');
 }
 // --- všechny tratě jdou dokončit a boti na nich něco dokážou
 for (let s = 0; s < K.STAGES.length; s++) {
@@ -201,8 +254,9 @@ function client() {
   const cs = [0, 1, 2, 3, 4].map(() => client()); cs[0].say({ t: 'create', token: TK[0], name: 'Honza', stage: 2 }); const code = cs[0].last('joined').code; const room = A.rooms.get(code); assert.equal(room.stage, 2);
   for (let i = 1; i < 4; i++) cs[i].say({ t: 'join', code: code.toLowerCase(), token: TK[i], name: 'x' }); cs[4].say({ t: 'join', code, token: TK[4], name: 'y' }); assert.ok(cs[4].last('err').fatal); assert.equal(room.players.length, 4);
   assert.equal(new Set(room.players.map((p) => p.char)).size, 4, 'čtyři různé postavičky');
+  cs[1].say({ t: 'cfg', cfg: { win: 100 } }); assert.equal(room.cfg.win, K.CFG_DEFAULT.win, 'nastavení smí měnit jen host'); cs[0].say({ t: 'cfg', cfg: { win: 100, pick: 8, place: 7, bonus: 0 } }); assert.equal(room.cfg.win, 100); assert.equal(room.cfg.pick, 8); assert.equal(room.cfg.place, K.CFG_DEFAULT.place, 'neplatná hodnota se zahodí'); assert.equal(cs[2].last('state').cfg.win, 100, 'ostatní nastavení vidí');
   cs[1].say({ t: 'start' }); assert.equal(room.phase, 'lobby', 'startovat smí jen host'); cs[1].say({ t: 'stage', stage: 1 }); assert.equal(room.stage, 2); cs[0].say({ t: 'stage', stage: 1 }); assert.equal(room.stage, 1);
-  cs[2].say({ t: 'join', code: 'ZZZZ', token: TK[2] }); cs[0].say({ t: 'start' }); assert.equal(room.phase, 'play'); assert.equal(room.game.stage, 1); assert.equal(cs[3].last('state').you, 3);
+  cs[2].say({ t: 'join', code: 'ZZZZ', token: TK[2] }); cs[0].say({ t: 'start' }); assert.equal(room.phase, 'play'); assert.equal(room.game.stage, 1); assert.equal(room.game.cfg.win, 100); assert.equal(room.game.len.pick, 8 * K.TPS, 'délka výběru podle nastavení'); assert.equal(cs[3].last('game').cfg.pick, 8); assert.equal(cs[3].last('state').you, 3);
   // výběr kusu: po jednom, kdo přijde později, dostane chybu (a nový stav)
   const k = cs[0].last('game').offers.findIndex(([, by]) => by < 0); cs[0].say({ t: 'pick', k }); cs[1].say({ t: 'pick', k }); assert.equal(room.game.pick[1], -1); assert.equal(cs[1].last('game').offers[k][1], 0);
   for (let i = 1; i < 4; i++) cs[i].say({ t: 'pick', k: room.game.offers.findIndex((o) => o.by < 0) }); assert.equal(room.game.phase, 'place'); assert.equal(cs[2].last('game').ph, 'place');

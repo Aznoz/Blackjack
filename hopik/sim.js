@@ -4,14 +4,16 @@ import * as K from './shared.js';
 import * as P from './phys.js';
 const { TPS } = K;
 const S2T = (s) => Math.round(s * TPS);
-export const LEN = { pick: S2T(K.TIME.pick), place: S2T(K.TIME.place), reveal: S2T(K.TIME.reveal), count: S2T(K.TIME.count), run: S2T(K.TIME.run), hurry: S2T(K.TIME.hurry), score: S2T(K.TIME.score) };
+/** Délky fází v ticích podle nastavení zápasu. */
+export const lenOf = (cfg) => ({ pick: S2T(cfg.pick), place: S2T(cfg.place), reveal: S2T(K.TIME.reveal), count: S2T(K.TIME.count), run: S2T(cfg.run), hurry: S2T(K.TIME.hurry), score: S2T(K.TIME.score) });
 
 function rng32(seed) { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
 
-/** Nový zápas. players = [{ name, char, bot }]; stage = číslo stage. */
-export function newGame(players, seed = 1, stage = 0) {
+/** Nový zápas. players = [{ name, char, bot }]; stage = číslo stage; cfg = nastavení zápasu (viz CFG_OPTS). */
+export function newGame(players, seed = 1, stage = 0, cfg = null) {
+  const c = K.cleanCfg(cfg);
   const g = {
-    stage: K.stageIdx(stage), rng: rng32(seed), phase: 'pick', t: 0, round: 0, over: null, ev: [],
+    cfg: c, len: lenOf(c), bonus: false, sub: 0, stage: K.stageIdx(stage), rng: rng32(seed), phase: 'pick', t: 0, round: 0, over: null, ev: [],
     players: players.map((p, i) => ({ i, name: p.name, char: p.char, bot: p.bot || 0, pts: 0, left: false })),
     pieces: [], nextId: 1, W: null, offers: [], pick: [], piece: [], placed: [], ghost: [], run: null, roundRes: null, rt: 0, history: [],
   };
@@ -29,7 +31,7 @@ function makeOffers(g) {
 }
 function setPhase(g, ph) { g.phase = ph; g.t = 0; g.ev.push(['ph', ph]); }
 export function startRound(g) {
-  g.round++; g.roundRes = null; g.W = P.buildWorld(g.stage, g.pieces);
+  g.round++; g.roundRes = null; g.W = P.buildWorld(g.stage, g.pieces); g.sub = 0; g.bonus = K.isBonusRound(g.cfg, g.round, active(g).length);
   g.offers = makeOffers(g); g.pick = g.players.map(() => -1); g.piece = g.players.map(() => null); g.placed = g.players.map(() => false);
   g.ghost = g.players.map(() => ({ x: 14, y: 8, r: 0 }));
   g.players.forEach((p, i) => { if (p.left) g.pick[i] = -2; });
@@ -73,6 +75,10 @@ function autoPlace(g, i) {
 function endPlace(g) {
   if (g.phase !== 'place') return;
   g.players.forEach((p, i) => { if (!g.placed[i]) g.placed[i] = true; });
+  if (g.bonus && g.sub === 0) {   // bonusové kolo: každý si vybere a položí ještě jeden kus
+    g.sub = 1; g.offers = makeOffers(g); g.pick = g.players.map((p) => (p.left ? -2 : -1)); g.piece = g.players.map(() => null); g.placed = g.players.map(() => false);
+    g.ghost = g.players.map(() => ({ x: 14, y: 8, r: 0 })); setPhase(g, 'pick'); return;
+  }
   setPhase(g, 'reveal');
 }
 
@@ -84,7 +90,7 @@ function startCount(g) {
     const b = P.newBody(S.spawn[0] + (p.left ? 0 : (k - (n - 1) / 2) * 0.4), S.spawn[1] - P.PH / 2 - 0.01); if (!p.left) k++;
     g.run.bodies.push(b); g.run.fin.push(-1); g.run.dead.push(!!p.left); g.run.kills.push(0); g.run.deadAt.push(-1); g.run.cause.push(0);
   });
-  g.inp = g.players.map(() => 0); g.rt = -LEN.count; for (const b of g.run.bodies) b.seen = g.rt; g.W.noFx = false;
+  g.inp = g.players.map(() => 0); g.rt = -g.len.count; for (const b of g.run.bodies) b.seen = g.rt; g.W.noFx = false;
   g.W.onCrumble = (gid, tick) => g.ev.push(['cr', gid, tick]);
   setPhase(g, 'count');
 }
@@ -126,11 +132,11 @@ function stepRun(g) {
     if (p.bot) { const fx = []; P.stepBody(W, b, g.inp[i], tk, fx); for (const e of fx) if (e === 'j' || e === 'w' || e === 'b') g.ev.push(['j', i, e]); if (b.crush) return kill(g, i, 0); }
     const hz = P.hazardAt(W, b.x, b.y, p.bot || b.k === undefined ? tk : b.k, p.bot ? 0.08 : 0.2);
     if (hz) return kill(g, i, hz);
-    if (P.inGoal(W, b)) { R.fin[i] = tk; R.order.push(i); if (R.first < 0) R.first = i; g.ev.push(['f', i, R.order.length]); if (R.hurryAt < 0) R.hurryAt = tk + LEN.hurry; }
+    if (P.inGoal(W, b)) { R.fin[i] = tk; R.order.push(i); if (R.first < 0) R.first = i; g.ev.push(['f', i, R.order.length]); if (R.hurryAt < 0) R.hurryAt = tk + g.len.hurry; }
   });
   const act = g.players.filter((p, i) => !p.left && !R.dead[i] && R.fin[i] < 0);
   if (!act.length && R.endAt < 0) R.endAt = tk + 25;
-  if ((R.endAt >= 0 && tk >= R.endAt) || tk >= LEN.run || (R.hurryAt >= 0 && tk >= R.hurryAt)) endRun(g);
+  if ((R.endAt >= 0 && tk >= R.endAt) || tk >= g.len.run || (R.hurryAt >= 0 && tk >= R.hurryAt)) endRun(g);
 }
 function endRun(g) {
   const R = g.run; const act = active(g); const fins = R.order.slice();
@@ -141,22 +147,22 @@ function endRun(g) {
   g.roundRes = { n: g.round, rows, all, none: fins.length === 0 };
   g.history.push(g.roundRes);
   const top = Math.max(...g.players.map((p) => p.pts)); const leaders = g.players.filter((p) => p.pts === top);
-  if ((top >= K.WIN_POINTS && leaders.length === 1) || g.round >= K.MAX_ROUNDS || active(g).filter((p) => !p.bot).length === 0) g.over = { winner: leaders.length === 1 ? leaders[0].i : -1, pts: g.players.map((p) => p.pts), rounds: g.round };
+  if ((top >= g.cfg.win && leaders.length === 1) || g.round >= g.cfg.rounds || active(g).filter((p) => !p.bot).length === 0) g.over = { winner: leaders.length === 1 ? leaders[0].i : -1, pts: g.players.map((p) => p.pts), rounds: g.round };
   setPhase(g, 'score');
 }
 
 /** Jeden tik hry (30× za sekundu). Události (g.ev) si server po každém tiku odebere. */
 export function tick(g) {
-  if (g.over && g.phase === 'score' && g.t >= LEN.score) { setPhase(g, 'over'); return; }
+  if (g.over && g.phase === 'score' && g.t >= g.len.score) { setPhase(g, 'over'); return; }
   if (g.phase === 'over') return;
   g.t++;
   switch (g.phase) {
-    case 'pick': if (g.t >= LEN.pick) endPick(g); break;
-    case 'place': if (g.t >= LEN.place) { g.players.forEach((p, i) => { if (!g.placed[i]) autoPlace(g, i); }); endPlace(g); } break;
-    case 'reveal': if (g.t >= LEN.reveal) startCount(g); break;
-    case 'count': g.rt++; P.stepWorld(g.W, g.rt); if (g.t >= LEN.count) { g.rt = 0; for (const b of g.run.bodies) b.seen = 0; setPhase(g, 'run'); g.ev.push(['go']); } break;
+    case 'pick': if (g.t >= g.len.pick) endPick(g); break;
+    case 'place': if (g.t >= g.len.place) { g.players.forEach((p, i) => { if (!g.placed[i]) autoPlace(g, i); }); endPlace(g); } break;
+    case 'reveal': if (g.t >= g.len.reveal) startCount(g); break;
+    case 'count': g.rt++; P.stepWorld(g.W, g.rt); if (g.t >= g.len.count) { g.rt = 0; for (const b of g.run.bodies) b.seen = 0; setPhase(g, 'run'); g.ev.push(['go']); } break;
     case 'run': g.rt++; stepRun(g); break;
-    case 'score': if (g.t >= LEN.score && !g.over) startRound(g); break;
+    case 'score': if (g.t >= g.len.score && !g.over) startRound(g); break;
     default:
   }
 }

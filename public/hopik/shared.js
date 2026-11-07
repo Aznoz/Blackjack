@@ -3,10 +3,17 @@
 export const COLS = 32, ROWS = 18;
 export const TPS = 30, DT = 1 / TPS;                 // 30 tiků za sekundu
 export const T = { EMPTY: 0, SOLID: 1, ICE: 2, BOUNCE: 3, CRUMBLE: 4, DEVICE: 5 };   // dlaždice; 1–5 jsou pevné
-export const WIN_POINTS = 50, MAX_ROUNDS = 12;       // zápas: kdo první dosáhne 50 bodů (po kole), nejvýš 12 kol
+export const WIN_POINTS = 50, MAX_ROUNDS = 12;       // výchozí zápas: kdo první dosáhne 50 bodů (po kole), nejvýš 12 kol
 export const PTS = { finish: 10, first: 5, solo: 10, kill: 2, killMax: 6 };
 export const TIME = { pick: 15, place: 25, reveal: 1.5, count: 3, run: 30, hurry: 10, score: 6 };   // sekundy jednotlivých fází
 export const MAX_PLAYERS = 4;
+// Nastavení zápasu, které volí zakladatel hry v čekárně (pick, place, run = sekundy fází; win = body k výhře; rounds = nejvýš kol; bonus = bonusové kolo při dvou hráčích).
+export const CFG_OPTS = { pick: [8, 15, 25, 40], place: [15, 25, 40, 60], run: [20, 30, 45, 60], win: [30, 50, 75, 100], rounds: [6, 12, 20, 30], bonus: [0, 1] };
+export const CFG_DEFAULT = { pick: TIME.pick, place: TIME.place, run: TIME.run, win: WIN_POINTS, rounds: MAX_ROUNDS, bonus: 1 };
+/** Zkontroluje nastavení zápasu (jen povolené hodnoty, jinak výchozí). */
+export function cleanCfg(c) { const o = {}; for (const k of Object.keys(CFG_DEFAULT)) { const v = c ? Number(c[k]) : NaN; o[k] = CFG_OPTS[k].includes(v) ? v : CFG_DEFAULT[k]; } return o; }
+/** Je v tomhle kole bonusový výběr navíc? (dva aktivní hráči, každé druhé kolo) */
+export const isBonusRound = (cfg, round, players) => !!cfg.bonus && players === 2 && round % 2 === 0;
 
 // ------------------------------------------------------------------ kusy
 // cells = tvary v základní poloze (x, y), y roste dolů. kind: solid (pevná plošina), hazard (past), special (rozsah se rezervuje).
@@ -22,15 +29,21 @@ export const PIECES = {
   crumble: { name: 'Drolící se plošina', desc: 'Po došlápnutí se za chvilku propadne.', kind: 'solid', tile: 4, cells: [[0, 0], [1, 0], [2, 0]], w: 5 },
   bounce: { name: 'Odrazovadlo', desc: 'Vystřelí tě vysoko do vzduchu.', kind: 'solid', tile: 3, cells: [[0, 0], [1, 0]], w: 5 },
   mover: { name: 'Pojízdná plošina', desc: 'Plošina 3 políčka jezdí sem a tam (otočením svisle).', kind: 'special', cells: [[0, 0], [1, 0], [2, 0]], w: 5 },
-  spikes: { name: 'Bodáky', desc: 'Tři bodáky, dotek znamená konec.', kind: 'hazard', cells: [[0, 0], [1, 0], [2, 0]], face: 0, w: 9 },
+  spikes: { name: 'Bodáky', desc: 'Blok s hroty na jedné straně. Hroty zabíjejí, ze zbylých stran se na něm dá stát. Otáčením určíš, kde hroty jsou.', kind: 'hazard', cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]], face: 0, w: 9 },
   saw: { name: 'Pila', desc: 'Točivá pila 2 × 2, dotek znamená konec.', kind: 'hazard', cells: [[0, 0], [1, 0], [0, 1], [1, 1]], w: 7 },
   cannon: { name: 'Dělo', desc: 'Každé dvě vteřiny vystřelí kulku.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 1, w: 6 },
   flame: { name: 'Plamenomet', desc: 'Střídavě chrlí oheň do vzdálenosti 3 políček.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 0, w: 5 },
   blades: { name: 'Vrtule', desc: 'Dvě dlouhé lopatky se točí dokola, dotek znamená konec.', kind: 'hazard', tile: 5, cells: [[0, 0]], w: 5 },
   pendulum: { name: 'Kyvadlo', desc: 'Ostnatá koule se houpá na řetězu z jednoho políčka.', kind: 'hazard', tile: 5, cells: [[0, 0]], w: 5 },
-  thwomp: { name: 'Padací kámen', desc: 'Skála visí nahoře, pak se zřítí na dno sloupce (2 × 6) a zase vyjede.', kind: 'hazard', cells: Array.from({ length: 12 }, (_, i) => [i % 2, Math.floor(i / 2)]), w: 4 },
+  thwomp: { name: 'Padací kámen', desc: 'Kámen se prudce vrhne po dráze 2 × 6 a pomalu se vrátí. Zabíjí dotekem zespodu i ze stran, shora na něm můžeš stát. Otáčením měníš směr dráhy.', kind: 'hazard', face: 2, cells: Array.from({ length: 12 }, (_, i) => [i % 2, Math.floor(i / 2)]), w: 4 },
   laser: { name: 'Laser', desc: 'Střídavě vyšle dlouhý paprsek až k první zdi. Před výstřelem bliká.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 1, w: 5 },
   rsaw: { name: 'Pila na kolejnici', desc: 'Pila jezdí sem a tam po dráze dlouhé 6 políček (otočením svisle).', kind: 'hazard', cells: [[0, 0]], w: 5 },
+  retract: { name: 'Výsuvné bodáky', desc: 'Blok, ze kterého hroty střídavě vyjíždějí (nejdřív varovně zacukají) a zase se schovají. Otáčením určíš stranu.', kind: 'hazard', cells: [[0, 0], [1, 0], [2, 0], [0, 1], [1, 1], [2, 1]], face: 0, w: 6 },
+  icicle: { name: 'Rampouch', desc: 'Ostrý rampouch visí ze stropního bločku, zatřese se a spadne až na zem. Pak znovu doroste.', kind: 'hazard', tile: 5, cells: [[0, 0]], w: 5 },
+  bumper: { name: 'Odrážeč', desc: 'Kulatý odrážeč jako v pinballu: kdo se ho dotkne, je odpálen pryč. Nezabíjí, ale umí zničit skok.', kind: 'hazard', cells: [[0, 0]], w: 5 },
+  vanish: { name: 'Mizející plošina', desc: 'Plošina 3 políčka, která chvíli bliká a pak zmizí, aby se zase objevila.', kind: 'hazard', cells: [[0, 0], [1, 0], [2, 0]], w: 5 },
+  hole: { name: 'Černá díra', desc: 'Střídavě přitahuje všechno do vzdálenosti 3,5 políčka. Uprostřed je smrtelná.', kind: 'hazard', cells: [[0, 0]], w: 4 },
+  boulder: { name: 'Valoun', desc: 'Obrovská koule se rozkutálí po dráze dlouhé 8 políček. Přeskoč ji. Otočením se kutálí na druhou stranu.', kind: 'hazard', cells: Array.from({ length: 8 }, (_, i) => [i, 0]), face: 1, w: 4 },
   fan: { name: 'Ventilátor', desc: 'Střídavě fouká do vzdálenosti 5 políček: zvedá nebo odfoukne.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 0, w: 4 },
 };
 export const PIECE_IDS = Object.keys(PIECES);
@@ -43,6 +56,12 @@ export const THW = { period: 120, wait: 60, fall: 5, rest: 20, w: 2, h: 6, s: 2 
 export const LASER_PERIOD = 120, LASER_WARN = 20, LASER_ON = 40, LASER_R = 0.11;       // laser: perioda, varování (bliká), výstřel, polotloušťka paprsku
 export const RSAW_LEN = 6, RSAW_PERIOD = 130, RSAW_R = 0.5;                            // pila na kolejnici: délka dráhy, perioda, poloměr
 export const FAN = { period: 120, on: 80, len: 5, half: 0.85, wind: 5.5, lift: 100 };  // ventilátor: perioda, doba fouknutí, dosah, poloviční šířka, odfuk (políček/s), zrychlení vzhůru
+export const RETRACT = { period: 100, warn: 14, on: 34 };                               // výsuvné bodáky: perioda, varování (cukají), doba venku
+export const ICICLE = { period: 170, fallAt: 110, grow: 18, shatter: 10, w: 0.22, len: 0.95, g: 40 };  // rampouch: perioda, tik pádu, doba dorůstání, doba tříštění, polovina šířky, délka, zrychlení
+export const BUMP = { r: 0.52, v: 17 };                                                 // odrážeč: poloměr, rychlost odpálení
+export const VANISH = { period: 150, solid: 95, warn: 25 };                             // mizející plošina: perioda, pevná doba, varování (bliká, pořád pevná); zbytek periody chybí
+export const HOLE = { period: 150, on: 90, warn: 16, r: 3.5, core: 0.42, pull: 62 };    // černá díra: perioda, doba působení, varování, dosah, smrtelné jádro, síla přitahování
+export const BOULDER = { period: 190, roll: 125, len: 8, r: 0.85 };                     // valoun: perioda, doba kutálení, délka dráhy, poloměr
 export const CRUMBLE_T = 14;                           // tiků od došlápnutí do propadnutí
 
 /** Buňky kusu po otočení o r × 90° (normalizované, min x = min y = 0). Pojízdná plošina vrací celý rezervovaný pás. */
@@ -54,7 +73,7 @@ export function pieceCells(type, r) {
     return out;
   }
   if (type === 'rsaw') { const out = []; for (let i = 0; i < RSAW_LEN; i++) out.push(r % 2 === 0 ? [i, 0] : [0, i]); return out; }
-  if (type === 'thwomp') return P.cells.map(([x, y]) => [x, y]);
+  if (type === 'boulder') return P.cells.map(([x, y]) => [x, y]);
   let c = P.cells.map(([x, y]) => [x, y]);
   for (let k = 0; k < r; k++) c = c.map(([x, y]) => [-y, x]);
   const mx = Math.min(...c.map((q) => q[0])), my = Math.min(...c.map((q) => q[1]));
@@ -63,7 +82,13 @@ export function pieceCells(type, r) {
 /** Směr pasti po otočení (0 nahoru, 1 doprava, 2 dolů, 3 doleva). */
 export const faceOf = (type, r) => ((PIECES[type].face || 0) + (((r % 4) + 4) % 4)) % 4;
 export const DIRV = [[0, -1], [1, 0], [0, 1], [-1, 0]];
-export const rotatable = (type) => !['saw', 'block', 'blades', 'pendulum', 'thwomp'].includes(type);
+export const rotatable = (type) => !['saw', 'block', 'blades', 'pendulum', 'icicle', 'bumper', 'vanish', 'hole'].includes(type);
+/** Rozdělení bodáků na buňky s hroty (strana, kam míří) a pevný základ. */
+export function spikeSplit(type, r) {
+  const cells = pieceCells(type, r), f = faceOf(type, r), v = (c) => (f === 0 || f === 2 ? c[1] : c[0]);
+  const ext = f === 0 || f === 3 ? Math.min(...cells.map(v)) : Math.max(...cells.map(v));
+  return { spike: cells.filter((c) => v(c) === ext), base: cells.filter((c) => v(c) !== ext), face: f };
+}
 /** Rozměr (šířka, výška) rezervované oblasti kusu. */
 export function pieceSize(type, r) { const c = pieceCells(type, r); return [Math.max(...c.map((q) => q[0])) + 1, Math.max(...c.map((q) => q[1])) + 1]; }
 

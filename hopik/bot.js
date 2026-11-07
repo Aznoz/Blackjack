@@ -34,11 +34,15 @@ export function botPlace(g, i, level) {
   for (let n = 0; n < 40; n++) {
     if (aim) {
       const [cx, cy] = node();
-      if (type === 'spikes') cands.push({ x: cx - rnd(g, 3), y: cy, r: 0 });
+      if (type === 'spikes' || type === 'retract') cands.push({ x: cx - rnd(g, 3), y: cy - 1, r: 0 });
+      else if (type === 'icicle') cands.push({ x: cx, y: cy - 4 - rnd(g, 3), r: 0 });
+      else if (type === 'bumper' || type === 'hole') cands.push({ x: cx - 1 + rnd(g, 3), y: cy - 1 - rnd(g, 2), r: 0 });
+      else if (type === 'vanish') cands.push({ x: cx - rnd(g, 3), y: cy + 1, r: 0 });
+      else if (type === 'boulder') cands.push({ x: cx - rnd(g, 8), y: cy - 1, r: rnd(g, 2) });
       else if (type === 'saw') cands.push({ x: cx - rnd(g, 2), y: cy - 1, r: 0 });
       else if (type === 'blades') cands.push({ x: cx, y: cy - 1 - rnd(g, 2), r: 0 });
       else if (type === 'pendulum') cands.push({ x: cx - 1 + rnd(g, 3), y: cy - 3 - rnd(g, 2), r: 0 });
-      else if (type === 'thwomp') cands.push({ x: cx - rnd(g, 2), y: cy - 4 - rnd(g, 2), r: 0 });
+      else if (type === 'thwomp') cands.push({ x: cx - rnd(g, 2), y: cy - 5 - rnd(g, 2), r: 0 });
       else if (type === 'rsaw') cands.push({ x: cx - rnd(g, 5), y: cy, r: rnd(g, 4) < 3 ? 0 : 1 });
       else if (type === 'fan') cands.push({ x: cx - 1 + rnd(g, 3), y: cy, r: rnd(g, 4) });
       else if (type === 'cannon' || type === 'laser') { const s = g.rng() < 0.5 ? 1 : -1, d = 4 + rnd(g, 6); cands.push({ x: cx + s * d, y: cy, r: s > 0 ? rotFor(type, 3) : rotFor(type, 1) }); }

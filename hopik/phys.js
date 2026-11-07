@@ -14,7 +14,7 @@ const FALL = -1;                                        // kód smrti pádem (os
 // ------------------------------------------------------------------ svět
 export function buildWorld(stageIdx, pieces) {
   const S = K.STAGES[K.stageIdx(stageIdx)];
-  const W = { stage: S, g: new Uint8Array(COLS * ROWS), occ: new Uint8Array(COLS * ROWS), gone: new Uint8Array(COLS * ROWS), sp: new Uint8Array(COLS * ROWS), hasSp: false, movers: [], spikes: [], saws: [], cannons: [], flames: [], blades: [], pends: [], thwomps: [], lasers: [], rsaws: [], fans: [], grp: new Map(), crumbleAt: new Map(), groups: [], onCrumble: null, noFx: false, pieces: (pieces || []).slice() };
+  const W = { stage: S, g: new Uint8Array(COLS * ROWS), occ: new Uint8Array(COLS * ROWS), gone: new Uint8Array(COLS * ROWS), sp: new Uint8Array(COLS * ROWS), hasSp: false, movers: [], spikes: [], saws: [], cannons: [], flames: [], blades: [], pends: [], thwomps: [], lasers: [], rsaws: [], fans: [], rspikes: [], icicles: [], bumpers: [], vanish: [], holes: [], boulders: [], grp: new Map(), crumbleAt: new Map(), groups: [], onCrumble: null, noFx: false, pieces: (pieces || []).slice() };
   for (const [x, y, w, h, t] of S.rects) for (let j = y; j < y + h; j++) for (let i = x; i < x + w; i++) { W.g[j * COLS + i] = t; W.occ[j * COLS + i] = 1; }
   for (const p of W.pieces) addPiece(W, p);
   refreshBeams(W);
@@ -26,6 +26,7 @@ export function addPlaced(W, p) { W.pieces.push(p); addPiece(W, p); refreshBeams
 function refreshBeams(W) {
   for (const c of W.cannons) c.life = bulletLife(W, c);
   for (const l of W.lasers) { l.len = freeRun(W, l.sx, l.sy, l.vx, l.vy, 60, l.x, l.y); setBeamRect(l, l.len, K.LASER_R); }
+  for (const c of W.icicles) c.len = Math.max(0, freeRun(W, c.x + 0.5, c.y + 1, 0, 1, 16, c.x, c.y) - K.ICICLE.len);
   for (const f of W.fans) { f.len = freeRun(W, f.sx, f.sy, f.vx, f.vy, K.FAN.len, f.x, f.y); setBeamRect(f, f.len, K.FAN.half); }
 }
 /** Jak daleko (v políčkách, nejvýš max) se od (sx, sy) ve směru (vx, vy) dojde, než se narazí na pevnou dlaždici (vlastní políčko zařízení se nepočítá). */
@@ -46,12 +47,26 @@ function addPiece(W, p) {
   } else if (p.type === 'mover') {
     const ax = p.r % 2 === 0 ? 0 : 1;
     W.movers.push({ id: p.id, owner: p.owner, ax, cx: ax === 0 ? p.x + 4.5 : p.x + 1.5, cy: ax === 0 ? p.y + 0.5 : p.y + 4.5, phase: (p.id * 37) % K.MOVER_PERIOD });
-  } else if (p.type === 'spikes') {
-    for (const [dx, dy] of cells) {
+  } else if (p.type === 'spikes' || p.type === 'retract') {
+    const sp = K.spikeSplit(p.type, p.r); const rects = [];
+    for (const [dx, dy] of sp.base) W.g[(p.y + dy) * COLS + p.x + dx] = T.SOLID;   // pevný základ, na kterém se dá stát
+    for (const [dx, dy] of sp.spike) {
       const x = p.x + dx, y = p.y + dy; let r;
-      if (face === 0) r = [x + 0.15, y + 0.5, x + 0.85, y + 1]; else if (face === 2) r = [x + 0.15, y, x + 0.85, y + 0.5]; else if (face === 1) r = [x + 0.5, y + 0.15, x + 1, y + 0.85]; else r = [x, y + 0.15, x + 0.5, y + 0.85];
-      W.spikes.push([r[0], r[1], r[2], r[3], p.owner]);
+      if (face === 0) r = [x + 0.12, y + 0.2, x + 0.88, y + 1]; else if (face === 2) r = [x + 0.12, y, x + 0.88, y + 0.8]; else if (face === 1) r = [x, y + 0.12, x + 0.8, y + 0.88]; else r = [x + 0.2, y + 0.12, x + 1, y + 0.88];
+      rects.push(r);
     }
+    if (p.type === 'spikes') for (const r of rects) W.spikes.push([r[0], r[1], r[2], r[3], p.owner]);
+    else W.rspikes.push({ rects, cells: sp.spike.map(([dx, dy]) => [p.x + dx, p.y + dy]), face, owner: p.owner, phase: (p.id * 43) % K.RETRACT.period, id: p.id });
+  } else if (p.type === 'icicle') {
+    W.g[p.y * COLS + p.x] = T.DEVICE; W.icicles.push({ x: p.x, y: p.y, len: 0, phase: (p.id * 59) % K.ICICLE.period, owner: p.owner, id: p.id });
+  } else if (p.type === 'bumper') {
+    W.bumpers.push({ cx: p.x + 0.5, cy: p.y + 0.5, owner: p.owner, id: p.id });
+  } else if (p.type === 'vanish') {
+    W.vanish.push({ x: p.x, y: p.y, phase: (p.id * 61) % K.VANISH.period, owner: p.owner, id: p.id });
+  } else if (p.type === 'hole') {
+    W.holes.push({ cx: p.x + 0.5, cy: p.y + 0.5, phase: (p.id * 67) % K.HOLE.period, owner: p.owner, id: p.id });
+  } else if (p.type === 'boulder') {
+    W.boulders.push({ x: p.x, y: p.y, dir: p.r % 2 === 0 ? 1 : -1, phase: (p.id * 71) % K.BOULDER.period, owner: p.owner, id: p.id });
   } else if (p.type === 'saw') {
     W.saws.push({ x: p.x + 1, y: p.y + 1, r: 0.9, owner: p.owner });
   } else if (p.type === 'blades') {
@@ -59,7 +74,8 @@ function addPiece(W, p) {
   } else if (p.type === 'pendulum') {
     W.g[p.y * COLS + p.x] = T.DEVICE; W.pends.push({ px: p.x + 0.5, py: p.y + 0.5, phase: (p.id * 47) % K.PEND_PERIOD, owner: p.owner, id: p.id });
   } else if (p.type === 'thwomp') {
-    W.thwomps.push({ x: p.x, y: p.y, phase: (p.id * 31) % K.THW.period, owner: p.owner, id: p.id });
+    const [vx, vy] = K.DIRV[face], tr = K.THW.h - K.THW.s;   // kámen se vrhá ve směru face; základní (horní) poloha je na opačném konci dráhy
+    W.thwomps.push({ x: p.x, y: p.y, dir: face, vx, vy, sx: p.x + (face === 3 ? tr : 0), sy: p.y + (face === 0 ? tr : 0), phase: (p.id * 31) % K.THW.period, owner: p.owner, id: p.id });
   } else if (p.type === 'rsaw') {
     W.rsaws.push({ x: p.x, y: p.y, ax: p.r % 2, phase: (p.id * 37) % K.RSAW_PERIOD, owner: p.owner, id: p.id });
   } else if (p.type === 'laser' || p.type === 'fan') {
@@ -106,14 +122,38 @@ export function thwompOff(t, tick) {
   if (u < H.wait) return 0; if (u < H.wait + H.fall) { const k = (u - H.wait) / H.fall; return travel * k * k; }
   if (u < H.wait + H.fall + H.rest) return travel; const k = (u - H.wait - H.fall - H.rest) / (H.period - H.wait - H.fall - H.rest); return travel * (1 - k);
 }
-export function thwompBox(t, tick, out = [0, 0, 0, 0]) { const o = thwompOff(t, tick); out[0] = t.x; out[1] = t.y + o; out[2] = t.x + K.THW.s; out[3] = t.y + o + K.THW.s; return out; }
+/** Levý horní roh padacího kamene v daném ticku (kámen je pořád vzpřímený, mění se jen směr dráhy). */
+export function thwompPos(t, tick, out = [0, 0]) { const o = thwompOff(t, tick); out[0] = t.sx + t.vx * o; out[1] = t.sy + t.vy * o; return out; }
+export function thwompBox(t, tick, out = [0, 0, 0, 0]) { thwompPos(t, tick, rp); out[0] = rp[0]; out[1] = rp[1]; out[2] = rp[0] + K.THW.s; out[3] = rp[1] + K.THW.s; return out; }
+/** Výsuvné bodáky: 0 schované, 1 varují (cukají), 2 venku. */
+export function retractState(o, tick) { const R = K.RETRACT; const u = (((tick + o.phase) % R.period) + R.period) % R.period; return u < R.period - R.warn - R.on ? 0 : u < R.period - R.on ? 1 : 2; }
+/** Rampouch: { off: o kolik už spadl, vis: je vidět, live: je smrtelný, grow: 0..1 dorůstání, shake: třese se }. */
+export function icicleState(c, tick, out = {}) {
+  const I = K.ICICLE; const u = (((tick + c.phase) % I.period) + I.period) % I.period; const fall = Math.sqrt((2 * c.len) / I.g) * K.TPS; const land = I.fallAt + Math.ceil(fall);
+  out.shake = u >= I.fallAt - 22 && u < I.fallAt; out.grow = 1; out.vis = true; out.live = true; out.off = 0;
+  if (u >= I.fallAt) { const s = Math.min(fall, u - I.fallAt) * K.DT; out.off = Math.min(c.len, 0.5 * I.g * s * s); if (u >= land) { out.live = false; out.vis = u < land + I.shatter; } }
+  if (u >= I.period - I.grow) { out.vis = true; out.live = false; out.off = 0; out.grow = (u - (I.period - I.grow)) / I.grow; }
+  return out;
+}
+/** Mizející plošina: 0 pevná, 1 varuje (bliká, ještě pevná), 2 chybí. */
+export function vanishState(v, tick) { const V = K.VANISH; const u = (((tick + v.phase) % V.period) + V.period) % V.period; return u < V.solid ? 0 : u < V.solid + V.warn ? 1 : 2; }
+/** Černá díra: 0 klidná, 1 se rozbíhá (varování), 2 přitahuje. */
+export function holeState(h, tick) { const H = K.HOLE; const u = (((tick + h.phase) % H.period) + H.period) % H.period; return u < H.period - H.on - H.warn ? 0 : u < H.period - H.on ? 1 : 2; }
+/** Valoun: [střed x, střed y, úhel, stav] — stav 0 schovaný, 1 dorůstá na startu (nesmrtelný), 2 se kutálí. */
+export function boulderPos(b, tick, out = [0, 0, 0, 0]) {
+  const B = K.BOULDER; const u = (((tick + b.phase) % B.period) + B.period) % B.period; const span = B.len - 2 * B.r;
+  const f = u < B.roll ? Math.pow(u / B.roll, 1.35) : 1; const d = b.dir > 0 ? B.r + span * f : B.len - B.r - span * f;
+  out[0] = b.x + d; out[1] = b.y + 1 - B.r; out[2] = (b.dir * d) / B.r; out[3] = u < B.roll ? 2 : u < B.roll + 25 ? 0 : 1;
+  if (out[3] === 1) { out[0] = b.x + (b.dir > 0 ? B.r : B.len - B.r); out[2] = 0; }
+  return out;
+}
 /** Stav laseru: 0 nic, 1 varuje (bliká), 2 pálí. */
 export function laserState(l, tick) { const u = (((tick + l.phase) % K.LASER_PERIOD) + K.LASER_PERIOD) % K.LASER_PERIOD; return u < K.LASER_PERIOD - K.LASER_WARN - K.LASER_ON ? 0 : u < K.LASER_PERIOD - K.LASER_ON ? 1 : 2; }
 /** Střed pily na kolejnici. */
 export function rsawPos(s, tick, out = [0, 0]) { const d = (K.RSAW_LEN - 1) * (0.5 + 0.5 * Math.sin(TAU2 * ((tick + s.phase) / K.RSAW_PERIOD))); out[0] = s.x + 0.5 + (s.ax === 0 ? d : 0); out[1] = s.y + 0.5 + (s.ax === 1 ? d : 0); return out; }
 export const fanOn = (f, tick) => ((((tick + f.phase) % K.FAN.period) + K.FAN.period) % K.FAN.period) < K.FAN.on;
 /** Pole věcí, jejichž stav závisí na čase (navigační graf bota s nimi nepočítá). */
-export const TIMED = ['movers', 'cannons', 'flames', 'blades', 'pends', 'thwomps', 'lasers', 'rsaws', 'fans'];
+export const TIMED = ['movers', 'cannons', 'flames', 'blades', 'pends', 'thwomps', 'lasers', 'rsaws', 'fans', 'rspikes', 'icicles', 'bumpers', 'vanish', 'holes', 'boulders'];
 /** Je kulka z děla `c` v ticku `tick`? Vrací polohy aktivních kulek (pole [x, y]) – pro kreslení i kolize. */
 export function bulletsOf(c, tick, out = []) {
   const age0 = (tick + c.phase) % K.CANNON_PERIOD;
@@ -141,7 +181,7 @@ export function newBody(x, y) { return { x, y, vx: 0, vy: 0, face: 1, gr: false,
 export const copyBody = (p) => ({ ...p });
 
 let ox0 = 0, ox1 = 0, oy0 = 0, oy1 = 0;
-const mb = [0, 0, 0, 0], rp = [0, 0];
+const mb = [0, 0, 0, 0], rp = [0, 0], ic = {}, bp = [0, 0, 0, 0];
 /** Překrývá tělo se středem (x, y) nějakou pevnou věc? Mezní hodnoty překryvu zůstanou v ox0..oy1. */
 function overlap(W, x, y, tick) {
   const x0 = x - PW / 2, x1 = x + PW / 2, y0 = y - PH / 2, y1 = y + PH / 2;
@@ -155,6 +195,14 @@ function overlap(W, x, y, tick) {
   for (let i = 0; i < W.movers.length; i++) {
     moverBox(W.movers[i], tick, mb);
     if (x0 < mb[2] && x1 > mb[0] && y0 < mb[3] && y1 > mb[1]) { hit = true; if (mb[0] < ox0) ox0 = mb[0]; if (mb[2] > ox1) ox1 = mb[2]; if (mb[1] < oy0) oy0 = mb[1]; if (mb[3] > oy1) oy1 = mb[3]; }
+  }
+  for (let i = 0; i < W.thwomps.length; i++) {
+    thwompBox(W.thwomps[i], tick, mb);
+    if (x0 < mb[2] && x1 > mb[0] && y0 < mb[3] && y1 > mb[1]) { hit = true; if (mb[0] < ox0) ox0 = mb[0]; if (mb[2] > ox1) ox1 = mb[2]; if (mb[1] < oy0) oy0 = mb[1]; if (mb[3] > oy1) oy1 = mb[3]; }
+  }
+  for (let i = 0; i < W.vanish.length; i++) {
+    const v = W.vanish[i]; if (vanishState(v, tick) === 2) continue;
+    if (x0 < v.x + 3 && x1 > v.x && y0 < v.y + 1 && y1 > v.y) { hit = true; if (v.x < ox0) ox0 = v.x; if (v.x + 3 > ox1) ox1 = v.x + 3; if (v.y < oy0) oy0 = v.y; if (v.y + 1 > oy1) oy1 = v.y + 1; }
   }
   return hit;
 }
@@ -177,7 +225,12 @@ export function hazardAt(W, x, y, tick, shrink = 0.08) {
   const circ = (cx, cy, r) => { const nx = Math.max(x0, Math.min(cx, x1)), ny = Math.max(y0, Math.min(cy, y1)); const dx = nx - cx, dy = ny - cy; return dx * dx + dy * dy < r * r; };
   for (const b of W.blades) { const a = bladeAngle(b, tick), ca = Math.cos(a), sa = Math.sin(a); for (let u = -K.BLADE_LEN; u <= K.BLADE_LEN + 1e-6; u += 0.25) if (circ(b.px + ca * u, b.py + sa * u, K.BLADE_R)) return b.owner + 1; }
   for (const p of W.pends) { const q = pendBall(p, tick); if (circ(q[0], q[1], K.PEND_R * 0.88)) return p.owner + 1; }
-  for (const t of W.thwomps) { thwompBox(t, tick, mb); if (x0 < mb[2] && x1 > mb[0] && y0 < mb[3] && y1 > mb[1]) return t.owner + 1; }
+  { const bx0 = x - PW / 2 - 0.04, bx1 = x + PW / 2 + 0.04, by0 = y - PH / 2 - 0.04, by1 = y + PH / 2 + 0.04, feet = y + PH / 2;   // kámen zabíjí dotekem ze stran a zespodu, shora (nohy u horní hrany) je bezpečný
+    for (const t of W.thwomps) { thwompBox(t, tick, mb); if (bx0 < mb[2] && bx1 > mb[0] && by0 < mb[3] && by1 > mb[1] && feet > mb[1] + 0.22) return t.owner + 1; } }
+  for (const o of W.rspikes) if (retractState(o, tick) === 2) for (const s of o.rects) if (x0 < s[2] && x1 > s[0] && y0 < s[3] && y1 > s[1]) return o.owner + 1;
+  for (const c of W.icicles) { icicleState(c, tick, ic); if (ic.live) { const ry0 = c.y + 1 + ic.off + 0.05; if (x0 < c.x + 0.5 + K.ICICLE.w && x1 > c.x + 0.5 - K.ICICLE.w && y0 < ry0 + K.ICICLE.len && y1 > ry0) return c.owner + 1; } }
+  for (const b of W.boulders) { boulderPos(b, tick, bp); if (bp[3] === 2 && circ(bp[0], bp[1], K.BOULDER.r * 0.9)) return b.owner + 1; }
+  for (const h of W.holes) if (holeState(h, tick) === 2 && circ(h.cx, h.cy, K.HOLE.core)) return h.owner + 1;
   for (const l of W.lasers) if (laserState(l, tick) === 2 && x0 < l.rect[2] && x1 > l.rect[0] && y0 < l.rect[3] && y1 > l.rect[1]) return l.owner + 1;
   for (const s of W.rsaws) { rsawPos(s, tick, rp); if (circ(rp[0], rp[1], K.RSAW_R * 0.92)) return s.owner + 1; }
   return 0;
@@ -218,6 +271,8 @@ function probe(W, p, tick) {
     if (t === T.CRUMBLE && !W.noFx) { const gid = W.grp.get(k); if (triggerCrumble(W, gid, tick) && W.onCrumble) W.onCrumble(gid, tick); }
   }
   for (let i = 0; i < W.movers.length; i++) { moverBox(W.movers[i], tick, mb); if (x0 < mb[2] && x1 > mb[0] && fy >= mb[1] && fy < mb[1] + 0.3 && p.y + PH / 2 <= mb[1] + 0.12) { p.gr = true; p.stand = i; break; } }
+  if (!p.gr) for (let i = 0; i < W.thwomps.length; i++) { thwompBox(W.thwomps[i], tick, mb); if (x0 < mb[2] && x1 > mb[0] && fy >= mb[1] && fy < mb[1] + 0.3 && p.y + PH / 2 <= mb[1] + 0.12) { p.gr = true; p.stand = 100 + i; break; } }
+  if (!p.gr) for (let i = 0; i < W.vanish.length; i++) { const v = W.vanish[i]; if (vanishState(v, tick) !== 2 && x0 < v.x + 3 && x1 > v.x && fy >= v.y && fy < v.y + 0.3 && p.y + PH / 2 <= v.y + 0.12) { p.gr = true; break; } }
   p.wall = 0; if (!p.gr) { if (overlap(W, p.x + 0.07, p.y, tick)) p.wall = 1; else if (overlap(W, p.x - 0.07, p.y, tick)) p.wall = -1; }
   return bounce;
 }
@@ -239,7 +294,8 @@ const approach = (v, t, d) => (v < t ? Math.min(t, v + d) : Math.max(t, v - d));
 /** Jeden tik fyziky postavy. `inp` = bity IN, `tick` = tik světa, `fx` = volitelné pole, kam se zapisují události ('j' skok, 'w' odraz od stěny, 'b' odrazovadlo, 'l' dopad). */
 export function stepBody(W, p, inp, tick, fx) {
   const L = inp & 1, R = inp & 2, J = inp & 4; const dir = (R ? 1 : 0) - (L ? 1 : 0);
-  if (p.stand >= 0 && W.movers[p.stand]) { const m = W.movers[p.stand]; const d = moverOff(m, tick) - moverOff(m, tick - 1); if (m.ax === 0) p.x += d; else p.y += d; }
+  if (p.stand >= 100 && W.thwomps[p.stand - 100]) { const t = W.thwomps[p.stand - 100]; const d = thwompOff(t, tick) - thwompOff(t, tick - 1); p.x += d * t.vx; p.y += d * t.vy; }
+  else if (p.stand >= 0 && W.movers[p.stand]) { const m = W.movers[p.stand]; const d = moverOff(m, tick) - moverOff(m, tick - 1); if (m.ax === 0) p.x += d; else p.y += d; }
   p.crush = false; depen(W, p, tick);
   if (J && !p.jh) p.buf = BUF_T; else if (p.buf > 0) p.buf--;
   if (p.wlock > 0) p.wlock--;
@@ -255,6 +311,10 @@ export function stepBody(W, p, inp, tick, fx) {
       if (f.dir === 0) p.vy = Math.max(-9, p.vy - K.FAN.lift * DT); else if (f.dir === 2) p.vy = Math.min(MAXFALL, p.vy + 80 * DT); else windX += f.dir === 1 ? K.FAN.wind : -K.FAN.wind;
     }
   }
+  for (let i = 0; i < W.holes.length; i++) {
+    const h = W.holes[i]; if (holeState(h, tick) !== 2) continue;
+    const dx = h.cx - p.x, dy = h.cy - p.y, d = Math.hypot(dx, dy); if (d < K.HOLE.r && d > 0.01) { const a = K.HOLE.pull * (1 - d / K.HOLE.r) * DT; p.vx += (dx / d) * a; p.vy += (dy / d) * a; }
+  }
   if (!p.gr && p.wall !== 0 && dir === p.wall && p.vy > SLIDE_V) p.vy = SLIDE_V;
   if (p.gr) p.coy = COYOTE_T; else if (p.coy > 0) p.coy--;
   if (p.buf > 0) {
@@ -267,6 +327,13 @@ export function stepBody(W, p, inp, tick, fx) {
   const wasFalling = p.vy > 0, wasAir = !p.gr; const hit = moveY(W, p, p.vy * DT, tick);
   const bounce = probe(W, p, tick);
   if (p.sc > 0) p.sc--; else if (W.hasSp) springPush(W, p, fx);
+  for (let i = 0; i < W.bumpers.length; i++) {   // odrážeč: kdo se dotkne kruhu, je odpálen od jeho středu
+    const b = W.bumpers[i]; const nx = Math.max(p.x - PW / 2, Math.min(b.cx, p.x + PW / 2)), ny = Math.max(p.y - PH / 2, Math.min(b.cy, p.y + PH / 2));
+    if (Math.hypot(nx - b.cx, ny - b.cy) < K.BUMP.r) {
+      let dx = p.x - b.cx, dy = p.y - b.cy; const d = Math.hypot(dx, dy) || 1; dx /= d; dy /= d; if (dy > 0.5) dy = 0.5;
+      const n = Math.hypot(dx, dy); p.vx = (dx / n) * K.BUMP.v; p.vy = (dy / n) * K.BUMP.v - 2; p.wlock = 6; p.coy = 0; p.rise = false; p.gr = false; p.buf = 0; if (dx) p.face = dx > 0 ? 1 : -1; if (fx) fx.push('b'); break;
+    }
+  }
   if (hit === 1 && wasFalling) { if (bounce) { p.vy = -BOUNCE_V; p.gr = false; p.coy = 0; p.rise = false; if (fx) fx.push('b'); } else if (fx && wasAir) fx.push('l'); }
   if (p.x < PW / 2) p.x = PW / 2; if (p.x > COLS - PW / 2) p.x = COLS - PW / 2;
   if (p.y < -8) { p.y = -8; if (p.vy < 0) p.vy = 0; }

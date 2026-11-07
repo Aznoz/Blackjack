@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23ffc928' stroke='%232b2118' stroke-width='4'/%3E%3Cellipse cx='32' cy='36' rx='20' ry='17' fill='%23fff4d6' stroke='%232b2118' stroke-width='4'/%3E%3Ccircle cx='38' cy='31' r='3.5' fill='%232b2118'/%3E%3Cpath d='M26 14l4 8 5-9 4 9 5-7' fill='%23e8433c' stroke='%232b2118' stroke-width='3' stroke-linejoin='round'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="hopik.css?v=3">
+<link rel="stylesheet" href="hopik.css?v=4">
 </head>
 <body>
 
@@ -87,7 +87,8 @@
       <li><b>Vyber kus.</b> Každé kolo dostane každý jiný kus z nabídky: plošinu, nebo past. Kdo klikne první, ten si vybere.</li>
       <li><b>Polož ho na trať.</b> Kus otáčíš (<b>R</b>, pravé tlačítko nebo tlačítko Otočit) a potvrdíš kliknutím. Můžeš si cestu zkrátit, nebo soupeřům zatopit.</li>
       <li><b>Běž k vlajce.</b> Skáčeš <b>mezerníkem, W nebo šipkou nahoru</b>, hýbeš se šipkami nebo A/D. Od stěny se dá odrazit skokem. Kdo se dotkne pasti, končí.</li>
-      <li><b>Body.</b> Doběh = 10, první v cíli +5, jediný v cíli +10, zničení soupeře pastí +2. Kdo doběhne i s ostatními, body nedostane, protože trať byla moc snadná. Zápas je <b>do 50 bodů</b>.</li>
+      <li><b>Body.</b> Doběh = 10, první v cíli +5, jediný v cíli +10, zničení soupeře pastí +2. Kdo doběhne i s ostatními, body nedostane, protože trať byla moc snadná. Zápas je <b>do 50 bodů</b> (zakladatel vlastní hry ho může zkrátit nebo prodloužit).</li>
+      <li><b>Ve dvou.</b> Když hrají jen dva, je každé druhé kolo bonusové: každý si vybere a položí ještě jeden kus navíc.</li>
     </ol>
     <h3>Kusy</h3>
     <div class="items" id="howItems"></div>
@@ -103,6 +104,7 @@
     <h3>Postavička</h3>
     <div class="chargrid small" id="lobbyChars"></div>
     <div id="stageSel"></div>
+    <div id="cfgSel" class="cfgbox"></div>
     <p class="muted" id="lobbyHint"></p>
     <div class="hostbox" id="hostBox" hidden>
       <label class="chk"><input type="checkbox" id="fillBots" checked> <span>Prázdná místa doplnit boty</span></label>
@@ -178,6 +180,6 @@
 <div class="conn" id="conn" hidden>Připojuji…</div>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script src="config.js"></script>
-<script type="module" src="hopik.js?v=3"></script>
+<script type="module" src="hopik.js?v=4"></script>
 </body>
 </html>

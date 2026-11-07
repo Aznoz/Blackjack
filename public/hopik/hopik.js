@@ -1,10 +1,10 @@
 // HOPÍK – klient: menu s výběrem postavičky, čekárna, a hra (výběr kusu → pokládání → běh) na canvasu. Pohyb vlastní postavy se počítá tady v prohlížeči
 // (stejná fyzika jako na serveru, phys.js) a každých pár ticků se hlásí serveru; ostatní hráči se zobrazují z jeho snímků a mezi nimi se plynule dopočítávají.
-import * as K from './shared.js?v=3';
-import * as P from './phys.js?v=3';
-import * as A from './art.js?v=3';
-import { startScene, stopScene } from './scene.js?v=3';
-import { createMusic } from './music.js?v=3';
+import * as K from './shared.js?v=4';
+import * as P from './phys.js?v=4';
+import * as A from './art.js?v=4';
+import { startScene, stopScene } from './scene.js?v=4';
+import { createMusic } from './music.js?v=4';
 const { COLS, ROWS, TPS, CHARS, STAGES } = K;
 
 const CFG = window.HOPIK_CONFIG || {};
@@ -250,7 +250,7 @@ const phase = () => (GS ? GS.ph : '');
 const nowTick = () => run.k + Math.floor(((performance.now() - run.kAt) * TPS) / 1000);
 const nowTickF = () => run.k + ((performance.now() - run.kAt) * TPS) / 1000;   // zlomkový tik jen pro plynulé kreslení
 function secsLeft() {
-  if (!GS) return 0; const el = GS.gt / TPS + (performance.now() - GS.at) / 1000; const T = K.TIME;
+  if (!GS) return 0; const el = GS.gt / TPS + (performance.now() - GS.at) / 1000; const T = { ...K.TIME, ...(GS.cfg ? { pick: GS.cfg.pick, place: GS.cfg.place, run: GS.cfg.run } : {}) };
   switch (GS.ph) {
     case 'pick': return T.pick - el; case 'place': return T.place - el; case 'reveal': return T.reveal - el; case 'count': return T.count - el; case 'score': return T.score - el;
     case 'run': { const k = nowTick(); let left = T.run - k / TPS; if (run.firstFin >= 0) left = Math.min(left, T.hurry - (k - run.firstFin) / TPS); return left; }
@@ -298,7 +298,7 @@ function onGame(m) {
   if (newRound && m.ph === 'pick') { resetRun(); $('score').hidden = true; if (prev) banner(`Kolo ${m.round}`, 1100); }
   if (newPh) {
     banT && clearTimeout(banT);
-    if (m.ph === 'pick') { $('score').hidden = true; sfx.click(); }
+    if (m.ph === 'pick') { $('score').hidden = true; sfx.click(); if (m.sub === 1 && prev && prev.ph === 'place') { banner('<b>Bonusový výběr!</b> Každý si vybere a položí ještě jeden kus.', 2200); sfx.pop(); } }
     if (m.ph === 'place') { pl = { x: Math.max(0, Math.round(COLS / 2 - 1)), y: 7, r: 0, ok: false, sent: false, last: 0, sig: '', moved: false }; sfx.click(); }
     if (m.ph === 'reveal') { sfx.pop(); const mine = m.pieces.filter((p) => p[6] === m.round); for (const p of mine) if (!born.has(p[0])) born.set(p[0], at); }
     if (m.ph === 'count') { run.dfx = false; run.dead = false; run.fin = false; run.go = false; run.body = null; run.prev = null; run.snaps = []; run.firstFin = -1; fx.length = 0; lastBeep = -1; }
@@ -354,9 +354,18 @@ function renderLobby(s) {
   const st = STAGES[s.stage] || STAGES[0];
   $('stageSel').className = 'stagesel';
   $('stageSel').innerHTML = host ? `<h3>Trať</h3><div class="stages">${STAGES.map((x, i) => `<button type="button" class="st${i === s.stage ? ' on' : ''}" data-st="${i}"><img src="${A.stageThumb(i, 160)}" alt=""><b>${esc(x.name)}</b></button>`).join('')}</div>` : `<div class="stageone"><img src="${A.stageThumb(s.stage || 0, 200)}" alt=""><div><small>Trať</small><b>${esc(st.name)}</b><small>${esc(st.desc)}</small></div></div>`;
+  renderCfg(s, host);
   $('lobbyHint').textContent = s.quick ? (s.auto != null && n >= 2 ? `Hra začne za ${s.auto} s (nebo hned, až budou čtyři).` : 'Hledám další hráče, stačí dva…') : host ? 'Pošli kód kamarádům. Začít můžeš, až budou aspoň dva, nebo prázdná místa doplň boty.' : 'Čekáme, až zakladatel začne hru.';
   if (host) { const ok = n >= 2 || $('fillBots').checked; $('startBtn').disabled = !ok; $('startBtn').querySelector('b').textContent = ok ? 'Začít hru' : 'Čekám na další hráče'; }
 }
+const CFG_ROWS = [['pick', 'Výběr kusu', (v) => v + ' s'], ['place', 'Pokládání', (v) => v + ' s'], ['run', 'Běh', (v) => v + ' s'], ['win', 'Body k výhře', (v) => v], ['rounds', 'Nejvýš kol', (v) => v], ['bonus', 'Bonus ve dvou', (v) => (v ? 'zap' : 'vyp')]];
+function renderCfg(s, host) {
+  const c = s.cfg || K.CFG_DEFAULT; const el = $('cfgSel'); el.hidden = !!s.quick;
+  if (s.quick) return;
+  const sum = `výběr ${c.pick} s · pokládání ${c.place} s · běh ${c.run} s · do ${c.win} bodů · nejvýš ${c.rounds} kol${c.bonus ? ' · bonusové kolo ve dvou' : ''}`;
+  el.innerHTML = host ? `<h3>Nastavení zápasu</h3><div class="cfg">${CFG_ROWS.map(([k, nm, fmt]) => `<div class="cfgrow"><span>${nm}</span><div class="seg mini" data-cfg="${k}">${K.CFG_OPTS[k].map((v) => `<button type="button" data-v="${v}"${c[k] === v ? ' class="on"' : ''}>${fmt(v)}</button>`).join('')}</div></div>`).join('')}</div><small class="muted">Bonus: když hrají jen dva, každé druhé kolo si každý vybere a položí kus navíc.</small>` : `<div class="cfgsum"><small>Nastavení zápasu</small><b>${sum}</b></div>`;
+}
+$('cfgSel').addEventListener('click', (e) => { const b = e.target.closest('[data-v]'); const row = e.target.closest('[data-cfg]'); if (!b || !row || !S || S.you !== S.host) return; sfx.click(); sendMsg({ t: 'cfg', cfg: { [row.dataset.cfg]: +b.dataset.v } }); });
 $('lobbyChars').addEventListener('click', (e) => { const b = e.target.closest('[data-ch]'); if (!b || !S || S.phase !== 'lobby') return; const i = +b.dataset.ch; if (b.classList.contains('taken')) return toast('Tuhle postavičku už má jiný hráč.'); myChar = i; LS.set('hopik_char', String(i)); sfx.pick(); sendMsg({ t: 'char', char: i }); });
 $('stageSel').addEventListener('click', (e) => { const b = e.target.closest('[data-st]'); if (!b || !S || S.you !== S.host) return; sfx.click(); sendMsg({ t: 'stage', stage: +b.dataset.st }); });
 $('fillBots').addEventListener('change', () => S && renderLobby(S));
@@ -538,6 +547,12 @@ function drawWorld(now, t) {
   for (const b2 of W.blades) A.bladeDyn(g, b2, tk, t, seatColor(b2.owner));
   for (const p2 of W.pends) A.pendDyn(g, p2, tk, t, seatColor(p2.owner));
   for (const h2 of W.thwomps) A.thwDyn(g, h2, tk, t, seatColor(h2.owner));
+  for (const o2 of W.rspikes) A.retractDyn(g, o2, tk, t, seatColor(o2.owner));
+  for (const o2 of W.icicles) A.icicleDyn(g, o2, tk, t, seatColor(o2.owner));
+  for (const o2 of W.vanish) A.vanishDyn(g, o2, tk, t, seatColor(o2.owner));
+  for (const o2 of W.boulders) A.boulderDyn(g, o2, tk, t, seatColor(o2.owner));
+  for (const o2 of W.bumpers) A.bumperDyn(g, o2, tk, t, seatColor(o2.owner));
+  for (const o2 of W.holes) A.holeDyn(g, o2, tk, t, seatColor(o2.owner));
   for (const f of W.flames) { const ph2 = (tk + f.phase) % K.FLAME_PERIOD; A.flameBurst(g, f, ph2 < K.FLAME_ON, ph2 > K.FLAME_PERIOD - 9, t); }
   // postavičky
   drawPlayers(now, t, tk);
@@ -593,7 +608,7 @@ function frame(now) {
   // časomíra
   const left = secsLeft(); const showT = phase() === 'pick' || phase() === 'place' || phase() === 'run'; const tb = $('gTimer');
   tb.textContent = showT ? String(Math.max(0, Math.ceil(left))) : '·'; tb.parentElement.classList.toggle('low', showT && left <= 5 && left > 0);
-  $('gRound').textContent = `Kolo ${GS.round}`;
+  $('gRound').textContent = `Kolo ${GS.round}${GS.bonus ? (GS.sub === 1 ? ' · bonus' : ' · bonus 2×') : ''}`;
   if (phase() === 'place') { if (placing()) { const ok = validPl(); if (ok !== pl.ok) { pl.ok = ok; } } renderHint(); }
   if (now - (frame.last || 0) > 400) { frame.last = now; renderChips(); }
   lastNow = now;

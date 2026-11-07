@@ -1,7 +1,8 @@
 // HOPÍK – grafika: všechno je nakreslené vektorově (zvířátka, terén, kusy, pasti, kulky, plameny, vlajka, pozadí) v jednotkách políček.
 // Volající nastaví transformaci canvasu tak, aby 1 jednotka = 1 políčko. Žádné emoji ani obrázky.
-import * as K from './shared.js?v=3';
-import { hatC, glassesC, bootC, backC } from './cosm.js?v=3';
+import * as K from './shared.js?v=4';
+import { hatC, glassesC, bootC, backC } from './cosm.js?v=4';
+import * as P from './phys.js?v=4';
 const { COLS, ROWS } = K;
 export const INK = '#2b2118';
 export const SEAT = ['#ff5a4f', '#2f9cff', '#ffc928', '#46c46a'];          // barva místa u stolu (obrys jména, pecky na kusech)
@@ -306,9 +307,14 @@ function fanBase(g, x, y, face, own) {
   deviceBase(g, x, y, own); g.save(); g.translate(x + 0.5, y + 0.5); g.rotate(FACE_ROT[face]);
   ell(g, 0, -0.04, 0.34, 0.34, '#2f3447', 0.055); ell(g, 0, -0.04, 0.27, 0.27, '#5b6384', 0); g.restore();
 }
-function thwompTrack(g, x, y) {
-  const w = K.THW.w, h = K.THW.h; g.save(); g.strokeStyle = 'rgba(60,50,70,.5)'; g.lineWidth = 0.06; g.setLineDash([0.16, 0.14]); g.beginPath(); g.moveTo(x + 0.05, y + 0.3); g.lineTo(x + 0.05, y + h - 0.1); g.moveTo(x + w - 0.05, y + 0.3); g.lineTo(x + w - 0.05, y + h - 0.1); g.stroke(); g.setLineDash([]);
-  rrect(g, x, y - 0.02, w, 0.26, 0.08, '#59607a', 0.06); ell(g, x + 0.2, y + 0.11, 0.04, 0.04, '#c8cfe0', 0); ell(g, x + w - 0.2, y + 0.11, 0.04, 0.04, '#c8cfe0', 0); g.restore();
+function thwompTrack(g, x, y, r) {
+  const face = K.faceOf('thwomp', r), [w, h] = K.pieceSize('thwomp', r); g.save(); g.strokeStyle = 'rgba(60,50,70,.5)'; g.lineWidth = 0.06; g.setLineDash([0.16, 0.14]); g.beginPath();
+  if (w < h) { g.moveTo(x + 0.05, y + 0.3); g.lineTo(x + 0.05, y + h - 0.1); g.moveTo(x + w - 0.05, y + 0.3); g.lineTo(x + w - 0.05, y + h - 0.1); } else { g.moveTo(x + 0.3, y + 0.05); g.lineTo(x + w - 0.1, y + 0.05); g.moveTo(x + 0.3, y + h - 0.05); g.lineTo(x + w - 0.1, y + h - 0.05); }
+  g.stroke(); g.setLineDash([]);
+  const mx = face === 1 ? x - 0.02 : face === 3 ? x + w - 0.24 : x, my = face === 2 ? y - 0.02 : face === 0 ? y + h - 0.24 : y;   // kotva na začátku dráhy (opačně než se kámen vrhá)
+  if (w < h) { rrect(g, mx, my, w, 0.26, 0.08, '#59607a', 0.06); ell(g, mx + 0.2, my + 0.13, 0.04, 0.04, '#c8cfe0', 0); ell(g, mx + w - 0.2, my + 0.13, 0.04, 0.04, '#c8cfe0', 0); } else { rrect(g, mx, my, 0.26, h, 0.08, '#59607a', 0.06); ell(g, mx + 0.13, my + 0.2, 0.04, 0.04, '#c8cfe0', 0); ell(g, mx + 0.13, my + h - 0.2, 0.04, 0.04, '#c8cfe0', 0); }
+  const [vx, vy] = K.DIRV[face]; g.fillStyle = 'rgba(60,50,70,.55)'; const cx = x + w / 2 + vx * 1.6, cy = y + h / 2 + vy * 1.6; poly(g, [[cx + vx * 0.3, cy + vy * 0.3], [cx - vy * 0.22 - vx * 0.2, cy + vx * 0.22 - vy * 0.2], [cx + vy * 0.22 - vx * 0.2, cy - vx * 0.22 - vy * 0.2]], 'rgba(60,50,70,.55)', 0);
+  g.restore();
 }
 function rsawTrack(g, x, y, ax) {
   const n = K.RSAW_LEN; g.save(); g.lineCap = 'round';
@@ -335,18 +341,20 @@ export function pendDyn(g, p, tk, t, own) {
   for (let i = 0; i < 10; i++) { const q = (i / 10) * TAU; poly(g, [[Math.cos(q - 0.2) * R * 0.85, Math.sin(q - 0.2) * R * 0.85], [Math.cos(q) * R * 1.22, Math.sin(q) * R * 1.22], [Math.cos(q + 0.2) * R * 0.85, Math.sin(q + 0.2) * R * 0.85]], '#cfd5e3', 0.045); }
   ell(g, 0, 0, R * 0.9, R * 0.9, '#4a5070', 0.06); ell(g, -R * 0.3, -R * 0.3, R * 0.28, R * 0.2, 'rgba(255,255,255,.4)', 0, -0.6); ell(g, 0, 0, R * 0.2, R * 0.2, own, 0.03); g.restore();
 }
-/** Padací kámen 2 × 2 s mračící se tváří; t = { x, y, phase }. */
+/** Padací kámen 2 × 2 s mračící se tváří (pořád vzpřímený; zespodu a po stranách má hroty, shora je hladký); h = { sx, sy, vx, vy, phase }. */
 export function thwDyn(g, h, tk, t, own, off) {
-  const H = K.THW; const u = (((tk + h.phase) % H.period) + H.period) % H.period; const o = off === undefined ? thwompOffA(h, tk) : off;
-  const sh = u > H.wait - 12 && u < H.wait ? Math.sin(tk * 3) * 0.04 : 0; const x = h.x + sh, y = h.y + o, w = H.s; const falling = u >= H.wait && u < H.wait + H.fall + 3;
-  g.save(); rrect(g, x + 0.03, y + 0.03, w - 0.06, w - 0.06, 0.22, '#8a8ea0', 0.07);
-  g.fillStyle = '#a5a9bb'; g.fillRect(x + 0.14, y + 0.12, w - 0.28, 0.1); for (const [dx, dy] of [[0.2, 0.2], [w - 0.2, 0.2], [0.2, w - 0.2], [w - 0.2, w - 0.2]]) ell(g, x + dx, y + dy, 0.05, 0.05, '#5c6075', 0);
-  const ex = [x + w * 0.3, x + w * 0.7]; for (const [i, e] of ex.entries()) { ell(g, e, y + w * 0.4, 0.2, falling ? 0.1 : 0.17, '#fff', 0.05); ell(g, e + (i ? -0.04 : 0.04), y + w * 0.43, 0.07, 0.07, INK, 0); poly(g, [[e - 0.26 * (i ? -1 : 1), y + w * 0.2], [e + 0.24 * (i ? -1 : 1), y + w * 0.3], [e - 0.26 * (i ? -1 : 1), y + w * 0.3]], '#6b6f84', 0.05); }
-  g.beginPath(); g.moveTo(x + w * 0.27, y + w * 0.74); for (let i = 0; i <= 5; i++) g.lineTo(x + w * 0.27 + (i / 5) * w * 0.46, y + w * (i % 2 ? 0.66 : 0.78)); g.lineTo(x + w * 0.73, y + w * 0.74); g.lineWidth = 0.055; g.strokeStyle = INK; g.stroke();
-  poly(g, [[x + 0.15, y + w - 0.03], [x + 0.3, y + w + 0.18], [x + 0.45, y + w - 0.03]], '#cfd5e3', 0.045); poly(g, [[x + w - 0.45, y + w - 0.03], [x + w - 0.3, y + w + 0.18], [x + w - 0.15, y + w - 0.03]], '#cfd5e3', 0.045);
+  const H = K.THW; const u = (((tk + h.phase) % H.period) + H.period) % H.period; const o = off === undefined ? P.thwompOff(h, tk) : off;
+  const sh = u > H.wait - 12 && u < H.wait ? Math.sin(tk * 3) * 0.04 : 0; const w = H.s, x = h.sx + h.vx * o + sh, y = h.sy + h.vy * o; const falling = u >= H.wait && u < H.wait + H.fall + 3;
+  g.save();
+  const sp = (pts) => poly(g, pts, '#cfd5e3', 0.045);
+  for (const q of [0.28, 0.72]) { sp([[x + w * q - 0.15, y + w - 0.04], [x + w * q, y + w + 0.2], [x + w * q + 0.15, y + w - 0.04]]); sp([[x + 0.04, y + w * q - 0.15], [x - 0.2, y + w * q], [x + 0.04, y + w * q + 0.15]]); sp([[x + w - 0.04, y + w * q - 0.15], [x + w + 0.2, y + w * q], [x + w - 0.04, y + w * q + 0.15]]); }
+  rrect(g, x + 0.03, y + 0.03, w - 0.06, w - 0.06, 0.22, '#8a8ea0', 0.07);
+  g.fillStyle = '#b4b8c9'; g.fillRect(x + 0.14, y + 0.1, w - 0.28, 0.14); g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(x + 0.2, y + 0.12, w - 0.4, 0.04);
+  for (const [dx, dy] of [[0.2, 0.34], [w - 0.2, 0.34], [0.2, w - 0.2], [w - 0.2, w - 0.2]]) ell(g, x + dx, y + dy, 0.05, 0.05, '#5c6075', 0);
+  const ex = [x + w * 0.3, x + w * 0.7]; for (const [i, e] of ex.entries()) { ell(g, e, y + w * 0.46, 0.2, falling ? 0.1 : 0.17, '#fff', 0.05); ell(g, e + (i ? -0.04 : 0.04), y + w * 0.49, 0.07, 0.07, INK, 0); poly(g, [[e - 0.26 * (i ? -1 : 1), y + w * 0.26], [e + 0.24 * (i ? -1 : 1), y + w * 0.36], [e - 0.26 * (i ? -1 : 1), y + w * 0.36]], INK, 0.03); }
+  g.beginPath(); g.moveTo(x + w * 0.27, y + w * 0.78); for (let i = 0; i <= 5; i++) g.lineTo(x + w * 0.27 + (i / 5) * w * 0.46, y + w * (i % 2 ? 0.7 : 0.82)); g.lineTo(x + w * 0.73, y + w * 0.78); g.lineWidth = 0.055; g.strokeStyle = INK; g.stroke();
   g.restore(); void own;
 }
-const thwompOffA = (h, tk) => { const H = K.THW, travel = H.h - H.s; const u = (((tk + h.phase) % H.period) + H.period) % H.period; if (u < H.wait) return 0; if (u < H.wait + H.fall) { const k = (u - H.wait) / H.fall; return travel * k * k; } if (u < H.wait + H.fall + H.rest) return travel; const k = (u - H.wait - H.fall - H.rest) / (H.period - H.wait - H.fall - H.rest); return travel * (1 - k); };
 /** Laserový paprsek: varování bliká tence, výstřel září; l = { sx, sy, vx, vy, len, phase, preview }. */
 export function laserDyn(g, l, tk, t) {
   const u = (((tk + l.phase) % K.LASER_PERIOD) + K.LASER_PERIOD) % K.LASER_PERIOD; const st = l.preview ? 1 : u < K.LASER_PERIOD - K.LASER_WARN - K.LASER_ON ? 0 : u < K.LASER_PERIOD - K.LASER_ON ? 1 : 2; if (!st) return;
@@ -369,13 +377,90 @@ export function fanDyn(g, f, tk, t) {
   const n = 7; for (let i = 0; i < n; i++) { const ph = ((t * 1.6 + i / n) % 1), d = ph * f.len, wob = Math.sin(i * 2.3 + t * 5) * 0.4; const px = f.sx + f.vx * d - f.vy * wob, py = f.sy + f.vy * d + f.vx * wob; g.globalAlpha = Math.sin(ph * Math.PI) * 0.85; g.beginPath(); g.moveTo(px, py); g.lineTo(px + f.vx * 0.45, py + f.vy * 0.45); g.stroke(); }
   g.restore();
 }
+// ------------------------------------------------------------------ další pasti (výsuvné bodáky, rampouch, odrážeč, mizející plošina, černá díra, valoun)
+/** Plocha pro výsuvné bodáky: plechová deska s dírkami (hroty vyjíždějí v retractDyn). */
+function retractSlot(g, x, y, face) {
+  g.save(); g.translate(x + 0.5, y + 0.5); g.rotate(FACE_ROT[face]); rrect(g, -0.46, 0.26, 0.92, 0.22, 0.05, '#6c7385', 0.055);
+  for (const dx of [-0.24, 0.24]) ell(g, dx, 0.37, 0.1, 0.045, '#262a38', 0); g.restore();
+}
+/** Výsuvné bodáky; o = { cells: [[x, y]], face, phase }, st: 0 schované, 1 cukají, 2 venku. */
+export function retractDyn(g, o, tk, t, own, forced) {
+  const st = forced === undefined ? P.retractState(o, tk) : forced; if (!st) return;
+  const ext = st === 2 ? 1 : 0.3 + Math.sin(t * 60) * 0.06;
+  for (const [cx, cy] of o.cells) {
+    g.save(); g.translate(cx + 0.5, cy + 0.5); g.rotate(FACE_ROT[o.face]);
+    for (const dx of [-0.24, 0.24]) poly(g, [[dx - 0.2, 0.3], [dx, 0.3 - 0.64 * ext], [dx + 0.2, 0.3]], st === 1 ? '#ffb4a8' : '#e6ebf5', 0.055);
+    g.restore();
+  }
+}
+function icicleMount(g, x, y, own) { rrect(g, x + 0.04, y + 0.04, 0.92, 0.92, 0.12, '#7d95b8', 0.06); g.fillStyle = '#dff3ff'; g.fillRect(x + 0.12, y + 0.1, 0.76, 0.1); ell(g, x + 0.16, y + 0.84, 0.04, 0.04, own, 0); ell(g, x + 0.84, y + 0.84, 0.04, 0.04, own, 0); }
+/** Rampouch visící ze stropního bločku; c = { x, y, len, phase }. */
+export function icicleDyn(g, c, tk, t, own, forced) {
+  const st = forced || P.icicleState(c, tk, icSt); if (!st.vis) { g.save(); g.globalAlpha = 0.5; for (let i = 0; i < 5; i++) ell(g, c.x + 0.5 + Math.cos(i * 2.4) * 0.3, c.y + 1 + c.len + 0.9 - Math.abs(Math.sin(i * 1.7)) * 0.3 + 0.05, 0.05, 0.05, '#dff6ff', 0); g.restore(); return; }
+  const I = K.ICICLE, sh = st.shake ? Math.sin(tk * 2.2) * 0.04 : 0; const k = st.grow, y0 = c.y + 1 + st.off, L = I.len * k;
+  g.save(); g.translate(c.x + 0.5 + sh, y0);
+  poly(g, [[-0.26, -0.02], [0, L], [0.26, -0.02]], '#cdeeff', 0.055); poly(g, [[-0.12, 0.05], [-0.04, L * 0.6], [0.02, 0.05]], 'rgba(255,255,255,.75)', 0);
+  g.restore();
+}
+const icSt = {};
+export function bumperDyn(g, b, tk, t, own) {
+  const pulse = 1 + Math.sin(t * 6 + b.cx) * 0.04; g.save(); g.translate(b.cx, b.cy); g.scale(pulse, pulse);
+  ell(g, 0, 0, 0.5, 0.5, '#ffd23a', 0.065); ell(g, 0, 0, 0.36, 0.36, '#ff5a4f', 0.05); ell(g, 0, 0, 0.2, 0.2, '#fff3d6', 0.04); ell(g, -0.14, -0.16, 0.08, 0.05, 'rgba(255,255,255,.7)', 0, -0.6);
+  for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + t * 0.8; ell(g, Math.cos(a) * 0.43, Math.sin(a) * 0.43, 0.035, 0.035, INK, 0); }
+  g.restore(); void tk; void own;
+}
+/** Mizející plošina; v = { x, y, phase }; forced = stav pro náhled. */
+export function vanishDyn(g, v, tk, t, own, forced) {
+  const st = forced === undefined ? P.vanishState(v, tk) : forced; g.save();
+  if (st === 2) { g.strokeStyle = 'rgba(40,30,20,.4)'; g.lineWidth = 0.05; g.setLineDash([0.14, 0.12]); g.strokeRect(v.x + 0.06, v.y + 0.12, 2.88, 0.76); g.restore(); return; }
+  if (st === 1) g.globalAlpha = Math.floor(tk / 3) % 2 ? 0.3 : 0.85;
+  rrect(g, v.x + 0.02, v.y + 0.06, 2.96, 0.88, 0.14, '#c9a6ff', 0.065); g.fillStyle = 'rgba(255,255,255,.55)'; g.fillRect(v.x + 0.16, v.y + 0.14, 2.68, 0.1);
+  for (let i = 0; i < 3; i++) { ell(g, v.x + 0.5 + i, v.y + 0.62, 0.14, 0.14, '#8b5fd6', 0.04); ell(g, v.x + 0.5 + i, v.y + 0.62, 0.05, 0.05, own, 0); }
+  g.restore();
+}
+/** Černá díra; h = { cx, cy, phase }; forced = stav pro náhled. */
+export function holeDyn(g, h, tk, t, own, forced) {
+  const st = forced === undefined ? P.holeState(h, tk) : forced; const R = K.HOLE.r; g.save(); g.translate(h.cx, h.cy);
+  if (st === 2) {
+    g.strokeStyle = 'rgba(120,70,190,.4)'; g.lineWidth = 0.05; g.setLineDash([0.2, 0.18]); g.beginPath(); g.arc(0, 0, R, 0, TAU); g.stroke(); g.setLineDash([]);
+    for (let i = 0; i < 10; i++) { const ph = (t * 0.9 + i / 10) % 1, a = i * 2.4 + ph * 3, d = R * (1 - ph); g.globalAlpha = Math.sin(ph * Math.PI) * 0.8; ell(g, Math.cos(a) * d, Math.sin(a) * d, 0.05, 0.05, '#e3d1ff', 0); }
+    g.globalAlpha = 1;
+  }
+  const k = st >= 2 ? 1 : st === 1 ? 0.55 : 0.32;
+  ell(g, 0, 0, 0.62 * k + 0.1, 0.62 * k + 0.1, 'rgba(150,90,230,.35)', 0);
+  for (let i = 0; i < 3; i++) { g.save(); g.rotate(t * 3 + i * 2.094); g.beginPath(); g.moveTo(0, 0); g.bezierCurveTo(0.2 * k, -0.5 * k, 0.7 * k, -0.4 * k, 0.74 * k, 0.05); g.lineWidth = 0.09; g.strokeStyle = '#b284ff'; g.stroke(); g.restore(); }
+  ell(g, 0, 0, 0.36 * k + 0.06, 0.36 * k + 0.06, '#120a1d', 0.05); ell(g, 0, 0, 0.12 * k, 0.12 * k, '#000', 0);
+  g.restore(); void own;
+}
+function boulderTrack(g, x, y, dir) {
+  g.save(); g.strokeStyle = 'rgba(40,30,20,.45)'; g.lineWidth = 0.07; g.setLineDash([0.18, 0.16]); g.beginPath(); g.moveTo(x + 0.2, y + 0.94); g.lineTo(x + K.BOULDER.len - 0.2, y + 0.94); g.stroke(); g.setLineDash([]);
+  const sx = dir > 0 ? x + 0.2 : x + K.BOULDER.len - 0.2; rrect(g, sx - 0.12, y + 0.55, 0.24, 0.42, 0.06, '#8a5628', 0.05);
+  g.fillStyle = 'rgba(60,45,30,.55)'; for (let i = 0; i < 3; i++) { const cx = x + 2.6 + i * 1.4 + (dir > 0 ? 0 : 0); poly(g, [[cx + 0.2 * dir, y + 0.74], [cx - 0.12 * dir, y + 0.58], [cx - 0.12 * dir, y + 0.9]], 'rgba(60,45,30,.55)', 0); }
+  g.restore();
+}
+/** Valoun; b = { x, y, dir, phase }; forced = [cx, cy, úhel, stav] pro náhled. */
+export function boulderDyn(g, b, tk, t, own, forced) {
+  const q = forced || P.boulderPos(b, tk, bpv); if (q[3] === 0) return; const R = K.BOULDER.r;
+  g.save(); g.translate(q[0], q[1]); if (q[3] === 1) g.globalAlpha = 0.45; g.rotate(q[2]);
+  ell(g, 0, 0, R, R, '#9a8f84', 0.07); ell(g, 0, 0, R * 0.86, R * 0.86, '#b2a79b', 0);
+  g.strokeStyle = '#6e6359'; g.lineWidth = 0.06; g.beginPath(); g.moveTo(-R * 0.5, -R * 0.2); g.lineTo(-R * 0.1, -R * 0.32); g.lineTo(R * 0.1, -R * 0.05); g.lineTo(R * 0.5, -R * 0.15); g.moveTo(-R * 0.1, R * 0.4); g.lineTo(R * 0.15, R * 0.1); g.lineTo(R * 0.4, R * 0.45); g.stroke();
+  ell(g, -R * 0.3, -R * 0.45, R * 0.22, R * 0.14, 'rgba(255,255,255,.35)', 0, -0.6); ell(g, R * 0.35, R * 0.3, 0.07, 0.07, own, 0);
+  g.restore();
+}
+const bpv = [0, 0, 0, 0];
 /** Náhled pohyblivé části pasti při pokládání a na kartičkách (ukázková poloha, pomocná kružnice dosahu). */
 function previewDyn(g, type, r, x, y, own, t, icon) {
   const [vx, vy] = K.DIRV[K.faceOf(type, r)]; const tk = 18;
   g.save();
   if (type === 'blades') { g.strokeStyle = 'rgba(40,30,20,.35)'; g.lineWidth = 0.05; g.setLineDash([0.15, 0.12]); g.beginPath(); g.arc(x + 0.5, y + 0.5, K.BLADE_LEN, 0, TAU); g.stroke(); g.setLineDash([]); bladeDyn(g, { px: x + 0.5, py: y + 0.5, dir: 1, phase: icon ? 11 : t * 20 }, tk, t, own); }
   else if (type === 'pendulum') { g.strokeStyle = 'rgba(40,30,20,.35)'; g.lineWidth = 0.05; g.setLineDash([0.15, 0.12]); g.beginPath(); g.arc(x + 0.5, y + 0.5, K.PEND_LEN, Math.PI / 2 - K.PEND_AMP, Math.PI / 2 + K.PEND_AMP); g.stroke(); g.setLineDash([]); pendDyn(g, { px: x + 0.5, py: y + 0.5, phase: icon ? 122 : t * 20 }, tk, t, own); }
-  else if (type === 'thwomp') thwDyn(g, { x, y, phase: 0 }, 0, t, own, icon ? 1.6 : 0);
+  else if (type === 'thwomp') { const f = K.faceOf('thwomp', r), tr = K.THW.h - K.THW.s; const o = { sx: x + (f === 3 ? tr : 0), sy: y + (f === 0 ? tr : 0), vx: vx, vy: vy, phase: 0 }; if (!icon) { g.strokeStyle = 'rgba(40,30,20,.3)'; g.lineWidth = 0.05; g.setLineDash([0.15, 0.12]); g.strokeRect(o.sx + vx * tr + 0.03, o.sy + vy * tr + 0.03, 1.94, 1.94); g.setLineDash([]); } thwDyn(g, o, 0, t, own, icon ? 1.6 : 0); }
+  else if (type === 'retract') retractDyn(g, { cells: K.spikeSplit('retract', r).spike.map(([dx, dy]) => [x + dx, y + dy]), face: K.faceOf('retract', r), phase: 0 }, 0, t, own, icon ? 2 : (Math.floor(t * 1.4) % 2 ? 2 : 1));
+  else if (type === 'icicle') { icicleDyn(g, { x, y, len: 3, phase: 0 }, 0, t, own, { vis: true, shake: false, grow: 1, off: icon ? 0 : (t * 1.5 % 1) * 1.5 }); if (!icon) { g.strokeStyle = 'rgba(40,30,20,.3)'; g.lineWidth = 0.05; g.setLineDash([0.15, 0.12]); g.beginPath(); g.moveTo(x + 0.5, y + 2); g.lineTo(x + 0.5, y + 6); g.stroke(); g.setLineDash([]); } }
+  else if (type === 'bumper') bumperDyn(g, { cx: x + 0.5, cy: y + 0.5 }, 0, t, own);
+  else if (type === 'vanish') vanishDyn(g, { x, y, phase: 0 }, 0, t, own, icon ? 0 : (Math.floor(t * 0.9) % 3 === 2 ? 2 : Math.floor(t * 0.9) % 3 === 1 ? 1 : 0));
+  else if (type === 'hole') holeDyn(g, { cx: x + 0.5, cy: y + 0.5, phase: 0 }, 0, t, own, icon ? 3 : 2);
+  else if (type === 'boulder') { const dir = r % 2 === 0 ? 1 : -1; boulderDyn(g, { x, y, dir, phase: 0 }, 0, t, own, [x + (dir > 0 ? K.BOULDER.r + 1.4 : K.BOULDER.len - K.BOULDER.r - 1.4), y + 1 - K.BOULDER.r, 0.4, 2]); }
   else if (type === 'laser') laserDyn(g, { sx: x + 0.5 + vx * 0.55, sy: y + 0.5 + vy * 0.55, vx, vy, len: icon ? 1.9 : 9, phase: 0, preview: true }, tk, t);
   else if (type === 'rsaw') { const d = icon ? 2.2 : (K.RSAW_LEN - 1) * (0.5 + 0.5 * Math.sin(t * 2)); sawShape(g, x + 0.5 + (r % 2 === 0 ? d : 0), y + 0.5 + (r % 2 === 1 ? d : 0), K.RSAW_R * 1.05, t, own); }
   else if (type === 'fan') fanDyn(g, { x, y, dir: K.faceOf(type, r), vx, vy, sx: x + 0.5 + vx * 0.55, sy: y + 0.5 + vy * 0.55, len: icon ? 1.5 : K.FAN.len, phase: 0, preview: true }, tk, t);
@@ -392,7 +477,8 @@ export function drawPieceShape(g, type, r, x, y, o = {}) {
   } else for (const [dx, dy] of cells) {
     const cx = x + dx, cy = y + dy;
     if (P.kind === 'solid') solidCell(g, P.tile, cx, cy, own, type === 'bounce' ? { ...o, face } : o);
-    else if (type === 'spikes') spikeCell(g, cx, cy, face, own);
+    else if (type === 'spikes' || type === 'retract') { const sp = K.spikeSplit(type, r); if (sp.base.some(([bx, by]) => bx === dx && by === dy)) deviceBase(g, cx, cy, own); else if (type === 'spikes') spikeCell(g, cx, cy, face, own); else retractSlot(g, cx, cy, face); }
+    else if (type === 'icicle') icicleMount(g, cx, cy, own);
     else if (type === 'cannon') cannonShape(g, cx, cy, face, own, o.recoil || 0);
     else if (type === 'flame') flameShape(g, cx, cy, face, own);
     else if (type === 'blades') bladeHub(g, cx, cy, own);
@@ -400,7 +486,8 @@ export function drawPieceShape(g, type, r, x, y, o = {}) {
     else if (type === 'laser') laserShape(g, cx, cy, face, own);
     else if (type === 'fan') fanBase(g, cx, cy, face, own);
   }
-  if (type === 'thwomp') thwompTrack(g, x, y);
+  if (type === 'thwomp') thwompTrack(g, x, y, r);
+  if (type === 'boulder') boulderTrack(g, x, y, r % 2 === 0 ? 1 : -1);
   if (type === 'rsaw') rsawTrack(g, x, y, r % 2);
   if (o.ghost || o.icon) previewDyn(g, type, r, x, y, own, o.t || 0, !!o.icon);
   if (type === 'saw') sawShape(g, x + 1, y + 1, 0.92, o.t || 0, own);
@@ -434,7 +521,7 @@ export function startSign(g, x, y) { rrect(g, x - 0.06, y - 0.9, 0.12, 0.9, 0.03
 // ------------------------------------------------------------------ náhledy
 const iconCache = new Map();
 /** Ikona kusu pro kartičky výběru (data URL). */
-const ICON_FRAME = { blades: { w: 5, h: 5, ox: 2, oy: 2 }, pendulum: { w: 5, h: 4.3, ox: 0.5, oy: 0 }, thwomp: { w: 2, h: 4.4, ox: 0, oy: 0 }, laser: { w: 3.3, h: 1, ox: 0, oy: 0 }, fan: { w: 1.4, h: 2.7, ox: 0.2, oy: 1.7 }, rsaw: { w: 6, h: 1, ox: 0, oy: 0 }, mover: { w: 3, h: 1, ox: 0, oy: 0 } };
+const ICON_FRAME = { blades: { w: 5, h: 5, ox: 2, oy: 2 }, pendulum: { w: 5, h: 4.3, ox: 0.5, oy: 0 }, laser: { w: 3.3, h: 1, ox: 0, oy: 0 }, fan: { w: 1.4, h: 2.7, ox: 0.2, oy: 1.7 }, rsaw: { w: 6, h: 1, ox: 0, oy: 0 }, thwomp: { w: 2.4, h: 4.4, ox: 0.2, oy: 0 }, icicle: { w: 1, h: 2.1, ox: 0, oy: 0 }, boulder: { w: 4.6, h: 1.9, ox: 0, oy: 0.9 }, hole: { w: 1, h: 1, ox: 0, oy: 0 }, retract: { w: 3, h: 2, ox: 0, oy: 0 }, mover: { w: 3, h: 1, ox: 0, oy: 0 } };
 export function pieceIcon(type, px = 120) {
   const key = type + ':' + px; if (iconCache.has(key)) return iconCache.get(key);
   const c = document.createElement('canvas'); c.width = c.height = px; const g = c.getContext('2d');

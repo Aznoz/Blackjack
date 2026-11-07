@@ -86,7 +86,7 @@ function playerView(p, room) {
 function view(room, pid) {
   return {
     t: 'state', code: room.code, phase: room.phase, you: room.players.findIndex((p) => p.id === pid), host: room.players.findIndex((p) => p.id === room.host), quick: !!room.quick, solo: !!room.solo,
-    stage: room.stage, players: room.players.map((p) => playerView(p, room)), result: room.result, rematch: room.players.map((p) => p.bot || room.rematch.has(p.id)), matchId: room.matchId,
+    stage: room.stage, cfg: room.cfg, players: room.players.map((p) => playerView(p, room)), result: room.result, rematch: room.players.map((p) => p.bot || room.rematch.has(p.id)), matchId: room.matchId,
     auto: room.quick && room.autoAt ? Math.max(0, Math.round((room.autoAt - now()) / 1000)) : null,
     drop: room.dropFor ? { idx: room.players.findIndex((p) => p.id === room.dropFor), left: Math.max(0, Math.round((room.dropAt - now()) / 1000)) } : null,
   };
@@ -96,7 +96,7 @@ function publish(room) { for (const p of room.players) if (p.ws) send(p.ws, view
 function gameMsg(room) {
   const g = room.game; if (!g) return null;
   return {
-    t: 'game', ph: g.phase, gt: g.t, round: g.round, stage: g.stage, rt: g.rt, pts: g.players.map((p) => p.pts), left: g.players.map((p) => !!p.left),
+    t: 'game', ph: g.phase, gt: g.t, round: g.round, cfg: g.cfg, bonus: g.bonus, sub: g.sub, stage: g.stage, rt: g.rt, pts: g.players.map((p) => p.pts), left: g.players.map((p) => !!p.left),
     pieces: g.pieces.map((p) => [p.id, p.type, p.r, p.x, p.y, p.owner, p.round]), offers: g.offers.map((o) => [o.type, o.by]), piece: g.piece, placed: g.placed,
     res: g.phase === 'score' || g.phase === 'over' ? g.roundRes : null, over: g.over,
     fin: g.run ? g.run.fin.map((v) => v >= 0) : null, dead: g.run ? g.run.dead.slice() : null,
@@ -107,7 +107,7 @@ function broadcast(room, obj) { const json = typeof obj === 'string' ? obj : JSO
 // ------------------------------------------------------------------ průběh zápasu
 function startMatch(room) {
   for (const p of room.players) { p.left = false; p.csLock = cosmOf(p); }   // kosmetika se na začátku zápasu zamkne (změny v obchodě platí od dalšího zápasu)
-  room.game = G.newGame(room.players.map((p) => ({ name: p.name, char: p.char, bot: p.bot })), crypto.randomInt(1, 2 ** 31), room.stage);
+  room.game = G.newGame(room.players.map((p) => ({ name: p.name, char: p.char, bot: p.bot })), crypto.randomInt(1, 2 ** 31), room.stage, room.cfg);
   room.result = null; room.rematch = new Set(); room.matchId = (room.matchId || 0) + 1; room.autoAt = null; room.phase = 'play'; room.lastActive = now();
   room.lastPh = null; room.bst = room.players.map(() => ({})); room.bd = room.players.map(() => 0); room.tickN = 0;
   for (const p of room.players) if (p.left) G.forfeit(room.game, room.players.indexOf(p));
@@ -181,7 +181,7 @@ export function advance(room, n) { for (let i = 0; i < n && room.phase === 'play
 // ------------------------------------------------------------------ místnosti a spojení
 function newRoom() {
   const code = makeCode(); if (!code) return null;
-  const room = { code, players: [], nextId: 1, host: null, phase: 'lobby', quick: false, solo: false, game: null, result: null, rematch: new Set(), stage: 0, emptySince: now(), matchId: 0, dropTimer: null, dropAt: null, dropFor: null, autoAt: null, bst: [], bd: [], lastPh: null, tickN: 0, ghSig: '' };
+  const room = { code, players: [], nextId: 1, host: null, phase: 'lobby', quick: false, solo: false, game: null, result: null, rematch: new Set(), stage: 0, cfg: K.cleanCfg(null), emptySince: now(), matchId: 0, dropTimer: null, dropAt: null, dropFor: null, autoAt: null, bst: [], bd: [], lastPh: null, tickN: 0, ghSig: '' };
   rooms.set(code, room); return room;
 }
 function addPlayer(room, ws, msg) {
@@ -303,6 +303,7 @@ function handle(ws, msg) {
       if (room.players.some((p) => p !== pl && !p.left && p.char === c)) return send(ws, { t: 'err', msg: 'Tuhle postavičku už má jiný hráč.' });
       pl.char = c; if (pl.acc) { hopikOf(pl.acc).char = c; dirty(); } return publish(room);
     }
+    case 'cfg': if (room.phase === 'lobby' && room.host === pl.id && !room.quick) { room.cfg = K.cleanCfg({ ...room.cfg, ...(msg.cfg && typeof msg.cfg === 'object' ? msg.cfg : {}) }); publish(room); } return;
     case 'stage': if (room.phase === 'lobby' && room.host === pl.id && !room.quick) { room.stage = K.stageIdx(msg.stage); publish(room); } return;
     case 'start': {   // jen zakladatel: začít (nejméně 2 hráči), případně doplnit boty do 4
       if (room.phase !== 'lobby' || room.host !== pl.id) return;

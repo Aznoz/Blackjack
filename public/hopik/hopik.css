@@ -172,3 +172,10 @@ body { background-image: radial-gradient(rgba(43, 33, 24, .09) 1.4px, transparen
 .si.on { background: var(--sun); box-shadow: var(--sh2); } .si.own small { color: #1f8a43; } .si.poor { opacity: .72; }
 .orow .cg { color: #a86a00; font-size: 12.5px; font-weight: 900; display: block; }
 @media (max-height: 720px) { .shopTop img { width: 84px; height: 84px; } }
+
+/* ----- nastavení zápasu v čekárně */
+.cfgbox { display: flex; flex-direction: column; gap: 6px; }
+.cfg { display: flex; flex-direction: column; gap: 6px; }
+.cfgrow { display: grid; grid-template-columns: 112px 1fr; gap: 8px; align-items: center; font-weight: 800; font-size: 13px; }
+.seg.mini { gap: 5px; } .seg.mini button { padding: 6px 2px; border-radius: 9px; border-width: 2px; font-size: 13px; }
+.cfgsum { border: 3px solid var(--ink); border-radius: 12px; padding: 6px 10px; background: #fff8e1; display: flex; flex-direction: column; gap: 2px; } .cfgsum small { color: var(--mut); font-weight: 800; } .cfgsum b { font-size: 13px; }
