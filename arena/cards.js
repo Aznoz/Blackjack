@@ -5,7 +5,7 @@ export const RIVER = { y0: 306, y1: 334 };      // pás řeky (pozemní jednotky
 export const BRIDGE = { x0: 130, x1: 230 };      // most přes řeku (jedna lajna)
 export const DT = 0.05;                          // jeden tik simulace (20× za sekundu)
 export const MATCH_S = 180, OT_S = 60, DOUBLE_AT = 120;   // 3 minuty, poslední minuta dvojitý elixír, pak 60 s prodloužení (první zničená věž vyhrává)
-export const ELIXIR_MAX = 10, ELIXIR_START = 5, ELIXIR_SEC = 2.8;   // elixír: 1 za 2,8 s (od 2:00 dvojnásobně rychle)
+export const ELIXIR_MAX = 10, ELIXIR_START = 5, ELIXIR_SEC = 1.87;   // elixír: 1 za 1,87 s (1,5× rychleji než dřív; od 2:00 dvojnásobně rychle)
 export const DECK_SIZE = 9, HAND_SIZE = 3, MAX_CARD_LEVEL = 10, MAX_LEVEL = 20;
 export const DEPLOY_S = 1;                       // po položení jednotka 1 s „nasazuje“ (stojí)
 
