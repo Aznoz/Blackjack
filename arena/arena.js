@@ -146,7 +146,7 @@ export function api(action, body) {
   }
   if (action === 'open') {
     const i = t.chests.findIndex((c) => c.id === String(body.chest));
-    if (i < 0) return bad(404, 'Tuhle truhlu nemáš.');
+    if (i < 0) return { status: 200, json: { ...withBackup(acc, ident.linked), loot: null } };   // truhla už neexistuje: jen vrať aktuální sklad
     const [ch] = t.chests.splice(i, 1); const loot = lootOf(t, ch.type); acc.lastSeen = now(); dirty();
     return { status: 200, json: { ...withBackup(acc, ident.linked), loot } };
   }
