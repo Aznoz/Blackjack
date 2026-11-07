@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Aréna věží</title>
+<meta name="theme-color" content="#16204e">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%2316204e'/%3E%3Crect x='16' y='24' width='32' height='30' fill='%23c9b27a'/%3E%3Crect x='14' y='14' width='8' height='12' fill='%23c9b27a'/%3E%3Crect x='28' y='14' width='8' height='12' fill='%23c9b27a'/%3E%3Crect x='42' y='14' width='8' height='12' fill='%23c9b27a'/%3E%3Crect x='27' y='38' width='10' height='16' rx='5' fill='%2335406e'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="arena.css?v=3">
+</head>
+<body>
+
+<!-- hlavní menu -->
+<main id="menu" class="screen">
+  <section class="hero">
+    <canvas id="mscene" aria-hidden="true"></canvas>
+    <header class="mtop">
+      <a class="chip" id="back" href="../">← Herna</a>
+      <div class="chip coins" id="coinChip" title="Coiny Arény věží (oddělené od coinů portálu)" hidden><span class="coin"></span><b id="coinNum">0</b></div>
+      <button class="chip ico" id="muteBtn" type="button" aria-label="Zvuk"></button>
+    </header>
+    <h1 class="logo"><span>Aréna</span><b>věží</b></h1>
+  </section>
+  <div class="mwrap">
+    <div class="prof" id="prof" hidden>
+      <div class="plvl" id="pLvl">1</div>
+      <div class="pinfo">
+        <div class="pname" id="pName">Hráč</div>
+        <div class="xpbar"><i id="pXp"></i></div>
+        <div class="psub"><span id="pXpTxt"></span><span id="pRec"></span></div>
+      </div>
+    </div>
+    <label class="field" id="nameField" hidden>Tvoje jméno
+      <input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza">
+    </label>
+    <button class="boj" id="bBot" type="button">
+      <svg viewBox="0 0 48 48" aria-hidden="true"><g stroke="#2a1f3a" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"><path d="M9 6l4-1 17 22-4 4L8 10z" fill="#dfe6f5"/><path d="M39 6l-4-1-17 22 4 4 18-19z" fill="#dfe6f5"/><path d="M27 27l-5 5 4 4 5-5zM21 27l5 5-4 4-5-5z" fill="#ffd24a"/><path d="M12 38l-6 6M36 38l6 6" fill="none" stroke-width="3.6"/><circle cx="6" cy="44" r="2.6" fill="#ffd24a"/><circle cx="42" cy="44" r="2.6" fill="#ffd24a"/></g></svg>
+      <span><b>Boj proti botovi</b><small>Trénink a coiny za výhry</small></span>
+    </button>
+    <div class="tiles">
+      <button class="tile" id="bQuick" type="button">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="17" fill="#2f78cc" stroke="#2a1f3a" stroke-width="2.2"/><path d="M12 17c6-2 9 2 8 6s-5 4-3 9c-4-2-8-6-9-11zM30 12c4 1 8 4 9 8-4 0-5 3-8 3s-4-6-1-11zM29 31c4-2 7 0 8 3-2 4-6 6-9 6 2-3 3-6 1-9z" fill="#5fcf6a"/><path d="M8 24h32M24 7c-8 8-8 26 0 34M24 7c8 8 8 26 0 34" fill="none" stroke="#ffffff66" stroke-width="1.6"/></svg>
+        <b>Online</b><small>rychlá hra</small>
+      </button>
+      <button class="tile" id="bCreate" type="button">
+        <svg viewBox="0 0 48 48" aria-hidden="true"><g stroke="#2a1f3a" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"><circle cx="17" cy="17" r="9" fill="#ffd24a"/><circle cx="17" cy="17" r="3.4" fill="#7a4a10"/><path d="M23 23l16 16M33 33l5-5M38 38l4-4" fill="none" stroke-width="5"/><path d="M23 23l16 16M33 33l5-5M38 38l4-4" fill="none" stroke="#ffd24a" stroke-width="2.4"/></g></svg>
+        <b>Vytvořit</b><small>kód pro kamaráda</small>
+      </button>
+      <button class="tile" id="bDeck" type="button">
+        <div class="fan" id="fan" aria-hidden="true"></div>
+        <b>Balíček</b><small>9 karet</small>
+      </button>
+    </div>
+    <form class="join" id="joinForm"><label for="code">Mám kód od kamaráda</label><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti"><button type="submit">Připojit</button></form>
+    <button class="textbtn" id="bHow" type="button">Jak se hraje a přehled karet</button>
+    <p class="status" id="menuStatus"></p>
+  </div>
+</main>
+
+<!-- výběr obtížnosti bota -->
+<div class="modal" id="botModal" hidden>
+  <div class="sheet small">
+    <h2>Proti botovi</h2>
+    <div class="levels" id="botLevels"></div>
+    <p class="muted">Za výhru i prohru dostaneš coiny arény (za prohru méně) a zkušenosti. Za každou další výhru v řadě je bonus navíc.</p>
+    <button class="link" data-close type="button">Zpět</button>
+  </div>
+</div>
+
+<!-- balíček -->
+<div class="modal" id="deckModal" hidden>
+  <div class="sheet wide">
+    <div class="shead"><h2>Balíček</h2><div class="chip coins"><span class="coin"></span><b id="deckCoins">0</b></div><button class="x" data-close type="button" aria-label="Zavřít">✕</button></div>
+    <div class="slvl" id="deckLvl"></div>
+    <h3>Tvůj balíček <span id="deckCount" class="muted"></span></h3>
+    <div class="dslots" id="deckSlots"></div>
+    <button class="mbtn small" id="deckSave" type="button"><b>Uložit balíček</b></button>
+    <h3>Sbírka karet</h3>
+    <div class="clist" id="deckList"></div>
+    <p class="muted small">Klepnutím na kartu ji přidáš do balíčku nebo ji z něj vyndáš (musí jich být přesně 9). Vylepšení karty (až na úroveň 10) zvyšuje životy i poškození o 10 % za úroveň. Další karty se odemykají s úrovní hráče.</p>
+  </div>
+</div>
+
+<!-- návod -->
+<div class="modal" id="howModal" hidden>
+  <div class="sheet">
+    <div class="shead"><h2>Jak se hraje</h2><button class="x" data-close type="button" aria-label="Zavřít">✕</button></div>
+    <ol class="how">
+      <li>Dole máš <b>3 karty</b> z balíčku o 9 kartách. Kartu vyber (klepnutím, nebo ji rovnou přetáhni) a polož na <b>svou polovinu</b> arény (dole). Kouzla se dají použít kamkoli.</li>
+      <li>Karty stojí <b>elixír</b>. Dobíjí se sám (od 2:00 dvakrát rychleji), nejvíc máš 10. Použitá karta jde na konec fronty a do ruky přijde <b>další</b> (vidíš ji vlevo).</li>
+      <li>Jednotky jdou samy přes <b>most</b> a útočí na nejbližšího nepřítele nebo na věž. Pozemní jednotky létající nezasáhnou, na to potřebuješ střelce, čaroděje, dráčka nebo netopýry.</li>
+      <li>Každý má <b>strážní věž</b> (před základnou) a <b>hlavní věž</b> (vzadu). Zničíš-li hlavní věž, vyhráváš hned. Po 3 minutách vyhrává ten, kdo zničil strážní věž. Při remíze je 1 minuta prodloužení, kde vyhrává první zničená věž.</li>
+      <li>Za výhry získáváš coiny a zkušenosti. Coiny utratíš za <b>vylepšení karet</b> v Balíčku, úrovně odemykají nové karty.</li>
+    </ol>
+    <h3>Karty</h3>
+    <div class="wh" id="howCards"></div>
+  </div>
+</div>
+
+<!-- čekárna -->
+<main id="lobby" class="screen center" hidden>
+  <div class="panel">
+    <h2>Čekám na soupeře</h2>
+    <div class="codebox"><span>Kód místnosti</span><b id="roomCode">----</b></div>
+    <p class="muted" id="lobbyHint">Pošli kód kamarádovi nebo mu pošli odkaz.</p>
+    <button class="mbtn small" id="copyLink" type="button"><b>Zkopírovat odkaz</b></button>
+    <button class="link" id="leaveLobby" type="button">Zrušit</button>
+  </div>
+</main>
+
+<!-- hra -->
+<main id="game" class="screen" hidden>
+  <div class="gtop">
+    <button class="chip ico" id="pauseBtn" type="button" aria-label="Menu">☰</button>
+    <div class="gname" id="gEnemy">Soupeř</div>
+    <div class="gtime"><b id="gTimer">3:00</b><small id="gMode"></small></div>
+    <div class="gcr" id="gCrowns"><span class="me">0</span><i>:</i><span class="en">0</span></div>
+  </div>
+  <div class="gfield" id="gField"><canvas id="cv" aria-label="Aréna"></canvas><div class="banner" id="banner" hidden></div></div>
+  <div class="ghud">
+    <div class="next"><small>Další</small><div class="ncard" id="nextCard"></div></div>
+    <div class="hand" id="hand"></div>
+    <div class="elx"><div class="ebar"><i id="eFill"></i><div class="ticks"></div></div><b id="eNum">5</b><i class="drop big"></i></div>
+  </div>
+  <div class="over" id="over" hidden>
+    <div class="ocard">
+      <div class="otitle" id="oTitle">VÝHRA</div>
+      <div class="oreason" id="oReason"></div>
+      <div class="orow" id="oCoins"></div>
+      <div class="oxp"><div class="xpbar"><i id="oXpBar"></i></div><div class="oxtxt" id="oXpTxt"></div></div>
+      <div class="obtns">
+        <button class="mbtn primary" id="oAgain" type="button"><b id="oAgainTxt">Odveta</b></button>
+        <button class="mbtn" id="oMenu" type="button"><b>Do menu</b></button>
+      </div>
+      <div class="muted" id="oHint"></div>
+    </div>
+  </div>
+  <div class="modal" id="pauseModal" hidden>
+    <div class="sheet small">
+      <h2>Pauza</h2>
+      <p class="muted">Hra běží dál (je to souboj v reálném čase, nelze ji zastavit).</p>
+      <button class="mbtn" id="pMute" type="button"><b>Zvuk</b></button>
+      <button class="mbtn" data-close type="button"><b>Pokračovat</b></button>
+      <button class="mbtn danger" id="pLeave" type="button"><b>Vzdát se a odejít</b></button>
+    </div>
+  </div>
+</main>
+
+<div class="conn" id="conn" hidden>Připojuji…</div>
+<div class="toast" id="toast" role="alert" hidden></div>
+<script src="config.js"></script>
+<script type="module" src="arena.js?v=3"></script>
+</body>
+</html>
