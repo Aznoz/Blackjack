@@ -47,4 +47,14 @@ export const upgradeCost = (id, lv) => { const c = CARDS[id]; return c ? Math.ro
 
 export const xpFor = (lvl) => (lvl <= 1 ? 0 : Math.round(80 * Math.pow(lvl - 1, 1.5)));
 export function levelOf(xp) { let l = 1; while (l < MAX_LEVEL && xp >= xpFor(l + 1)) l++; return l; }
-export const unlocked = (id, plvl) => !!CARDS[id] && plvl >= CARDS[id].lvl;
+export const unlocked = (id, plvl) => !!CARDS[id] && plvl >= CARDS[id].lvl;   // (starší pravidlo; nové postavy padají z truhel)
+/** XP karty potřebné na vylepšení z úrovně lv na lv+1 (kromě coinů). */
+export const cardXpNeed = (lv) => Math.round(10 * Math.pow(1.5, clamp(Math.floor(Number(lv) || 1), 1, MAX_CARD_LEVEL) - 1));
+/** Truhly: cards = kolik různých karet dostane XP, xp = rozsah XP na kartu, coins = rozsah coinů, fresh = šance na novou postavu. */
+export const CHESTS = {
+  wood: { name: 'Dřevěná truhla', cards: 3, xp: [4, 8], coins: [20, 40], fresh: 0.06 },
+  silver: { name: 'Stříbrná truhla', cards: 4, xp: [8, 15], coins: [50, 90], fresh: 0.16 },
+  gold: { name: 'Zlatá truhla', cards: 5, xp: [14, 26], coins: [100, 180], fresh: 0.35 },
+  magic: { name: 'Magická truhla', cards: 6, xp: [24, 42], coins: [200, 340], fresh: 0.75 },
+};
+export const CHEST_ORDER = ['wood', 'silver', 'gold', 'magic'];

@@ -38,11 +38,43 @@ export function arenaOf(acc) {
   if (!t.lv || typeof t.lv !== 'object') t.lv = {};
   for (const id of Object.keys(t.lv)) { if (!CARDS[id]) delete t.lv[id]; else t.lv[id] = C.clamp(Math.floor(Number(t.lv[id]) || 1), 1, C.MAX_CARD_LEVEL); }
   const plvl = C.levelOf(t.xp);
+  if (!t.owned || typeof t.owned !== 'object') {   // první načtení: nový účet má jen základní karty, starý si ponechá vše, co měl odemčené úrovní
+    const fresh = !t.wins && !t.losses && !t.xp;
+    t.owned = {}; for (const id of C.CARD_ORDER) if (C.STARTER.includes(id) || (!fresh && C.unlocked(id, plvl))) t.owned[id] = 1;
+  }
+  for (const id of Object.keys(t.owned)) if (!CARDS[id]) delete t.owned[id];
+  for (const id of C.STARTER) t.owned[id] = 1;
+  if (!t.cxp || typeof t.cxp !== 'object') t.cxp = {};
+  for (const id of Object.keys(t.cxp)) { if (!CARDS[id]) delete t.cxp[id]; else t.cxp[id] = Math.max(0, Math.min(1e7, Math.floor(Number(t.cxp[id]) || 0))); }
+  if (!Array.isArray(t.chests)) t.chests = [];
+  t.chests = t.chests.filter((c) => c && C.CHESTS[c.type] && typeof c.id === 'string').slice(0, MAX_CHESTS);
+  if (!t.seeded) { t.seeded = 1; t.chests.push(newChest('silver')); }   // jednorázový dárek k zavedení truhel
   const seen = new Set(); const deck = [];
-  for (const id of Array.isArray(t.deck) ? t.deck : []) if (CARDS[id] && C.unlocked(id, plvl) && !seen.has(id)) { seen.add(id); deck.push(id); }
+  for (const id of Array.isArray(t.deck) ? t.deck : []) if (CARDS[id] && t.owned[id] && !seen.has(id)) { seen.add(id); deck.push(id); }
   for (const id of C.STARTER) if (deck.length < C.DECK_SIZE && !seen.has(id)) { seen.add(id); deck.push(id); }   // doplnění na 9
   t.deck = deck.slice(0, C.DECK_SIZE);
   return t;
+}
+const MAX_CHESTS = 60;
+const newChest = (type) => ({ id: crypto.randomBytes(6).toString('hex'), type, at: now() });
+const pickW = (w) => { let r = Math.random() * w.reduce((a, b) => a + b, 0); for (let i = 0; i < w.length; i++) { r -= w[i]; if (r < 0) return i; } return 0; };
+const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+/** Jakou truhlu hráč dostane po zápase (výhra = lepší). */
+function chestType(won, draw, bot) {
+  const w = draw ? [55, 35, 10, 0] : won ? (bot ? [[30, 45, 20, 5], [24, 46, 24, 6], [18, 46, 28, 8], [12, 46, 32, 10]][bot - 1] : [10, 42, 36, 12]) : [70, 25, 5, 0];
+  return C.CHEST_ORDER[pickW(w)];
+}
+/** Otevře truhlu: XP pro karty, coiny, někdy nová postava. */
+function lootOf(t, type) {
+  const d = C.CHESTS[type]; const rewards = [];
+  const missing = C.CARD_ORDER.filter((id) => !t.owned[id]);
+  if (missing.length && Math.random() < d.fresh) { const id = missing[Math.floor(Math.random() * missing.length)]; t.owned[id] = 1; rewards.push({ id, xp: rnd(d.xp[0], d.xp[1]), isNew: true }); }
+  const pool = C.CARD_ORDER.filter((id) => t.owned[id] && !rewards.some((r) => r.id === id));
+  for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
+  for (const id of pool.slice(0, Math.max(0, d.cards - rewards.length))) rewards.push({ id, xp: rnd(d.xp[0], d.xp[1]), isNew: false });
+  for (const r of rewards) t.cxp[r.id] = Math.min(1e7, (t.cxp[r.id] || 0) + r.xp);
+  const coins = rnd(d.coins[0], d.coins[1]); t.coins = Math.min(1e9, t.coins + coins);
+  return { type, rewards, coins };
 }
 const levelOfAcc = (acc) => (acc ? C.levelOf(arenaOf(acc).xp) : 1);
 const dirty = () => { try { deps && deps.markDirty(); } catch { /* nic */ } };
@@ -55,7 +87,7 @@ function profileOf(acc, linked) {
   const t = arenaOf(acc); const lvl = C.levelOf(t.xp);
   return {
     account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, coins: t.coins, streak: t.streak, best: t.best,
-    arena: { xp: t.xp, lvl, from: C.xpFor(lvl), next: lvl >= C.MAX_LEVEL ? null : C.xpFor(lvl + 1), wins: t.wins, losses: t.losses, deck: [...t.deck], lv: { ...t.lv } },
+    arena: { xp: t.xp, lvl, from: C.xpFor(lvl), next: lvl >= C.MAX_LEVEL ? null : C.xpFor(lvl + 1), wins: t.wins, losses: t.losses, deck: [...t.deck], lv: { ...t.lv }, owned: Object.keys(t.owned), cxp: { ...t.cxp }, chests: t.chests.map((c) => ({ id: c.id, type: c.type })) },
     rewards: REWARDS,
   };
 }
@@ -75,20 +107,28 @@ export function api(action, body) {
     const d = body.deck;
     if (!Array.isArray(d) || d.length !== C.DECK_SIZE) return bad(400, `Balíček musí mít přesně ${C.DECK_SIZE} karet.`);
     if (new Set(d).size !== d.length) return bad(400, 'Každá karta smí být v balíčku jen jednou.');
-    for (const id of d) { if (!CARDS[id]) return bad(400, 'Neznámá karta.'); if (!C.unlocked(id, plvl)) return bad(403, `${CARDS[id].name} se odemkne na úrovni ${CARDS[id].lvl}.`); }
+    for (const id of d) { if (!CARDS[id]) return bad(400, 'Neznámá karta.'); if (!t.owned[id]) return bad(403, `${CARDS[id].name} ještě nemáš (padá z truhel).`); }
     t.deck = d.map(String); dirty();
     return { status: 200, json: profileOf(acc, ident.linked) };
   }
   if (action === 'upgrade') {
     const id = String(body.id); const c = CARDS[id];
     if (!c) return bad(400, 'Neznámá karta.');
-    if (!C.unlocked(id, plvl)) return bad(403, `${c.name} se odemkne na úrovni ${c.lvl}.`);
+    if (!t.owned[id]) return bad(403, `${c.name} ještě nemáš (padá z truhel).`);
     const lv = t.lv[id] || 1;
     if (lv >= C.MAX_CARD_LEVEL) return bad(409, `${c.name}: už má nejvyšší úroveň.`);
     const price = C.upgradeCost(id, lv);
+    const need = C.cardXpNeed(lv);
+    if ((t.cxp[id] || 0) < need) return bad(402, `Chybí XP karty (${t.cxp[id] || 0}/${need}). XP padá z truhel.`);
     if (t.coins < price) return bad(402, 'Nemáš dost coinů arény.');
-    t.coins -= price; t.lv[id] = lv + 1; acc.lastSeen = now(); dirty();
+    t.coins -= price; t.cxp[id] -= need; t.lv[id] = lv + 1; acc.lastSeen = now(); dirty();
     return { status: 200, json: profileOf(acc, ident.linked) };
+  }
+  if (action === 'open') {
+    const i = t.chests.findIndex((c) => c.id === String(body.chest));
+    if (i < 0) return bad(404, 'Tuhle truhlu nemáš.');
+    const [ch] = t.chests.splice(i, 1); const loot = lootOf(t, ch.type); acc.lastSeen = now(); dirty();
+    return { status: 200, json: { ...profileOf(acc, ident.linked), loot } };
   }
   return bad(404, 'Neznámá akce.');
 }
@@ -143,7 +183,7 @@ function finish(room, r) {
   if (room.phase === 'over') return;
   room.phase = 'over';
   const g = room.game; const crowns = g ? [...g.crowns] : [0, 0];
-  const out = { winner: r.winner, reason: r.reason, crowns, coins: {}, bonus: {}, streak: {}, xp: {}, noCoins: null };
+  const out = { winner: r.winner, reason: r.reason, crowns, coins: {}, bonus: {}, streak: {}, xp: {}, noCoins: null, chest: {} };
   const humans = room.players.map((p, i) => ({ p, i })).filter((o) => !o.p.bot && o.p.acc);
   const enough = room.players.every((p, i) => p.bot || (g && g.pl[i].played >= MIN_PLAYS));
   for (const { p, i } of humans) {
@@ -159,6 +199,7 @@ function finish(room, r) {
     if (r.winner === -1) { amount = room.bot ? BOT_LOSE[room.bot] : LOSE_COINS; out.bonus[i] = 0; }   // remíza = útěcha, série se nemění
     else if (won) { t.streak++; t.best = Math.max(t.best, t.streak); const bonus = STREAK_BONUS * Math.min(t.streak - 1, STREAK_CAP); amount = (room.bot ? BOT_REWARDS[room.bot] : WIN_COINS) + bonus; out.bonus[i] = bonus; }
     else { t.streak = 0; amount = room.bot ? BOT_LOSE[room.bot] : LOSE_COINS; out.bonus[i] = 0; }
+    const ct = chestType(won, r.winner === -1, room.bot); if (t.chests.length < MAX_CHESTS) t.chests.push(newChest(ct)); out.chest[i] = ct;
     t.coins = Math.min(1e9, t.coins + amount); out.coins[i] = amount; out.streak[i] = t.streak; p.acc.lastSeen = now();
   }
   dirty();
