@@ -48,7 +48,6 @@ export function arenaOf(acc) {
   for (const id of Object.keys(t.cxp)) { if (!CARDS[id]) delete t.cxp[id]; else t.cxp[id] = Math.max(0, Math.min(1e7, Math.floor(Number(t.cxp[id]) || 0))); }
   if (!Array.isArray(t.chests)) t.chests = [];
   t.chests = t.chests.filter((c) => c && C.CHESTS[c.type] && typeof c.id === 'string').slice(0, MAX_CHESTS);
-  if (!t.seeded) { t.seeded = 1; t.chests.push(newChest('silver')); }   // jednorázový dárek k zavedení truhel
   const seen = new Set(); const deck = [];
   for (const id of Array.isArray(t.deck) ? t.deck : []) if (CARDS[id] && t.owned[id] && !seen.has(id)) { seen.add(id); deck.push(id); }
   for (const id of C.STARTER) if (deck.length < C.DECK_SIZE && !seen.has(id)) { seen.add(id); deck.push(id); }   // doplnění na 9
@@ -56,6 +55,14 @@ export function arenaOf(acc) {
   return t;
 }
 const MAX_CHESTS = 60;
+// Záloha postupu podepsaná serverem: klient si ji drží v prohlížeči a po resetu serveru (smazaná data) ji pošle zpět. Nastav ARENA_SECRET v prostředí serveru.
+const SECRET = process.env.ARENA_SECRET || 'arena-vezi-default-secret-change-me';
+const sign = (token, data) => crypto.createHmac('sha256', SECRET).update(token + '|' + data).digest('hex');
+const isFresh = (t) => !t.xp && !t.wins && !t.losses && !Object.keys(t.lv).length && !Object.keys(t.cxp).length;
+function makeBackup(t, token) {
+  const d = JSON.stringify({ xp: t.xp, wins: t.wins, losses: t.losses, coins: t.coins, streak: t.streak, best: t.best, lv: t.lv, owned: Object.keys(t.owned), cxp: t.cxp, chests: t.chests, deck: t.deck });
+  return { d, s: sign(token, d) };
+}
 const newChest = (type) => ({ id: crypto.randomBytes(6).toString('hex'), type, at: now() });
 const pickW = (w) => { let r = Math.random() * w.reduce((a, b) => a + b, 0); for (let i = 0; i < w.length; i++) { r -= w[i]; if (r < 0) return i; } return 0; };
 const rnd = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
@@ -100,7 +107,8 @@ function identify(msg) {
 export function api(action, body) {
   const bad = (status, error) => ({ status, json: { error } });
   const ident = identify(body || {});
-  if (action === 'me') return { status: 200, json: ident ? profileOf(ident.acc, ident.linked) : { account: false, rewards: REWARDS } };
+  const withBackup = (acc, linked) => { const p = profileOf(acc, linked); if (body && typeof body.token === 'string') p.backup = makeBackup(arenaOf(acc), body.token); return p; };
+  if (action === 'me') return { status: 200, json: ident ? withBackup(ident.acc, ident.linked) : { account: false, rewards: REWARDS } };
   if (!ident) return bad(401, 'Nejdřív se přihlas (účet se vytvoří sám při otevření portálu).');
   const acc = ident.acc; const t = arenaOf(acc); const plvl = C.levelOf(t.xp);
   if (action === 'deck') {
@@ -109,7 +117,7 @@ export function api(action, body) {
     if (new Set(d).size !== d.length) return bad(400, 'Každá karta smí být v balíčku jen jednou.');
     for (const id of d) { if (!CARDS[id]) return bad(400, 'Neznámá karta.'); if (!t.owned[id]) return bad(403, `${CARDS[id].name} ještě nemáš (padá z truhel).`); }
     t.deck = d.map(String); dirty();
-    return { status: 200, json: profileOf(acc, ident.linked) };
+    return { status: 200, json: withBackup(acc, ident.linked) };
   }
   if (action === 'upgrade') {
     const id = String(body.id); const c = CARDS[id];
@@ -122,13 +130,25 @@ export function api(action, body) {
     if ((t.cxp[id] || 0) < need) return bad(402, `Chybí XP karty (${t.cxp[id] || 0}/${need}). XP padá z truhel.`);
     if (t.coins < price) return bad(402, 'Nemáš dost coinů arény.');
     t.coins -= price; t.cxp[id] -= need; t.lv[id] = lv + 1; acc.lastSeen = now(); dirty();
-    return { status: 200, json: profileOf(acc, ident.linked) };
+    return { status: 200, json: withBackup(acc, ident.linked) };
+  }
+  if (action === 'restore') {
+    const b = body.backup;
+    if (!isFresh(t)) return bad(409, 'Účet už má postup, obnova není potřeba.');
+    if (!b || typeof b.d !== 'string' || typeof b.s !== 'string' || b.d.length > 200000) return bad(400, 'Neplatná záloha.');
+    const good = Buffer.from(sign(body.token, b.d)); const got = Buffer.from(b.s);
+    if (good.length !== got.length || !crypto.timingSafeEqual(good, got)) return bad(403, 'Záloha nesedí k tomuto účtu.');
+    let d; try { d = JSON.parse(b.d); } catch { return bad(400, 'Neplatná záloha.'); }
+    t.xp = d.xp; t.wins = d.wins; t.losses = d.losses; t.coins = d.coins; t.streak = d.streak; t.best = d.best; t.lv = d.lv; t.cxp = d.cxp; t.chests = d.chests; t.deck = d.deck;
+    t.owned = {}; for (const id of Array.isArray(d.owned) ? d.owned : []) t.owned[id] = 1;
+    arenaOf(acc); acc.lastSeen = now(); dirty();
+    return { status: 200, json: withBackup(acc, ident.linked) };
   }
   if (action === 'open') {
     const i = t.chests.findIndex((c) => c.id === String(body.chest));
     if (i < 0) return bad(404, 'Tuhle truhlu nemáš.');
     const [ch] = t.chests.splice(i, 1); const loot = lootOf(t, ch.type); acc.lastSeen = now(); dirty();
-    return { status: 200, json: { ...profileOf(acc, ident.linked), loot } };
+    return { status: 200, json: { ...withBackup(acc, ident.linked), loot } };
   }
   return bad(404, 'Neznámá akce.');
 }
