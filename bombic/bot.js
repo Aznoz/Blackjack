@@ -6,9 +6,9 @@ const { COLS, ROWS, T, idx } = K;
 const N = COLS * ROWS;
 
 export const BOT_NAMES = { 1: 'Bot Nováček', 2: 'Bot Bojovník', 3: 'Bot Mistr' };
-export const BOT_THINK = { 1: 9, 2: 5, 3: 3 };           // jak často (v tiscích) bot přehodnocuje
+export const BOT_THINK = { 1: 9, 2: 6, 3: 5 };           // jak často (v tiscích) bot přehodnocuje
 const REACT = { 1: 16, 2: 28, 3: 44 };                    // z jak daleka (tiky do výbuchu) si ohrožení všimne
-const MISTAKE = { 1: 0.3, 2: 0.1, 3: 0.02 };              // šance, že tah promrhá blouděním
+const MISTAKE = { 1: 0.3, 2: 0.16, 3: 0.02 };              // šance, že tah promrhá blouděním
 const BOMB_P = { 1: 0.35, 2: 0.75, 3: 1 };                // šance, že využije příležitost k bombě
 const HUNT = { 1: 0, 2: 0.5, 3: 1 };                      // zájem o honění soupeřů
 

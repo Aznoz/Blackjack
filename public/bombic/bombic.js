@@ -291,7 +291,7 @@ function processEvents(now) {
     else if (k === 'd') { dieAt[e[3]] = now; sfx.die(); burst(e[1], e[2], 8, ['#fff', SKINS[skinOf(e[3]) % SKINS.length].main], 4, 0.7); if (e[3] === me) banner('Jsi venku', 1500); }
     else if (k === 'i') {
       const type = typeof e[1] === 'number' ? K.ITEMS[e[1]] : e[1]; const pi = e[2]; const pp = a && a.p[pi];
-      if (type === 'skull') sfx.skull(); else if (pi === me) sfx.pick();
+      if (type === 'skull' || (type === 'gskull' && pi !== me)) sfx.skull(); else if (pi === me) sfx.pick();
       if (pp) fx.push({ k: 'ico', x: pp[0], y: pp[1] - 0.5, t: 0, life: 0.9, type });
     } else if (k === 'go') { banner('Do toho!', 800); sfx.go(); resendDir(); }
   }

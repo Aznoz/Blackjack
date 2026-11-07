@@ -11,13 +11,14 @@ export const BASE_SPEED = 4.2, SPEED_STEP = 0.55, MAX_SPEED_LV = 5;   // pole za
 export const START_BOMBS = 1, START_RANGE = 2, MAX_BOMBS = 8, MAX_RANGE = 9;
 export const CURSE_S = 12;
 export const SKATE_S = 15, SHOT_S = 1.2;              // skateboard: jak dlouho trvá a jak často sám vystřelí bombu ve směru pohledu                            // jak dlouho trvá prokletí od lebky
-export const ITEMS = ['bomb', 'fire', 'speed', 'kick', 'skull', 'skate'];
+export const ITEMS = ['bomb', 'fire', 'speed', 'kick', 'skull', 'skate', 'gskull'];
 export const ITEM_INFO = {
   bomb: { name: 'Bomba navíc', desc: 'Můžeš mít položenou o jednu bombu víc.' },
   fire: { name: 'Delší plamen', desc: 'Výbuch dosáhne o pole dál.' },
   speed: { name: 'Rychlé boty', desc: 'Běháš rychleji.' },
   kick: { name: 'Kopání bomb', desc: 'Když narazíš na bombu, odkopneš ji.' },
   skate: { name: 'Skateboard', desc: 'Na 15 s se postavíš na skateboard a bomby ti samy vyletují ve směru, kam se díváš.' },
+  gskull: { name: 'Zelená lebka', desc: 'Vzácná: všem soupeřům hodí náhodné prokletí na 12 s, tobě nic.' },
   skull: { name: 'Lebka', desc: 'Na 12 s tě něco postihne: zpomalení, zrychlení, žádné bomby, samovolné bomby, nebo krátký plamen.' },
 };
 export const CURSES = ['slow', 'fast', 'nobomb', 'auto', 'short'];

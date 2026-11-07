@@ -8,7 +8,7 @@ export const FUSE_T = TICKS(K.FUSE_S), FLAME_T = TICKS(K.FLAME_S), ROUND_T = TIC
 const SD_EVERY = 6, SD_WARN = 12;                    // náhlá smrt: nový kámen každých 0,3 s, dopadá po 0,6 s
 const HALF = 0.4, EPS = 0.0001;
 export const DIRS = [[0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]];   // 0 stát, 1 nahoru, 2 doprava, 3 dolů, 4 doleva
-const ITEM_W = [['bomb', 26], ['fire', 26], ['speed', 20], ['kick', 8], ['skull', 10], ['skate', 9]];
+const ITEM_W = [['bomb', 26], ['fire', 26], ['speed', 20], ['kick', 8], ['skull', 10], ['skate', 9], ['gskull', 4]];
 const DROP_P = 0.34;
 
 export function mulberry32(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -83,26 +83,33 @@ function collides(s, p, nx, ny) {
 }
 const overlapsCell = (p, cx, cy) => p.x + HALF > cx + EPS && p.x - HALF < cx + 1 - EPS && p.y + HALF > cy + EPS && p.y - HALF < cy + 1 - EPS;
 
-// ------------------------------------------------------------------ pohyb hráče (plynulý, s „kloužením“ kolem rohů)
+// ------------------------------------------------------------------ pohyb hráče (po „uličkách“ mřížky: při změně směru se postava rychle srovná na střed pole)
 function movePlayer(s, p) {
   const [dx, dy] = DIRS[p.d]; p.moving = 0; if (!dx && !dy) return;
-  p.face = p.d; const spd = speedNow(p) * K.DT;
-  const nx = p.x + dx * spd, ny = p.y + dy * spd;
+  p.face = p.d; let rem = speedNow(p) * K.DT;
+  const lat = dx ? 'y' : 'x';                                   // souřadnice, která musí ležet na ose uličky
+  const v = p[lat], k = Math.floor(v), off = v - (k + 0.5);
+  if (Math.abs(off) > EPS) {
+    // srovnání do nejbližší uličky, ze které se dá jít zadaným směrem (i o pole dál: zatáčka se „předběhne“ nebo se vrátí do křižovatky)
+    let best = null, bd = 9;
+    for (const c of [k, k - 1, k + 1]) {
+      const sx = dx ? Math.floor(p.x) + dx : c, sy = dx ? c : Math.floor(p.y) + dy; if (blockedFor(s, p, sx, sy)) continue;
+      const dist = Math.abs(c + 0.5 - v); if (dist < bd - 1e-9) { bd = dist; best = c + 0.5; }
+    }
+    if (best === null) return;                                  // žádná ulička tím směrem: stojí
+    const step = Math.min(rem, bd), sg = Math.sign(best - v); const np = v + sg * step;
+    const tx = dx ? p.x : np, ty = dx ? np : p.y;
+    if (collides(s, p, tx, ty)) return;
+    p[lat] = step >= bd - 1e-9 ? best : np; p.moving = 1; rem -= step; if (rem <= EPS || step < bd - 1e-9) return;
+  } else p[lat] = k + 0.5;
+  const nx = p.x + dx * rem, ny = p.y + dy * rem;
   if (!collides(s, p, nx, ny)) { p.x = nx; p.y = ny; p.moving = 1; return; }
   if (dx) {
-    const cx = Math.floor(nx + dx * HALF), r0 = Math.floor(p.y - HALF + EPS), r1 = Math.floor(p.y + HALF - EPS);
-    const b0 = blockedFor(s, p, cx, r0), b1 = blockedFor(s, p, cx, r1);
-    if (r0 === r1 || (b0 && b1)) {
-      const lim = dx > 0 ? cx - HALF - EPS : cx + 1 + HALF + EPS; if (dx > 0 ? lim > p.x : lim < p.x) p.x = lim;
-      tryKick(s, p, cx, b0 ? r0 : r1, dx, 0);
-    } else { const target = (b0 ? r1 : r0) + 0.5; const m = Math.sign(target - p.y) * Math.min(spd, Math.abs(target - p.y)); p.y += m; p.moving = 1; }
+    const cx = Math.floor(nx + dx * HALF); const lim = dx > 0 ? cx - HALF - EPS : cx + 1 + HALF + EPS; if (dx > 0 ? lim > p.x : lim < p.x) { p.x = lim; p.moving = 1; }
+    tryKick(s, p, cx, Math.floor(p.y), dx, 0);
   } else {
-    const cy = Math.floor(ny + dy * HALF), c0 = Math.floor(p.x - HALF + EPS), c1 = Math.floor(p.x + HALF - EPS);
-    const b0 = blockedFor(s, p, c0, cy), b1 = blockedFor(s, p, c1, cy);
-    if (c0 === c1 || (b0 && b1)) {
-      const lim = dy > 0 ? cy - HALF - EPS : cy + 1 + HALF + EPS; if (dy > 0 ? lim > p.y : lim < p.y) p.y = lim;
-      tryKick(s, p, b0 ? c0 : c1, cy, 0, dy);
-    } else { const target = (b0 ? c1 : c0) + 0.5; const m = Math.sign(target - p.x) * Math.min(spd, Math.abs(target - p.x)); p.x += m; p.moving = 1; }
+    const cy = Math.floor(ny + dy * HALF); const lim = dy > 0 ? cy - HALF - EPS : cy + 1 + HALF + EPS; if (dy > 0 ? lim > p.y : lim < p.y) { p.y = lim; p.moving = 1; }
+    tryKick(s, p, Math.floor(p.x), cy, 0, dy);
   }
 }
 function tryKick(s, p, cx, cy, dx, dy) {
@@ -180,6 +187,7 @@ function applyItem(s, p, type) {
   else if (type === 'fire') p.range = Math.min(K.MAX_RANGE, p.range + 1);
   else if (type === 'speed') p.spLv = Math.min(K.MAX_SPEED_LV, p.spLv + 1);
   else if (type === 'kick') p.kick = true;
+  else if (type === 'gskull') { for (const q of s.pl) if (q.alive && q.i !== p.i) { q.curse = { k: K.CURSES[Math.floor(s.rng() * K.CURSES.length)], until: s.tick + CURSE_T }; q.autoAt = s.tick + 8; } }
   else if (type === 'skate') { p.skateUntil = s.tick + SKATE_T; p.shootAt = s.tick + 6; }
   else if (type === 'skull') { p.curse = { k: K.CURSES[Math.floor(s.rng() * K.CURSES.length)], until: s.tick + CURSE_T }; p.autoAt = s.tick + 8; }
   s.ev.push(['i', type, p.i]);

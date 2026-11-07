@@ -50,9 +50,14 @@ const cell = (s, i) => [Math.floor(s.pl[i].x), Math.floor(s.pl[i].y)];
   G.setInput(s, 0, 2); run(s, 200); assert.ok(s.pl[0].x < COLS - 1 - 0.4 + 0.001, 'nepronikne okrajem'); assert.ok(s.pl[0].x > COLS - 1.5 - 0.05);
   put(s, 0, 1, 2); G.setInput(s, 0, 2); run(s, 30);   // v řadě y=2 stojí sloupek na x=2
   assert.ok(s.pl[0].x < 2 - 0.4 + 0.01, 'sloupek ho zastaví: ' + s.pl[0].x);
-  // zatáčka: hráč lehce mimo osu uličky se u sloupku „srovná“ a projde
-  const t = blank(); t.pl[0].x = 1.5; t.pl[0].y = 2.0; put(t, 1, 13, 11); G.setInput(t, 0, 2); run(t, 30);
-  assert.ok(t.pl[0].x > 2.5, 'zaklouzne kolem rohu sloupku: ' + t.pl[0].x);
+  // ulička: mimo osu se postava při pohybu rychle srovná na střed pole a teprve pak jde
+  const t = blank(); put(t, 1, 13, 11); t.pl[0].x = 1.2; t.pl[0].y = 1.5; G.setInput(t, 0, 3); run(t, 3); assert.equal(t.pl[0].x, 1.5, 'srovná se na osu sloupce'); run(t, 10); assert.ok(t.pl[0].y > 1.9 && t.pl[0].x === 1.5, 'a jde dolů');
+  // zatáčka: stisk doprava uprostřed pole u sloupku (řada y=2 je zablokovaná) ho dovede do řady y=3
+  const u = blank(); put(u, 1, 13, 11); u.pl[0].x = 1.5; u.pl[0].y = 2.9; G.setInput(u, 0, 2); run(u, 40); assert.equal(u.pl[0].y, 3.5, 'zatočí do volné řady'); assert.ok(u.pl[0].x > 2.5, 'a projde: ' + u.pl[0].x);
+  // do zdi se neotáčí: žádná volná ulička = stojí na místě
+  const w = blank(); put(w, 1, 13, 11); put(w, 0, 1, 2); w.grid[idx(2, 1)] = T.STONE; w.grid[idx(2, 3)] = T.STONE; w.pl[0].y = 2.0; G.setInput(w, 0, 2); run(w, 20); assert.equal(w.pl[0].y, 2.0); assert.equal(w.pl[0].x, 1.5);
+  // zastavení hned po uvolnění (žádné dojíždění) a ostré otočení o 180° bez prodlevy
+  const z = blank(); put(z, 1, 13, 11); put(z, 0, 3, 1); G.setInput(z, 0, 2); run(z, 3); const x1 = z.pl[0].x; G.setInput(z, 0, 0); run(z, 5); assert.equal(z.pl[0].x, x1, 'stojí'); G.setInput(z, 0, 4); run(z, 1); assert.ok(z.pl[0].x < x1, 'otočka hned');
 }
 
 // --- bomba: pokládání, limit, průchod vlastní bombou, výbuch
@@ -171,6 +176,11 @@ const cell = (s, i) => [Math.floor(s.pl[i].x), Math.floor(s.pl[i].y)];
   const e = blank(2); put(e, 0, 1, 1); put(e, 1, 13, 11); e.pl[0].face = 2; e.pl[0].skateUntil = 9999; e.pl[0].shootAt = 0; run(e, 2); const f = e.bombs[0]; assert.ok(f && f.free); run(e, G.FUSE_T + 2); assert.ok(e.flames.length > 0 || e.bombs.length > 0); assert.equal(e.pl[0].placed, 0, 'po výbuchu se placed nesnižuje do mínusu');
   assert.equal(G.snap(s, false).p[0][12] > 0, true, 'snímek nese zbývající čas skateboardu');
 }
+{ // zelená lebka: prokletí dostanou všichni živí soupeři, sběratel ne
+  const s = blank(3); put(s, 0, 3, 1); put(s, 1, 9, 1); put(s, 2, 13, 11); G.forfeit(s, 2); s.items.push({ x: 3, y: 1, type: 'gskull' }); G.step(s);
+  assert.equal(s.pl[0].curse, null, 'sběratel prokletí nemá'); assert.ok(s.pl[1].curse && K.CURSES.includes(s.pl[1].curse.k), 'soupeř ho má'); assert.equal(s.pl[2].curse, null, 'mrtvý ne'); assert.ok(s.ev.some((e) => e[0] === 'i' && e[1] === 'gskull'));
+  run(s, G.CURSE_T + 2); assert.ok(s.pl[1].curse === null || !s.pl[1].alive, 'prokletí po čase zmizí'); assert.ok(K.ITEMS.includes('gskull')); assert.ok(K.ITEM_INFO.gskull.name);
+}
 { // skiny: odemykání úrovní
   assert.equal(K.SKINS.length, 16); assert.ok(K.SKINS.slice(0, 4).every((k) => k.lvl === 1)); for (let i = 1; i < K.SKINS.length; i++) assert.ok(K.SKINS[i].lvl >= K.SKINS[i - 1].lvl, 'úrovně rostou'); assert.equal(K.SKINS.at(-1).lvl, K.MAX_LEVEL); assert.deepEqual(K.unlockedSkins(1), [0, 1, 2, 3]); assert.equal(K.unlockedSkins(35).length, K.SKINS.length);
   assert.ok(new Set(K.SKINS.map((k) => k.name)).size === K.SKINS.length);
@@ -185,6 +195,7 @@ const cell = (s, i) => [Math.floor(s.pl[i].x), Math.floor(s.pl[i].y)];
 {
   const wins = (levels, N) => { const w = levels.map(() => 0); let dr = 0; for (let seed = 1; seed <= N; seed++) { const s = G.newRound(levels.map((_, i) => 'b' + i), seed * 7919, { noFreeze: true }); const th = levels.map((l, i) => i); while (!s.over) { levels.forEach((l, i) => { if (s.tick >= th[i]) { th[i] = s.tick + B.BOT_THINK[l]; const a = B.botThink(s, i, l); G.setInput(s, i, a.d); if (a.bomb) G.wantBomb(s, i); } }); G.step(s); G.clearEvents(s); } if (s.over.winner >= 0) w[s.over.winner]++; else dr++; } return { w, dr }; };
   const a = wins([3, 1], 30); assert.ok(a.w[0] >= 18, 'Mistr porazí Nováčka: ' + a.w);
+  const d3 = wins([3, 2], 30); assert.ok(d3.w[0] > d3.w[1], 'Mistr porazí Bojovníka: ' + d3.w);
   const b = wins([1, 3], 30); assert.ok(b.w[1] >= 18, 'a to i ze druhé strany: ' + b.w);
   const c = wins([3, 3, 3, 3], 8); assert.equal(c.w.reduce((x, y) => x + y, 0) + c.dr, 8, 'čtyři boti dohrají');
   const lone = G.newRound(['solo', 'dummy'], 3, { noFreeze: true }); for (let i = 0; i < 60; i++) { const a2 = B.botThink(lone, 0, 3); G.setInput(lone, 0, a2.d); if (a2.bomb) G.wantBomb(lone, 0); G.step(lone); G.clearEvents(lone); }

@@ -122,24 +122,26 @@ export function drawFlame(g, x, y, ts, t, gx, gy) {
   rr(g, x + m + ts * 0.03, y + m + ts * 0.03, ts * k - ts * 0.06, ts * k - ts * 0.06, ts * 0.28); const gr = g.createRadialGradient(x + ts / 2, y + ts / 2, ts * 0.05, x + ts / 2, y + ts / 2, ts * 0.55); gr.addColorStop(0, '#fffbe0'); gr.addColorStop(0.35, '#ffd23a'); gr.addColorStop(0.75, '#ff7a1a'); gr.addColorStop(1, '#d9321c'); g.fillStyle = gr; g.fill();
   g.strokeStyle = 'rgba(120,20,0,.5)'; g.lineWidth = Math.max(1, ts * 0.04); g.stroke();
 }
-export function skullIcon(g, s) {   // lebka, střed v (0,0), poloměr ≈ s
-  ell(g, 0, -s * 0.1, s * 0.82, s * 0.78, '#f1ede0', Math.max(1, s * 0.12), '#222'); rr(g, -s * 0.5, s * 0.35, s, s * 0.55, s * 0.18); g.fillStyle = '#f1ede0'; g.fill(); g.strokeStyle = '#222'; g.lineWidth = Math.max(1, s * 0.12); g.stroke();
+export function skullIcon(g, s, fill = '#f1ede0') {   // lebka, střed v (0,0), poloměr ≈ s
+  ell(g, 0, -s * 0.1, s * 0.82, s * 0.78, fill, Math.max(1, s * 0.12), '#222'); rr(g, -s * 0.5, s * 0.35, s, s * 0.55, s * 0.18); g.fillStyle = fill; g.fill(); g.strokeStyle = '#222'; g.lineWidth = Math.max(1, s * 0.12); g.stroke();
   ell(g, -s * 0.33, -s * 0.12, s * 0.22, s * 0.27, '#1a1426'); ell(g, s * 0.33, -s * 0.12, s * 0.22, s * 0.27, '#1a1426');
   g.fillStyle = '#1a1426'; g.beginPath(); g.moveTo(0, s * 0.1); g.lineTo(-s * 0.1, s * 0.3); g.lineTo(s * 0.1, s * 0.3); g.closePath(); g.fill();
   g.strokeStyle = '#222'; g.lineWidth = Math.max(1, s * 0.08); for (const i of [-0.2, 0, 0.2]) { g.beginPath(); g.moveTo(s * i, s * 0.52); g.lineTo(s * i, s * 0.86); g.stroke(); }
 }
-const ITEM_COL = { bomb: ['#5b7bff', '#2438a8'], fire: ['#ff8a3a', '#c2330f'], speed: ['#4cd070', '#17803a'], kick: ['#b36cff', '#6a2cb8'], skull: ['#7b7f8c', '#2e3038'], skate: ['#ff9a2a', '#c2520f'] };
+const ITEM_COL = { bomb: ['#5b7bff', '#2438a8'], fire: ['#ff8a3a', '#c2330f'], speed: ['#4cd070', '#17803a'], kick: ['#b36cff', '#6a2cb8'], skull: ['#7b7f8c', '#2e3038'], gskull: ['#5fd66e', '#1c7d30'], skate: ['#ff9a2a', '#c2520f'] };
 export function drawItemIcon(g, type, s) {   // ikona předmětu uvnitř odznaku, střed (0,0), polovina šířky s
   if (type === 'bomb') { circ(g, 0, s * 0.1, s * 0.5, '#111319', Math.max(1, s * 0.08), '#000'); circ(g, -s * 0.18, -s * 0.08, s * 0.14, 'rgba(255,255,255,.6)'); g.strokeStyle = '#e9d9ac'; g.lineWidth = Math.max(1.5, s * 0.12); g.lineCap = 'round'; g.beginPath(); g.moveTo(s * 0.2, -s * 0.34); g.quadraticCurveTo(s * 0.45, -s * 0.7, s * 0.65, -s * 0.5); g.stroke(); circ(g, s * 0.66, -s * 0.5, s * 0.15, '#ffd24a'); g.fillStyle = '#fff'; g.font = `900 ${s * 0.7}px sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('+', s * 0.55, s * 0.45); }
   else if (type === 'fire') { g.beginPath(); g.moveTo(0, -s * 0.85); g.bezierCurveTo(s * 0.5, -s * 0.35, s * 0.8, s * 0.1, s * 0.55, s * 0.5); g.bezierCurveTo(s * 0.35, s * 0.85, -s * 0.35, s * 0.85, -s * 0.55, s * 0.5); g.bezierCurveTo(-s * 0.8, s * 0.1, -s * 0.3, -s * 0.3, 0, -s * 0.85); g.fillStyle = '#fff2a8'; g.fill(); g.strokeStyle = '#7a2208'; g.lineWidth = Math.max(1, s * 0.1); g.stroke(); g.beginPath(); g.moveTo(0, -s * 0.2); g.bezierCurveTo(s * 0.3, s * 0.1, s * 0.3, s * 0.5, 0, s * 0.55); g.bezierCurveTo(-s * 0.3, s * 0.5, -s * 0.3, s * 0.1, 0, -s * 0.2); g.fillStyle = '#ff9a2a'; g.fill(); }
   else if (type === 'speed') { g.beginPath(); g.moveTo(s * 0.15, -s * 0.9); g.lineTo(-s * 0.6, s * 0.1); g.lineTo(-s * 0.05, s * 0.1); g.lineTo(-s * 0.2, s * 0.9); g.lineTo(s * 0.62, -s * 0.2); g.lineTo(s * 0.08, -s * 0.2); g.closePath(); g.fillStyle = '#fff6a8'; g.fill(); g.strokeStyle = '#7a5a00'; g.lineWidth = Math.max(1, s * 0.1); g.lineJoin = 'round'; g.stroke(); }
   else if (type === 'kick') { g.beginPath(); g.moveTo(-s * 0.7, s * 0.55); g.lineTo(-s * 0.7, -s * 0.1); g.quadraticCurveTo(-s * 0.7, -s * 0.5, -s * 0.35, -s * 0.5); g.lineTo(-s * 0.05, -s * 0.5); g.lineTo(s * 0.1, -s * 0.05); g.quadraticCurveTo(s * 0.7, 0, s * 0.72, s * 0.3); g.lineTo(s * 0.72, s * 0.55); g.closePath(); g.fillStyle = '#fff'; g.fill(); g.strokeStyle = '#3d1a6a'; g.lineWidth = Math.max(1, s * 0.1); g.lineJoin = 'round'; g.stroke(); g.fillStyle = '#7a3fd0'; g.fillRect(-s * 0.7, s * 0.4, s * 1.42, s * 0.15); }
   else if (type === 'skull') { g.save(); g.translate(0, s * 0.05); skullIcon(g, s * 0.72); g.restore(); }
+  else if (type === 'gskull') { g.save(); g.translate(0, s * 0.05); skullIcon(g, s * 0.72, '#d6ffc4'); g.restore(); }
   else if (type === 'skate') skateBoard(g, s * 0.95, true);
 }
 export function drawItem(g, type, x, y, ts, t, gx, gy) {
   const c = ITEM_COL[type] || ITEM_COL.bomb; const bob = Math.sin(t * 4 + gx + gy) * ts * 0.035; const cx = x + ts / 2, cy = y + ts / 2 + bob; const w = ts * 0.78;
   ell(g, cx, y + ts * 0.9, ts * 0.3, ts * 0.07, 'rgba(0,0,0,.25)');
+  if (type === 'gskull') { g.globalAlpha = 0.35 + 0.25 * Math.sin(t * 6); circ(g, cx, cy, w * 0.72, '#7dff8a'); g.globalAlpha = 1; }
   rr(g, cx - w / 2, cy - w / 2, w, w, w * 0.22); const gr = g.createLinearGradient(0, cy - w / 2, 0, cy + w / 2); gr.addColorStop(0, c[0]); gr.addColorStop(1, c[1]); g.fillStyle = gr; g.fill(); g.strokeStyle = '#fff'; g.lineWidth = Math.max(1.5, ts * 0.05); g.stroke();
   g.save(); g.translate(cx, cy); drawItemIcon(g, type, w * 0.34); g.restore();
 }
