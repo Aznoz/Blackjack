@@ -52,7 +52,7 @@ export function play(s, pi, hi, x, y) {
     return null;
   }
   for (let k = 0; k < card.n; k++) {
-    const ang = card.n > 1 ? (k / card.n) * Math.PI * 2 + 0.6 : 0; const rad = card.n > 1 ? 11 : 0;
+    const ang = card.n > 1 ? (k / card.n) * Math.PI * 2 + 0.6 : 0; const rad = card.n > 6 ? 12 + (k % 2) * 9 : card.n > 1 ? 11 : 0;
     const ux = C.clamp(x + Math.cos(ang) * rad, 6, W - 6); const uy = pi === 0 ? C.clamp(y + Math.sin(ang) * rad, RIVER.y1 + 4, H - 6) : C.clamp(y + Math.sin(ang) * rad, 6, RIVER.y0 - 4);
     const u = {
       id: s.nextId++, kind: 'unit', o: pi, card: card.id, k: card.kind || 'unit', x: ux, y: uy, hp: Math.round(card.hp * mul), max: Math.round(card.hp * mul), dmg: Math.round(card.dmg * mul), as: card.as, speed: card.speed, range: card.range, r: card.r,
@@ -118,7 +118,7 @@ function pickTarget(s, u) {
 }
 
 function unitAttack(s, u, t) {
-  u.cd = u.as;
+  u.cd = u.as; u.lock = true;
   if (u.k === 'bomber') { splashAt(s, u.o, u.x, u.y, u.splash, u.dmg, 1); s.ev.push(['x', Math.round(u.x), Math.round(u.y), u.splash]); u.hp = 0; return; }
   if (u.splash) splashAt(s, u.o, t.x, t.y, u.splash, u.dmg, 1); else hurt(s, t, u.dmg, u.o);
   s.ev.push(['a', u.id, t.id, u.range > 40 ? 1 : 0]);
@@ -129,7 +129,9 @@ function stepUnit(s, u) {
   if (u.k === 'farm') return stepFarm(s, u);   // budova: nehýbe se, nebojuje, jen vyrábí elixír
   if (u.cd > 0) u.cd -= DT;
   if (u.k === 'healer') return stepHealer(s, u);
-  if (!alive(u.tgt) || (u.tgt.kind === 'unit' && !canHit(u, u.tgt)) || (s.tick + u.id) % 5 === 0) u.tgt = pickTarget(s, u);
+  // cíl se po prvním úderu zamkne a mění se jen když zemře (předtím se každých 5 tiků hledá nejbližší nepřítel)
+  if (!alive(u.tgt) || (u.tgt.kind === 'unit' && !canHit(u, u.tgt))) { u.tgt = pickTarget(s, u); u.lock = false; }
+  else if (!u.lock && (s.tick + u.id) % 5 === 0) u.tgt = pickTarget(s, u);
   const t = u.tgt; if (!t) return;
   const d = dist(u, t) - t.r - (u.k === 'bomber' ? 0 : u.r);
   if (d <= u.range) { if (u.cd <= 0) unitAttack(s, u, t); return; }
