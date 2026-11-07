@@ -23,7 +23,8 @@ export const CARDS = {
   soldier:   { id: 'soldier',   name: 'Vojín',        icon: '🗡️', cost: 2, lvl: 1,  n: 1, hp: 230, dmg: 40,  as: 0.9,  speed: 54, range: 16, r: 8,  tt: 'ground', desc: 'Levný pěšák. Rychle se nasazuje a dobře drží linii.' },
   archer:    { id: 'archer',    name: 'Střelkyně',    icon: '🏹', cost: 3, lvl: 1,  n: 2, hp: 105, dmg: 27,  as: 0.9,  speed: 52, range: 88, r: 7,  tt: 'all',    desc: 'Dvě střelkyně z dálky. Zasáhnou i vzdušné jednotky.' },
   knight:    { id: 'knight',    name: 'Rytíř',        icon: '🛡️', cost: 3, lvl: 1,  n: 1, hp: 650, dmg: 78,  as: 1.1,  speed: 46, range: 18, r: 10, tt: 'ground', desc: 'Pevný bojovník na blízko. Vydrží hodně a dobře tlačí.' },
-  skeletons: { id: 'skeletons', name: 'Kostlivci',    icon: '💀', cost: 2, lvl: 1,  n: 3, hp: 62,  dmg: 22,  as: 0.75, speed: 80, range: 14, r: 6,  tt: 'ground', desc: 'Tři rychlí kostlivci. Dobří proti jedné silné jednotce.' },
+  skeletons: { id: 'skeletons', name: 'Kostlivci',    icon: '💀', cost: 1, lvl: 1,  n: 3, hp: 62,  dmg: 22,  as: 0.75, speed: 80, range: 14, r: 6,  tt: 'ground', desc: 'Tři rychlí kostlivci. Dobří proti jedné silné jednotce.' },
+  skelarmy:  { id: 'skelarmy',  name: 'Armáda kostlivců', icon: '☠️', cost: 3, lvl: 1, n: 10, hp: 40, dmg: 14, as: 0.8, speed: 78, range: 12, r: 5, tt: 'ground', desc: 'Deset drobných kostlivců najednou. Zahltí cokoli, ale padnou na plošný zásah.' },
   fireball:  { id: 'fireball',  name: 'Ohnivá koule', icon: '🔥', cost: 4, lvl: 1,  kind: 'spell', hp: 0, dmg: 290, splash: 62, tt: 'all', towerMul: 0.4, delay: 0.6, desc: 'Kouzlo: výbuch na vybraném místě. Věže berou jen 40 %.' },
   golem:     { id: 'golem',     name: 'Golem',        icon: '🗿', cost: 6, lvl: 1,  n: 1, hp: 1500, dmg: 115, as: 1.6, speed: 30, range: 20, r: 14, tt: 'building', desc: 'Pomalý obr, který jde rovnou na věže. Za ním tlač další jednotky.' },
   wizard:    { id: 'wizard',    name: 'Čaroděj',      icon: '🧙', cost: 4, lvl: 1,  n: 1, hp: 270, dmg: 88,  as: 1.4,  speed: 50, range: 92, r: 8,  tt: 'all',    splash: 30, desc: 'Střílí ohnivé koule s plošným zásahem, i na vzdušné jednotky.' },
@@ -35,7 +36,7 @@ export const CARDS = {
   priest:    { id: 'priest',    name: 'Kněz',         icon: '⛑️', cost: 4, lvl: 12, n: 1, hp: 310, dmg: 0,   as: 1.2,  speed: 48, range: 40, r: 8,  tt: 'ground', kind: 'healer', heal: 70, healR: 80, desc: 'Nebojuje, ale doprovází spojence a léčí je.' },
   farm:      { id: 'farm',      name: 'Elixírová farma', icon: '🧪', cost: 5, lvl: 1, n: 1, hp: 600, dmg: 0, as: 4, speed: 0, range: 0, r: 11, tt: 'ground', kind: 'farm', gen: 1, desc: 'Budova: po položení každé 4 s přidá 1 elixír. Soupeř ji ale může zničit.' },
 };
-export const CARD_ORDER = ['soldier', 'skeletons', 'archer', 'knight', 'bats', 'fireball', 'musketeer', 'wizard', 'golem', 'farm', 'dragon', 'bomber', 'berserker', 'priest'];
+export const CARD_ORDER = ['soldier', 'skeletons', 'skelarmy', 'archer', 'knight', 'bats', 'fireball', 'musketeer', 'wizard', 'golem', 'farm', 'dragon', 'bomber', 'berserker', 'priest'];
 export const STARTER = ['soldier', 'archer', 'knight', 'skeletons', 'fireball', 'golem', 'wizard', 'bats', 'musketeer'];
 
 export const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
