@@ -152,6 +152,13 @@ function cleanBombic(t) {   // Bombic: zkušenosti, výhry zápasů, odehrané z
   return out;
 }
 
+function cleanHopik(t) {   // Hopík: vybraná postavička, výhry zápasů, odehrané zápasy a doběhy do cíle (podrobná kontrola je v hopik/hopik.js, hopikOf)
+  t = t && typeof t === 'object' ? t : {};
+  const n = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1e7, Math.floor(v))) : 0);
+  const c = Math.floor(Number(t.char));
+  return { char: Number.isFinite(c) && c >= 0 && c < 64 ? c : -1, wins: n(t.wins), games: n(t.games), fin: n(t.fin) };
+}
+
 function makeAccount(key, d = {}) {
   return {
     key,
@@ -170,6 +177,7 @@ function makeAccount(key, d = {}) {
     tank: cleanTank(d.tank), // Tankové souboje: zkušenosti, výhry, koupená munice, barva tanku
     arena: cleanArena(d.arena), // Aréna věží: zkušenosti, coiny, balíček a úrovně karet
     bombic: cleanBombic(d.bombic), // Bombic: zkušenosti a statistiky
+    hopik: cleanHopik(d.hopik), // Hopík: postavička a statistiky
     lastUpload: 0,
     createdAt: d.createdAt || Date.now(),
     lastSeen: d.lastSeen || Date.now(),
@@ -188,7 +196,7 @@ async function loadAccounts() {
     for (const [key, a] of Object.entries(raw)) {
       if (!a || typeof a.balance !== 'number') continue;
       // úklid: anonymní účty, které nikdy nehrály a 30 dní se neozvaly (účty propojené s Googlem se nemažou)
-      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && !(a.arena && a.arena.xp) && !(a.bombic && a.bombic.xp) && (a.lastSeen || 0) < cutoff) continue;
+      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && !(a.arena && a.arena.xp) && !(a.bombic && a.bombic.xp) && !(a.hopik && a.hopik.games) && (a.lastSeen || 0) < cutoff) continue;
       accounts.set(key, makeAccount(key, a));
     }
     console.log(`Načteno ${accounts.size} účtů.`);
@@ -312,7 +320,7 @@ function saveNow() {
   try {
     const out = {};
     for (const [k, a] of accounts) {
-      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, arena: a.arena, bombic: a.bombic, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
+      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, arena: a.arena, bombic: a.bombic, hopik: a.hopik, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
     }
     store.write('players', JSON.stringify(out));
     const g = {};
@@ -1181,6 +1189,11 @@ async function handleApi(req, res, p) {
       const r = bombic.api(p.slice('/api/bombic/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p.startsWith('/api/hopik/') && req.method === 'POST') { // Hopík: me (profil), char (uložení postavičky)
+      if (!hopik) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = hopik.api(p.slice('/api/hopik/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1287,6 +1300,10 @@ const server = http.createServer((req, res) => {
   if (p === '/bombic/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
     return res.end(JSON.stringify({ ok: true, ...(bombic ? bombic.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
+  if (p === '/hopik/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ ok: true, ...(hopik ? hopik.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
   if (p === '/sachy/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*', 'Cache-Control': 'no-store' });
@@ -1397,6 +1414,12 @@ let bombic = null;
 import('./bombic/bombic.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE }); bombic = m; console.log('Bombic: načteno (WebSocket /bombic).'); }).catch((e) => console.error('Bombic se nenačetl:', e.message));
 bwss2.on('connection', (ws) => { if (!bombic) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } bombic.handleConnection(ws); });
 
+// dvanáctá cesta: /hopik = Hopík (závod se stavěním překážek pro 2–4 hráče, složka hopik/): online nebo proti botům, postavička a výhry se ukládají v účtu
+const hpwss = new WebSocketServer({ noServer: true, maxPayload: 2048 });
+let hopik = null;
+import('./hopik/hopik.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE }); hopik = m; console.log('Hopík: načteno (WebSocket /hopik).'); }).catch((e) => console.error('Hopík se nenačetl:', e.message));
+hpwss.on('connection', (ws) => { if (!hopik) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } hopik.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1404,7 +1427,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : p === '/arena' ? awss : p === '/bombic' ? bwss2 : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : p === '/arena' ? awss : p === '/bombic' ? bwss2 : p === '/hopik' ? hpwss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });
