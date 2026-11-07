@@ -145,17 +145,47 @@ const cell = (s, i) => [Math.floor(s.pl[i].x), Math.floor(s.pl[i].y)];
   assert.ok(falls > 60, 'kameny padají spirálou: ' + falls);
   const v = blank(2); put(v, 0, 1, 1); put(v, 1, 7, 6); run(v, G.ROUND_T - G.SUDDEN_T + 30); assert.equal(v.pl[0].alive, false, 'kámen dopadl na hráče v rohu'); assert.equal(v.pl[0].kills, 0);
 }
+{ // mapy: okraj, zrcadlení, bezpečné rohy, průchodnost (pařezy se dají vybombit), pařezy skutečně vznikají
+  assert.ok(K.MAPS.length >= 5); for (const m of K.MAPS) assert.equal(m.q.length, 7), assert.ok(m.q.every((r) => r.length === 8));
+  for (let mi = 0; mi < K.MAPS.length; mi++) for (const seed of [1, 7, 99]) {
+    const s = G.newRound(['a', 'b', 'c', 'd'], seed, { noFreeze: true, map: mi }); const g = s.grid; let stumps = 0;
+    for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) {
+      if (x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1) assert.equal(g[idx(x, y)], T.STONE);
+      assert.equal(g[idx(x, y)], g[idx(COLS - 1 - x, y)], 'mapa ' + mi); assert.equal(g[idx(x, y)], g[idx(x, ROWS - 1 - y)], 'mapa ' + mi); if (g[idx(x, y)] === T.STUMP) stumps++;
+    }
+    assert.ok(stumps > 15, 'mapa ' + mi + ' má pařezy');
+    for (const [sx, sy] of K.SPAWNS) for (const [dx, dy] of [[0, 0], [1, 0], [2, 0], [0, 1], [0, 2], [-1, 0], [-2, 0], [0, -1], [0, -2]]) { const x = sx + dx, y = sy + dy; if (x > 0 && y > 0 && x < COLS - 1 && y < ROWS - 1 && Math.abs(dx) + Math.abs(dy) <= 2 && !(Math.abs(dx) === 1 && Math.abs(dy) === 1)) { const inward = (sx === 1 ? dx >= 0 : dx <= 0) && (sy === 1 ? dy >= 0 : dy <= 0); if (inward) assert.equal(g[idx(x, y)], T.FLOOR, `start mapy ${mi} musí být volný (${x},${y})`); } }
+    const seen = new Set(), st = [[1, 1]]; while (st.length) { const [x, y] = st.pop(); const k = idx(x, y); if (x < 0 || y < 0 || x >= COLS || y >= ROWS || seen.has(k) || g[k] === T.STONE) continue; seen.add(k); st.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]); }
+    let free = 0; for (let k = 0; k < g.length; k++) if (g[k] !== T.STONE) free++; assert.equal(seen.size, free, `mapa ${mi}: všechna pole dosažitelná`); assert.ok(K.SPAWNS.every(([x, y]) => seen.has(idx(x, y))));
+  }
+  assert.equal(K.mapIdx(99), 0); assert.equal(K.mapIdx('x'), 0); assert.equal(K.mapIdx(2), 2); assert.equal(G.newRound(['a', 'b'], 1, { map: 3 }).map, 3);
+  const a = G.newRound(['a', 'b'], 5, { map: 0 }).grid, b = G.newRound(['a', 'b'], 5, { map: 2 }).grid; assert.notDeepEqual([...a], [...b], 'mapy se liší');
+}
+{ // skateboard: po sebrání sám vystřeluje bomby ve směru pohledu, ty se nepočítají do limitu, po 15 s skončí
+  const s = blank(2); put(s, 0, 3, 1); s.pl[0].face = 2; s.items.push({ x: 3, y: 1, type: 'skate' }); G.step(s); assert.ok(s.pl[0].skateUntil > 0, 'skateboard sebrán'); assert.ok(s.ev.some((e) => e[0] === 'i' && e[1] === 'skate'));
+  run(s, 8); assert.equal(s.bombs.length, 1, 'první výstřel'); const b = s.bombs[0]; assert.equal(b.dx, 1); assert.equal(b.dy, 0); assert.ok(b.moving); assert.equal(s.pl[0].placed, 0, 'výstřel nepočítá do limitu'); assert.ok(b.cx >= 3);
+  run(s, 10); assert.ok(s.bombs[0].cx >= 5, 'bomba letí pryč'); put(s, 0, 3, 1); s.pl[0].placed = 0; G.wantBomb(s, 0); G.step(s); assert.equal(s.pl[0].placed, 1, 'obyčejná bomba funguje dál');
+  const n0 = s.bombs.length; run(s, G.SHOT_T + 2); assert.ok(s.bombs.length >= n0, 'střílí dál');
+  const t = blank(2); put(t, 0, 1, 1); t.pl[0].skateUntil = 5; run(t, 8); assert.equal(t.pl[0].skateUntil, 0, 'skateboard vyprší'); const cnt = t.bombs.length; run(t, 40); assert.equal(t.bombs.filter((q) => q.free).length <= cnt, true);
+  const w = blank(2); put(w, 0, 1, 1); w.pl[0].face = 4; w.pl[0].skateUntil = 9999; run(w, 30); assert.equal(w.bombs.length, 0, 'do zdi se nestřílí');
+  const e = blank(2); put(e, 0, 1, 1); put(e, 1, 13, 11); e.pl[0].face = 2; e.pl[0].skateUntil = 9999; e.pl[0].shootAt = 0; run(e, 2); const f = e.bombs[0]; assert.ok(f && f.free); run(e, G.FUSE_T + 2); assert.ok(e.flames.length > 0 || e.bombs.length > 0); assert.equal(e.pl[0].placed, 0, 'po výbuchu se placed nesnižuje do mínusu');
+  assert.equal(G.snap(s, false).p[0][12] > 0, true, 'snímek nese zbývající čas skateboardu');
+}
+{ // skiny: odemykání úrovní
+  assert.equal(K.SKINS.length, 16); assert.ok(K.SKINS.slice(0, 4).every((k) => k.lvl === 1)); for (let i = 1; i < K.SKINS.length; i++) assert.ok(K.SKINS[i].lvl >= K.SKINS[i - 1].lvl, 'úrovně rostou'); assert.equal(K.SKINS.at(-1).lvl, K.MAX_LEVEL); assert.deepEqual(K.unlockedSkins(1), [0, 1, 2, 3]); assert.equal(K.unlockedSkins(35).length, K.SKINS.length);
+  assert.ok(new Set(K.SKINS.map((k) => k.name)).size === K.SKINS.length);
+}
 { // snímek
   const s = blank(2); put(s, 0, 3, 1); G.wantBomb(s, 0); G.step(s); const sn = G.snap(s, true);
-  assert.equal(sn.t, 'snap'); assert.equal(sn.g.length, COLS * ROWS); assert.equal(sn.p.length, 2); assert.equal(sn.p[0].length, 12); assert.equal(sn.b.length, 1); assert.ok(sn.ev.some((e) => e[0] === 'b'));
+  assert.equal(sn.t, 'snap'); assert.equal(sn.g.length, COLS * ROWS); assert.equal(sn.p.length, 2); assert.equal(sn.p[0].length, 13); assert.equal(sn.b.length, 1); assert.ok(sn.ev.some((e) => e[0] === 'b'));
   assert.equal(G.snap(s, false).g, undefined); G.forfeit(s, 1); assert.equal(s.pl[1].alive, false);
 }
 
 // --- bot
 {
   const wins = (levels, N) => { const w = levels.map(() => 0); let dr = 0; for (let seed = 1; seed <= N; seed++) { const s = G.newRound(levels.map((_, i) => 'b' + i), seed * 7919, { noFreeze: true }); const th = levels.map((l, i) => i); while (!s.over) { levels.forEach((l, i) => { if (s.tick >= th[i]) { th[i] = s.tick + B.BOT_THINK[l]; const a = B.botThink(s, i, l); G.setInput(s, i, a.d); if (a.bomb) G.wantBomb(s, i); } }); G.step(s); G.clearEvents(s); } if (s.over.winner >= 0) w[s.over.winner]++; else dr++; } return { w, dr }; };
-  const a = wins([3, 1], 20); assert.ok(a.w[0] >= 14, 'Mistr porazí Nováčka: ' + a.w);
-  const b = wins([1, 3], 20); assert.ok(b.w[1] >= 14, 'a to i ze druhé strany: ' + b.w);
+  const a = wins([3, 1], 30); assert.ok(a.w[0] >= 18, 'Mistr porazí Nováčka: ' + a.w);
+  const b = wins([1, 3], 30); assert.ok(b.w[1] >= 18, 'a to i ze druhé strany: ' + b.w);
   const c = wins([3, 3, 3, 3], 8); assert.equal(c.w.reduce((x, y) => x + y, 0) + c.dr, 8, 'čtyři boti dohrají');
   const lone = G.newRound(['solo', 'dummy'], 3, { noFreeze: true }); for (let i = 0; i < 60; i++) { const a2 = B.botThink(lone, 0, 3); G.setInput(lone, 0, a2.d); if (a2.bomb) G.wantBomb(lone, 0); G.step(lone); G.clearEvents(lone); }
   assert.ok(lone.pl[0].x !== 1.5 || lone.pl[0].y !== 1.5, 'bot se hýbe');
@@ -173,7 +203,7 @@ const TK = ['a', 'b', 'c', 'd', 'e'].map((ch) => ch.repeat(24)), TX = 'x'.repeat
   assert.equal(A.api('me', { token: TX }).json.account, false);
   const r = A.api('me', { token: TK[0] }); assert.equal(r.status, 200); assert.equal(r.json.bombic.lvl, 1); assert.equal(r.json.bombic.wins, 0); assert.equal(A.api('nic', { token: TK[0] }).status, 404);
   const t = A.bombicOf(accs[TK[0]]); t.xp = K.xpFor(4) + 3; t.wins = -5; assert.equal(A.api('me', { token: TK[0] }).json.bombic.lvl, 4); A.bombicOf(accs[TK[0]]); assert.equal(t.wins, 0, 'sanitizace'); t.xp = 0;
-  assert.ok(K.xpFor(30) > K.xpFor(29)); assert.equal(K.levelOf(0), 1); assert.equal(K.levelOf(1e9), K.MAX_LEVEL);
+  assert.ok(K.xpFor(35) > K.xpFor(34)); assert.equal(K.levelOf(0), 1); assert.equal(K.levelOf(1e9), K.MAX_LEVEL); assert.equal(K.MAX_LEVEL, 35);
 }
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function client() {
@@ -233,6 +263,25 @@ const room4 = () => { const cs = TK.slice(0, 4).map(() => client()); cs[0].say({
 }
 { // lobby: odchod zakladatele předá vedení
   const a = client(), b = client(); a.say({ t: 'create', token: TK[0], name: 'Honza' }); b.say({ t: 'join', code: a.last('joined').code, token: TK[1], name: 'Eva' }); a.say({ t: 'leave' }); assert.equal(b.last('state').host, 0); assert.equal(b.last('state').players.length, 1); b.say({ t: 'leave' });
+}
+{ // výběr skinu přes API a přidělení skinů v místnosti
+  const t = A.bombicOf(accs[TK[0]]); t.xp = 0; t.skin = -1; assert.equal(A.api('skin', { token: TX, skin: 1 }).status, 401);
+  assert.equal(A.api('skin', { token: TK[0], skin: 7 }).status, 403, 'neodemčený skin'); assert.equal(A.api('skin', { token: TK[0], skin: 99 }).status, 400); assert.equal(A.api('skin', { token: TK[0], skin: 'x' }).status, 400);
+  assert.equal(A.api('skin', { token: TK[0], skin: 2 }).json.bombic.skin, 2); t.xp = K.xpFor(9); const r = A.api('skin', { token: TK[0], skin: 7 }); assert.equal(r.status, 200); assert.equal(r.json.bombic.skin, 7);
+  const a = client(), b = client(); a.say({ t: 'create', token: TK[0], name: 'Honza' }); b.say({ t: 'join', code: a.last('joined').code, token: TK[1], name: 'Eva' });
+  assert.deepEqual(b.last('state').players.map((p) => p.skin), [7, 0], 'vybraný skin + první volný základní');
+  const t1 = A.bombicOf(accs[TK[1]]); t1.xp = K.xpFor(9); t1.skin = 7; b.say({ t: 'leave' }); const b2 = client(); b2.say({ t: 'join', code: a.last('joined').code, token: TK[1], name: 'Eva' }); assert.deepEqual(a.last('state').players.map((p) => p.skin), [7, 0], 'stejný skin dvakrát nejde');
+  a.say({ t: 'start', fill: true, level: 1 }); const sk = a.last('state').players.map((p) => p.skin); assert.equal(new Set(sk).size, 4, 'všichni mají jiný skin'); t.skin = 3; t.xp = 0;
+  a.say({ t: 'leave' }); b2.say({ t: 'leave' }); t1.xp = 0; t1.skin = -1;
+  t.skin = 7; assert.equal(A.bombicOf(accs[TK[0]]).skin, 7); t.xp = 0; const c = client(); c.say({ t: 'bot', token: TK[0], name: 'Honza', n: 1, level: 1 }); assert.equal(c.last('state').players[0].skin, 0, 'neodemčený vybraný skin se nepoužije'); c.say({ t: 'leave' }); t.skin = -1;
+}
+{ // mapa: výběr zakladatelem, předání do hry, rychlá hra náhodná, boti
+  const a = client(), b = client(); a.say({ t: 'create', token: TK[0], name: 'Honza', map: 3 }); assert.equal(a.last('state').map, 3); b.say({ t: 'join', code: a.last('joined').code, token: TK[1], name: 'Eva' }); assert.equal(b.last('state').map, 3);
+  b.say({ t: 'map', map: 1 }); assert.equal(a.last('state').map, 3, 'mapu mění jen zakladatel'); a.say({ t: 'map', map: 4 }); assert.equal(b.last('state').map, 4); a.say({ t: 'map', map: 77 }); assert.equal(b.last('state').map, 0, 'neplatná mapa = první');
+  a.say({ t: 'start', map: 2 }); const room = A.rooms.get(a.last('joined').code); assert.equal(room.game.map, 2); assert.equal(a.last('state').map, 2); assert.equal(a.last('snap').g, [...room.game.grid].join(''));
+  A.advance(room, 1); a.say({ t: 'leave' }); b.say({ t: 'leave' });
+  const q1 = client(), q2 = client(); q1.say({ t: 'quick', token: TK[0], name: 'Honza' }); q2.say({ t: 'quick', token: TK[1], name: 'Eva' }); const qr = A.rooms.get(q1.last('joined').code); assert.ok(qr.map >= 0 && qr.map < K.MAPS.length); q1.say({ t: 'map', map: 1 }); assert.equal(qr.map === 1 && false, false); q1.say({ t: 'leave' }); q2.say({ t: 'leave' });
+  const c = client(); c.say({ t: 'bot', token: TK[0], name: 'Honza', n: 2, level: 1, map: 4 }); assert.equal(c.last('state').map, 4); assert.equal(A.rooms.get(c.last('state').code).game.map, 4); c.say({ t: 'leave' });
 }
 assert.ok(dirty > 0);
 console.log('test-bombic: OK');

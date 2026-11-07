@@ -144,3 +144,16 @@ button { cursor: pointer; }
 @media (max-height: 560px) and (orientation: landscape) { .ghud { padding-top: 4px; padding-bottom: 4px; } .pad { width: 104px; height: 104px; } .bombbtn { width: 88px; height: 88px; } .gtop { padding-top: 4px; padding-bottom: 4px; } }
 
 @media (max-width: 560px) { .pc .nm { display: none; } .pc { padding-right: 8px; } .pc img { width: 38px; height: 38px; } .plank.main b { font-size: 21px; } }
+
+/* ----- skiny a mapy */
+.skins { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 8px; }
+.sk { display: flex; flex-direction: column; align-items: center; gap: 2px; background: rgba(0, 0, 0, .35); border: 2px solid #6a4a24; border-radius: 12px; padding: 8px 4px; position: relative; }
+.sk img { width: 64px; height: 64px; } .sk b { font-size: 13px; } .sk small { font-size: 11px; color: var(--mut); }
+.sk.on { border-color: var(--ok); background: rgba(63, 161, 74, .25); }
+.sk.lock { opacity: .55; } .sk.lock img { filter: grayscale(1) brightness(.55); } .sk.lock::after { content: ''; position: absolute; right: 6px; top: 6px; width: 14px; height: 11px; border-radius: 3px; background: #d9a566; box-shadow: 0 -5px 0 -3px #d9a566; }
+#skinAuto.on { outline: 3px solid var(--ok); }
+.maps { display: grid; grid-template-columns: repeat(auto-fill, minmax(88px, 1fr)); gap: 8px; }
+.mp { display: flex; flex-direction: column; align-items: center; gap: 3px; background: rgba(0, 0, 0, .35); border: 2px solid #6a4a24; border-radius: 12px; padding: 6px; } .mp img { width: 100%; border-radius: 6px; image-rendering: pixelated; } .mp b { font-size: 13px; }
+.mp.on { border-color: var(--ok); background: rgba(63, 161, 74, .25); } .mp:disabled { opacity: .7; }
+.mapsel h3 { margin: 0 0 6px; font-size: 14px; color: var(--yl); text-transform: uppercase; letter-spacing: .06em; }
+.mapone { display: flex; gap: 12px; align-items: center; text-align: left; background: rgba(0, 0, 0, .3); border-radius: 12px; padding: 8px; } .mapone img { width: 96px; border-radius: 6px; flex: none; image-rendering: pixelated; } .mapone b { display: block; font-size: 17px; } .mapone small { color: var(--mut); display: block; font-size: 12px; }

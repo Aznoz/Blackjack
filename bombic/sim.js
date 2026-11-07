@@ -4,11 +4,11 @@ import * as K from './shared.js';
 const { COLS, ROWS, T } = K;
 const { idx } = K;
 export const TICKS = (s) => Math.round(s / K.DT);
-export const FUSE_T = TICKS(K.FUSE_S), FLAME_T = TICKS(K.FLAME_S), ROUND_T = TICKS(K.ROUND_S), SUDDEN_T = TICKS(K.SUDDEN_S), FREEZE_T = TICKS(K.FREEZE_S), CURSE_T = TICKS(K.CURSE_S);
+export const FUSE_T = TICKS(K.FUSE_S), FLAME_T = TICKS(K.FLAME_S), ROUND_T = TICKS(K.ROUND_S), SUDDEN_T = TICKS(K.SUDDEN_S), FREEZE_T = TICKS(K.FREEZE_S), CURSE_T = TICKS(K.CURSE_S), SKATE_T = TICKS(K.SKATE_S), SHOT_T = TICKS(K.SHOT_S);
 const SD_EVERY = 6, SD_WARN = 12;                    // náhlá smrt: nový kámen každých 0,3 s, dopadá po 0,6 s
 const HALF = 0.4, EPS = 0.0001;
 export const DIRS = [[0, 0], [0, -1], [1, 0], [0, 1], [-1, 0]];   // 0 stát, 1 nahoru, 2 doprava, 3 dolů, 4 doleva
-const ITEM_W = [['bomb', 26], ['fire', 26], ['speed', 20], ['kick', 8], ['skull', 10]];
+const ITEM_W = [['bomb', 26], ['fire', 26], ['speed', 20], ['kick', 8], ['skull', 10], ['skate', 9]];
 const DROP_P = 0.34;
 
 export function mulberry32(a) { return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }
@@ -30,19 +30,19 @@ function spiral() {
 }
 const SPIRAL = spiral();
 
-/** Hřiště: okraj a sloupky z kamene, náhodné pařezy (čtvrtina se zrcadlí, takže je to pro všechny stejně) a pár navíc rozsetých kamenů. */
-export function makeGrid(rng, nPlayers) {
+/** Hřiště podle mapy: vzor čtvrtiny se zrcadlí do všech rohů, pařezy se rozsévají náhodně (a taky zrcadlí, takže je to pro všechny stejné). */
+export function makeGrid(rng, nPlayers, map = 0) {
+  const M = K.MAPS[K.mapIdx(map)];
   const g = new Uint8Array(COLS * ROWS);
   const safe = (x, y) => K.SPAWNS.some(([sx, sy]) => Math.abs(x - sx) + Math.abs(y - sy) <= 2);
   const set = (x, y, v) => { for (const [mx, my] of [[x, y], [COLS - 1 - x, y], [x, ROWS - 1 - y], [COLS - 1 - x, ROWS - 1 - y]]) g[idx(mx, my)] = v; };
-  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) if (isBorder(x, y) || (x % 2 === 0 && y % 2 === 0)) g[idx(x, y)] = T.STONE;
   const hx = (COLS - 1) / 2, hy = (ROWS - 1) / 2;
+  for (let y = 0; y <= hy; y++) for (let x = 0; x <= hx; x++) if (M.q[y][x] === '#') set(x, y, T.STONE);
   for (let y = 1; y <= hy; y++) for (let x = 1; x <= hx; x++) {
-    if (g[idx(x, y)] || safe(x, y)) continue;
+    if (g[idx(x, y)] || safe(x, y) || M.q[y][x] !== '.') continue;
     const r = rng();
-    if (r < 0.04) set(x, y, T.STONE); else if (r < 0.04 + 0.7) set(x, y, T.STUMP);
+    if (r < M.stone) set(x, y, T.STONE); else if (r < M.stone + M.stump) set(x, y, T.STUMP);
   }
-  // kameny nesmí nikoho zavřít: každý spawn musí mít cestu ven (zaručují ji volná bezpečná pole), zbytek se dá vybombit
   void nPlayers;
   return g;
 }
@@ -51,14 +51,14 @@ export function newRound(names, seed, opts = {}) {
   const rng = mulberry32(seed >>> 0);
   const n = names.length;
   const s = {
-    n, tick: 0, rng, grid: makeGrid(rng, n), gridVer: 1, bombs: [], flames: [], items: [], warns: [], ev: [], over: null, endAt: 0,
+    n, tick: 0, rng, map: K.mapIdx(opts.map), grid: makeGrid(rng, n, opts.map), gridVer: 1, bombs: [], flames: [], items: [], warns: [], ev: [], over: null, endAt: 0,
     freeze: opts.noFreeze ? 0 : FREEZE_T, nextBomb: 1, sdI: 0, sdNext: ROUND_T - SUDDEN_T, pl: [],
   };
   // hráči: 2 hráči na protilehlých rozích, 3 a 4 hráči zaberou další rohy
   const order = n === 2 ? [0, 3] : [0, 1, 2, 3];
   for (let i = 0; i < n; i++) {
     const [sx, sy] = K.SPAWNS[order[i]];
-    s.pl.push({ i, name: names[i], x: sx + 0.5, y: sy + 0.5, d: 0, face: 3, alive: true, bombsMax: K.START_BOMBS, range: K.START_RANGE, spLv: 0, kick: false, curse: null, placed: 0, want: false, kills: 0, diedAt: -1, autoAt: 0, moving: 0, slot: order[i] });
+    s.pl.push({ i, name: names[i], x: sx + 0.5, y: sy + 0.5, d: 0, face: 3, alive: true, bombsMax: K.START_BOMBS, range: K.START_RANGE, spLv: 0, kick: false, curse: null, placed: 0, want: false, kills: 0, diedAt: -1, autoAt: 0, moving: 0, slot: order[i], skateUntil: 0, shootAt: 0 });
   }
   return s;
 }
@@ -124,8 +124,17 @@ function placeBomb(s, p) {
   const cx = Math.floor(p.x), cy = Math.floor(p.y);
   if (p.placed >= p.bombsMax || s.grid[idx(cx, cy)] !== T.FLOOR || bombOcc(s, cx, cy)) return false;
   const pass = new Set(); for (const q of s.pl) if (q.alive && overlapsCell(q, cx, cy)) pass.add(q.i);
-  s.bombs.push({ id: s.nextBomb++, owner: p.i, cx, cy, tx: cx, ty: cy, moving: false, dx: 0, dy: 0, prog: 0, fuse: FUSE_T, range: rangeNow(p), pass });
+  s.bombs.push({ id: s.nextBomb++, owner: p.i, cx, cy, tx: cx, ty: cy, moving: false, dx: 0, dy: 0, prog: 0, fuse: FUSE_T, range: rangeNow(p), pass, free: false });
   p.placed++; s.ev.push(['b', cx, cy]); return true;
+}
+/** Skateboard: bomba vyletí z pole hráče ve směru pohledu a kloužu jako kopnutá (nepočítá se do limitu bomb). */
+function shootBomb(s, p) {
+  const cx = Math.floor(p.x), cy = Math.floor(p.y); const [dx, dy] = DIRS[p.face] || DIRS[3];
+  if (s.grid[idx(cx, cy)] !== T.FLOOR || bombOcc(s, cx, cy)) return false;
+  const nx = cx + dx, ny = cy + dy; if (!canBombEnter(s, nx, ny)) return false;
+  const pass = new Set(); for (const q of s.pl) if (q.alive && overlapsCell(q, cx, cy)) pass.add(q.i);
+  s.bombs.push({ id: s.nextBomb++, owner: p.i, cx, cy, tx: nx, ty: ny, moving: true, dx, dy, prog: 0, fuse: FUSE_T, range: rangeNow(p), pass, free: true });
+  s.ev.push(['b', cx, cy]); return true;
 }
 function killPlayer(s, p, by) {
   if (!p.alive) return; p.alive = false; p.diedAt = s.tick; p.d = 0; p.moving = 0;
@@ -139,7 +148,7 @@ function explodeAll(s, first) {
   const queue = [first]; const stumps = []; const burned = new Set();
   while (queue.length) {
     const b = queue.shift(); const k = s.bombs.indexOf(b); if (k < 0) continue; s.bombs.splice(k, 1);
-    const owner = s.pl[b.owner]; if (owner) owner.placed = Math.max(0, owner.placed - 1);
+    const owner = s.pl[b.owner]; if (owner && !b.free) owner.placed = Math.max(0, owner.placed - 1);
     const cx = b.moving && b.prog >= 0.5 ? b.tx : b.cx, cy = b.moving && b.prog >= 0.5 ? b.ty : b.cy;
     const cells = [[cx, cy]];
     for (let d = 1; d <= 4; d++) {
@@ -171,6 +180,7 @@ function applyItem(s, p, type) {
   else if (type === 'fire') p.range = Math.min(K.MAX_RANGE, p.range + 1);
   else if (type === 'speed') p.spLv = Math.min(K.MAX_SPEED_LV, p.spLv + 1);
   else if (type === 'kick') p.kick = true;
+  else if (type === 'skate') { p.skateUntil = s.tick + SKATE_T; p.shootAt = s.tick + 6; }
   else if (type === 'skull') { p.curse = { k: K.CURSES[Math.floor(s.rng() * K.CURSES.length)], until: s.tick + CURSE_T }; p.autoAt = s.tick + 8; }
   s.ev.push(['i', type, p.i]);
 }
@@ -199,7 +209,7 @@ function suddenDeath(s) {
     const w = s.warns[k]; if (s.tick < w.at) continue; s.warns.splice(k, 1);
     s.grid[idx(w.x, w.y)] = T.STONE; s.gridVer++; s.ev.push(['r', w.x, w.y]);
     s.items = s.items.filter((it) => !(it.x === w.x && it.y === w.y));
-    for (const b of [...s.bombs]) if (b.cx === w.x && b.cy === w.y) { s.bombs.splice(s.bombs.indexOf(b), 1); const o = s.pl[b.owner]; if (o) o.placed = Math.max(0, o.placed - 1); }
+    for (const b of [...s.bombs]) if (b.cx === w.x && b.cy === w.y) { s.bombs.splice(s.bombs.indexOf(b), 1); const o = s.pl[b.owner]; if (o && !b.free) o.placed = Math.max(0, o.placed - 1); }
     for (const p of s.pl) if (p.alive && Math.floor(p.x) === w.x && Math.floor(p.y) === w.y) killPlayer(s, p, -1);
   }
 }
@@ -213,6 +223,8 @@ export function step(s) {
     if (!p.alive) continue;
     if (p.curse && s.tick >= p.curse.until) p.curse = null;
     if (p.curse && p.curse.k === 'auto' && s.tick >= p.autoAt) { p.autoAt = s.tick + 12; placeBomb(s, p); }
+    if (p.skateUntil && s.tick >= p.skateUntil) p.skateUntil = 0;
+    if (p.skateUntil && s.tick >= p.shootAt && shootBomb(s, p)) p.shootAt = s.tick + SHOT_T;
     if (p.want) { p.want = false; placeBomb(s, p); }
     movePlayer(s, p);
   }
@@ -245,7 +257,7 @@ export const gridStr = (s) => { let o = ''; for (let i = 0; i < s.grid.length; i
 export function snap(s, withGrid) {
   const out = {
     t: 'snap', k: s.tick, tm: Math.max(0, Math.ceil((ROUND_T - s.tick) * K.DT)), fr: s.freeze, sd: s.tick >= ROUND_T - SUDDEN_T ? 1 : 0,
-    p: s.pl.map((p) => [r2(p.x), r2(p.y), p.alive ? 1 : 0, p.face, p.moving, p.curse ? CURSE_CODE[p.curse.k] : 0, p.bombsMax, p.range, p.spLv, p.kick ? 1 : 0, p.placed, p.kills]),
+    p: s.pl.map((p) => [r2(p.x), r2(p.y), p.alive ? 1 : 0, p.face, p.moving, p.curse ? CURSE_CODE[p.curse.k] : 0, p.bombsMax, p.range, p.spLv, p.kick ? 1 : 0, p.placed, p.kills, p.skateUntil ? Math.ceil((p.skateUntil - s.tick) * K.DT) : 0]),
     b: s.bombs.map((b) => [b.cx, b.cy, r2(b.prog), b.dx, b.dy, Math.max(0, b.fuse), b.moving ? 1 : 0]),
     f: s.flames.map((f) => [f.x, f.y]), i: s.items.map((it) => [it.x, it.y, K.ITEMS.indexOf(it.type)]), w: s.warns.map((w) => [w.x, w.y]),
     ev: s.ev,

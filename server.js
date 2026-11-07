@@ -143,7 +143,8 @@ function cleanArena(t) {   // Aréna věží: zkušenosti, výhry, coiny, balí�
 function cleanBombic(t) {   // Bombic: zkušenosti, výhry zápasů, odehrané zápasy a zničení soupeři (podrobná kontrola je v bombic/bombic.js, bombicOf)
   t = t && typeof t === 'object' ? t : {};
   const n = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1e7, Math.floor(v))) : 0);
-  return { xp: n(t.xp), wins: n(t.wins), games: n(t.games), kills: n(t.kills) };
+  const sk = Math.floor(Number(t.skin));
+  return { xp: n(t.xp), wins: n(t.wins), games: n(t.games), kills: n(t.kills), skin: Number.isFinite(sk) && sk >= 0 && sk < 64 ? sk : -1 };
 }
 
 function makeAccount(key, d = {}) {

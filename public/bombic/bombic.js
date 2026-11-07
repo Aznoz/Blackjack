@@ -1,9 +1,9 @@
 // BOMBIC – klient: menu, čekárna, hřiště na canvasu (les, pařezy, bomby, plameny, předměty), ovládání klávesnicí i dotykem, boti i online.
 // Simulaci počítá server, klient dostává snímky (20× za sekundu) a mezi nimi plynule dopočítává pohyb (zpoždění ~100 ms).
 import * as K from './shared.js';
-import { drawTile, drawItem, drawBomb, drawFlame, drawWarn, drawPlayer, portraitURL, itemURL } from './art.js';
+import { drawTile, drawItem, drawBomb, drawFlame, drawWarn, drawPlayer, portraitURL, itemURL, mapThumb } from './art.js';
 import { startScene, stopScene } from './scene.js';
-const { COLS, ROWS, SKINS } = K;
+const { COLS, ROWS, SKINS, MAPS } = K;
 
 const CFG = window.BOMBIC_CONFIG || {};
 const $ = (id) => document.getElementById(id);
@@ -90,6 +90,8 @@ function setStatus(msg, err) { const el = $('menuStatus'); el.textContent = msg 
 const openModal = (id) => { $(id).hidden = false; };
 document.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) { const m = e.target.closest('.modal'); if (m) m.hidden = true; } else if (e.target.classList && e.target.classList.contains('modal')) e.target.hidden = true; });
 
+const skinOf = (i) => (S && S.players[i] ? S.players[i].skin | 0 : i);
+const themeOf = () => (MAPS[S && S.map] || MAPS[0]).theme;
 // ------------------------------------------------------------------ profil a menu
 async function refreshProfile() { try { prof = await call('me', {}); } catch (e) { prof = null; } renderProfile(); return prof; }
 function renderProfile() {
@@ -101,24 +103,41 @@ function renderProfile() {
   $('pXp').style.width = (t.next ? clamp((t.xp - t.from) / (t.next - t.from), 0, 1) * 100 : 100) + '%';
   $('pXpTxt').textContent = t.next ? `${t.xp - t.from} / ${t.next - t.from} XP` : 'maximum';
   $('pRec').textContent = `${t.wins} výher · ${t.games} her`;
+  const nx = SKINS.find((k) => k.lvl > t.lvl); $('skinSub').textContent = nx ? `Další skin: ${nx.name} (úr. ${nx.lvl})` : 'Máš všechny skiny!';
 }
-let botPick = { n: 3, level: 2 };
-try { const b = JSON.parse(LS.get('bombic_bot')); if (b && b.n >= 1 && b.n <= 3 && b.level >= 1 && b.level <= 3) botPick = b; } catch (e) { /* výchozí */ }
+let botPick = { n: 3, level: 2, map: 0 };
+try { const b = JSON.parse(LS.get('bombic_bot')); if (b && b.n >= 1 && b.n <= 3 && b.level >= 1 && b.level <= 3) botPick = { ...botPick, ...b, map: K.mapIdx(b.map) }; } catch (e) { /* výchozí */ }
 function renderBotModal() {
   for (const b of $('botN').children) b.classList.toggle('on', +b.dataset.n === botPick.n);
+  $('botMaps').innerHTML = mapPicker(botPick.map);
   $('botLevels').innerHTML = BOT_LEVELS.map(([n, nm, ds]) => `<button class="lv${n === botPick.level ? ' on' : ''}" type="button" data-lv="${n}"><span><b>${nm}</b><small>${ds}</small></span></button>`).join('');
 }
+function mapPicker(sel, ro) { return MAPS.map((m, i) => `<button class="mp${i === sel ? ' on' : ''}" type="button" data-map="${i}"${ro ? ' disabled' : ''}><img src="${mapThumb(i)}" alt=""><b>${esc(m.name)}</b></button>`).join(''); }
+$('botMaps').addEventListener('click', (e) => { const b = e.target.closest('[data-map]'); if (!b) return; botPick.map = +b.dataset.map; sfx.click(); renderBotModal(); });
 $('bBot').onclick = () => { audio(); renderBotModal(); openModal('botModal'); };
 $('botN').addEventListener('click', (e) => { const b = e.target.closest('[data-n]'); if (!b) return; botPick.n = +b.dataset.n; sfx.click(); renderBotModal(); });
 $('botLevels').addEventListener('click', (e) => { const b = e.target.closest('[data-lv]'); if (!b) return; botPick.level = +b.dataset.lv; sfx.click(); renderBotModal(); });
-$('botGo').onclick = () => { LS.set('bombic_bot', JSON.stringify(botPick)); $('botModal').hidden = true; startGame({ t: 'bot', n: botPick.n, level: botPick.level }); };
+$('botGo').onclick = () => { LS.set('bombic_bot', JSON.stringify(botPick)); $('botModal').hidden = true; startGame({ t: 'bot', n: botPick.n, level: botPick.level, map: botPick.map }); };
 $('bQuick').onclick = () => { audio(); startGame({ t: 'quick' }); };
-$('bCreate').onclick = () => { audio(); startGame({ t: 'create' }); };
+$('bCreate').onclick = () => { audio(); startGame({ t: 'create', map: botPick.map }); };
 $('joinForm').onsubmit = (e) => { e.preventDefault(); audio(); const c = $('code').value.trim().toUpperCase(); if (c.length !== 4) return setStatus('Kód má 4 písmena.', true); startGame({ t: 'join', code: c }); };
 $('code').addEventListener('input', (e) => { e.target.value = e.target.value.toUpperCase().replace(/[^A-Z]/g, ''); });
 $('name').addEventListener('change', () => LS.set('bombic_name', $('name').value.trim()));
 $('bHow').onclick = () => { $('howItems').innerHTML = K.ITEMS.map((id) => `<div class="it"><img src="${itemURL(id)}" alt=""><div><b>${esc(K.ITEM_INFO[id].name)}</b><small>${esc(K.ITEM_INFO[id].desc)}</small></div></div>`).join(''); openModal('howModal'); };
 $('name').value = LS.get('bombic_name') || '';
+function renderSkins() {
+  const lvl = prof && prof.account ? prof.bombic.lvl : 1; const sel = prof && prof.account ? prof.bombic.skin : -1;
+  $('skinLvl').textContent = prof && prof.account ? `Tvoje úroveň: ${lvl} z ${K.MAX_LEVEL}` : 'Pro výběr skinu se přihlas (účet se vytvoří při otevření portálu). Zatím máš základní skiny.';
+  $('skinGrid').innerHTML = SKINS.map((k, i) => { const open = k.lvl <= lvl; return `<button class="sk${i === sel ? ' on' : ''}${open ? '' : ' lock'}" type="button" data-sk="${i}"><img src="${portraitURL(i)}" alt=""><b>${esc(k.name)}</b><small>${open ? (i === sel ? 'vybráno' : 'odemčeno') : 'úroveň ' + k.lvl}</small></button>`; }).join('');
+  $('skinAuto').classList.toggle('on', sel < 0);
+}
+$('bSkins').onclick = async () => { audio(); if (!prof) await refreshProfile(); renderSkins(); openModal('skinModal'); };
+async function pickSkin(v) {
+  if (!prof || !prof.account) return toast('Pro výběr skinu se musíš přihlásit.');
+  try { prof = await call('skin', { skin: v }); renderProfile(); renderSkins(); sfx.pick(); } catch (e) { sfx.err(); toast(e.message); }
+}
+$('skinGrid').addEventListener('click', (e) => { const b = e.target.closest('[data-sk]'); if (b) pickSkin(+b.dataset.sk); });
+$('skinAuto').onclick = () => pickSkin(-1);
 
 // ------------------------------------------------------------------ spojení
 let ws = null, session = null, wantOpen = false, outbox = [], retry = 0, connTimer = null;
@@ -207,15 +226,17 @@ function onState(s) {
 }
 function renderLobby(s) {
   $('roomCode').textContent = s.code; $('lobbyTitle').textContent = s.quick ? 'Rychlá hra' : 'Vlastní hra';
-  $('slots').innerHTML = [0, 1, 2, 3].map((i) => { const p = s.players[i]; if (!p) return '<div class="slot empty">volné místo</div>'; return `<div class="slot${i === s.you ? ' me' : ''}"><img src="${portraitURL(i)}" alt=""><div><div class="nm">${esc(p.name)}</div><small>${p.bot ? 'bot' : 'úroveň ' + p.lvl}${i === s.host ? ' · zakladatel' : ''}${!p.connected ? ' · odpojen' : ''}</small></div></div>`; }).join('');
+  $('slots').innerHTML = [0, 1, 2, 3].map((i) => { const p = s.players[i]; if (!p) return '<div class="slot empty">volné místo</div>'; return `<div class="slot${i === s.you ? ' me' : ''}"><img src="${portraitURL(p.skin)}" alt=""><div><div class="nm">${esc(p.name)}</div><small>${p.bot ? 'bot' : 'úroveň ' + p.lvl}${i === s.host ? ' · zakladatel' : ''}${!p.connected ? ' · odpojen' : ''}</small></div></div>`; }).join('');
   const n = s.players.length; const host = s.you === s.host && !s.quick;
   $('copyLink').hidden = !!s.quick; $('hostBox').hidden = !host;
+  const m = MAPS[s.map] || MAPS[0]; $('mapSel').innerHTML = host ? `<h3>Mapa</h3><div class="maps">${mapPicker(s.map)}</div>` : `<div class="mapone"><img src="${mapThumb(s.map || 0)}" alt=""><div><small>Mapa</small><b>${esc(m.name)}</b><small>${esc(m.desc)}</small></div></div>`;
   $('lobbyHint').textContent = s.quick ? (s.auto != null && n >= 2 ? `Hra začne za ${s.auto} s (nebo hned, až budou čtyři).` : 'Hledám další hráče, stačí dva…') : host ? 'Pošli kód kamarádům. Začít můžeš, až budou aspoň dva, nebo doplň boty.' : 'Čeká se, až zakladatel spustí hru.';
   if (host) { const ok = n >= 2 || $('fillBots').checked; $('startBtn').disabled = !ok; $('startBtn').querySelector('b').textContent = ok ? 'Začít hru' : 'Čekám na další hráče'; }
 }
 $('fillBots').addEventListener('change', () => S && renderLobby(S));
 $('fillLevel').addEventListener('click', (e) => { const b = e.target.closest('[data-l]'); if (!b) return; for (const x of $('fillLevel').children) x.classList.toggle('on', x === b); sfx.click(); });
-$('startBtn').onclick = () => { audio(); const lv = +($('fillLevel').querySelector('.on') || { dataset: { l: 2 } }).dataset.l; sendMsg({ t: 'start', fill: $('fillBots').checked, level: lv }); };
+$('startBtn').onclick = () => { audio(); const lv = +($('fillLevel').querySelector('.on') || { dataset: { l: 2 } }).dataset.l; sendMsg({ t: 'start', fill: $('fillBots').checked, level: lv, map: S ? S.map : 0 }); };
+$('mapSel').addEventListener('click', (e) => { const b = e.target.closest('[data-map]'); if (!b || !S || S.phase !== 'lobby' || S.you !== S.host) return; sfx.click(); sendMsg({ t: 'map', map: +b.dataset.map }); });
 $('leaveLobby').onclick = () => leaveGame();
 $('copyLink').onclick = async () => {
   const url = `${location.origin}${location.pathname}?k=${S ? S.code : ''}`;
@@ -229,9 +250,9 @@ function hideBanner() { clearTimeout(bannerT); $('banner').hidden = true; }
 
 function renderChips() {
   if (!S) return; const alive = cur ? cur.p.map((p) => p[2]) : S.players.map(() => 1);
-  const sig = JSON.stringify([S.players.map((p) => [p.name, p.wins, p.left, p.connected]), alive, me]);
+  const sig = JSON.stringify([S.players.map((p) => [p.name, p.wins, p.left, p.connected, p.skin]), alive, me]);
   if (sig === chipSig) return; chipSig = sig;
-  $('pchips').innerHTML = S.players.map((p, i) => `<div class="pc${i === me ? ' me' : ''}${alive[i] ? '' : ' dead'}${p.left ? ' left' : ''}" style="--c:${SKINS[i].main}"><img src="${portraitURL(i)}" alt=""><div style="min-width:0"><div class="nm">${esc(p.name)}</div><div class="pips">${Array.from({ length: S.need }, (_, k) => `<i class="${k < p.wins ? 'on' : ''}"></i>`).join('')}</div></div></div>`).join('');
+  $('pchips').innerHTML = S.players.map((p, i) => `<div class="pc${i === me ? ' me' : ''}${alive[i] ? '' : ' dead'}${p.left ? ' left' : ''}" style="--c:${SKINS[p.skin | 0].main}"><img src="${portraitURL(p.skin)}" alt=""><div style="min-width:0"><div class="nm">${esc(p.name)}</div><div class="pips">${Array.from({ length: S.need }, (_, k) => `<i class="${k < p.wins ? 'on' : ''}"></i>`).join('')}</div></div></div>`).join('');
 }
 function onSnap(m) {
   const at = performance.now();
@@ -248,10 +269,10 @@ function updateHud() {
   if (m.sd && !sdShown) { sdShown = true; banner('Náhlá smrt!', 1800, '<small>Z okraje padají kameny</small>'); sfx.skull(); }
   if (m.fr > 0) { const c = Math.ceil(m.fr / 20); if (c !== lastCount) { lastCount = c; banner(`<span class="cnt">${c}</span>`); sfx.tick(); } }
   const p = m.p[me]; if (p) {
-    const curse = CURSE_BY_CODE[p[5]]; const sig = [p[6], p[10], p[7], p[8], p[9], p[5]].join();
+    const curse = CURSE_BY_CODE[p[5]]; const sig = [p[6], p[10], p[7], p[8], p[9], p[5], p[12]].join();
     if (sig !== hudSig) {
       hudSig = sig;
-      $('mine').innerHTML = `<span class="st" title="Bomby"><img src="${itemURL('bomb')}" alt="">${Math.max(0, p[6] - p[10])}/${p[6]}</span><span class="st" title="Dosah"><img src="${itemURL('fire')}" alt="">${p[7]}</span><span class="st" title="Rychlost"><img src="${itemURL('speed')}" alt="">${p[8]}</span><span class="st${p[9] ? '' : ' off'}" title="Kopání"><img src="${itemURL('kick')}" alt="">${p[9] ? 'ano' : '–'}</span>${curse ? `<span class="st curse"><img src="${itemURL('skull')}" alt="">${esc(K.CURSE_NAME[curse])}</span>` : ''}`;
+      $('mine').innerHTML = `<span class="st" title="Bomby"><img src="${itemURL('bomb')}" alt="">${Math.max(0, p[6] - p[10])}/${p[6]}</span><span class="st" title="Dosah"><img src="${itemURL('fire')}" alt="">${p[7]}</span><span class="st" title="Rychlost"><img src="${itemURL('speed')}" alt="">${p[8]}</span><span class="st${p[9] ? '' : ' off'}" title="Kopání"><img src="${itemURL('kick')}" alt="">${p[9] ? 'ano' : '–'}</span>${p[12] > 0 ? `<span class="st" title="Skateboard"><img src="${itemURL('skate')}" alt="">${p[12]} s</span>` : ''}${curse ? `<span class="st curse"><img src="${itemURL('skull')}" alt="">${esc(K.CURSE_NAME[curse])}</span>` : ''}`;
     }
   }
   renderChips();
@@ -267,7 +288,7 @@ function processEvents(now) {
     else if (k === 's') { sfx.stump(); burst(e[1] + 0.5, e[2] + 0.5, 9, ['#a8692f', '#6e4320', '#c58a4a'], 4, 0.7); }
     else if (k === 'r') { sfx.stone(); shake = Math.max(shake, 4); burst(e[1] + 0.5, e[2] + 0.5, 8, ['#8c939d', '#6b727c', '#b8bec6'], 3.5, 0.6); }
     else if (k === 'k') sfx.kick();
-    else if (k === 'd') { dieAt[e[3]] = now; sfx.die(); burst(e[1], e[2], 8, ['#fff', SKINS[e[3] % 4].main], 4, 0.7); if (e[3] === me) banner('Jsi venku', 1500); }
+    else if (k === 'd') { dieAt[e[3]] = now; sfx.die(); burst(e[1], e[2], 8, ['#fff', SKINS[skinOf(e[3]) % SKINS.length].main], 4, 0.7); if (e[3] === me) banner('Jsi venku', 1500); }
     else if (k === 'i') {
       const type = typeof e[1] === 'number' ? K.ITEMS[e[1]] : e[1]; const pi = e[2]; const pp = a && a.p[pi];
       if (type === 'skull') sfx.skull(); else if (pi === me) sfx.pick();
@@ -288,10 +309,10 @@ function resize() {
 window.addEventListener('resize', () => { if (screen === 'game') resize(); });
 if (window.ResizeObserver) new ResizeObserver(() => { if (screen === 'game') resize(); }).observe($('gField'));
 function paintBg(gs) {
-  const key = gs + '|' + ts + '|' + dpr; if (key === bgKey && bgCan) return; bgKey = key;
+  const theme = themeOf(); const key = gs + '|' + ts + '|' + dpr + '|' + theme; if (key === bgKey && bgCan) return; bgKey = key;
   bgCan = bgCan || document.createElement('canvas'); bgCan.width = Math.round(COLS * ts * dpr); bgCan.height = Math.round(ROWS * ts * dpr);
   const b = bgCan.getContext('2d'); b.setTransform(dpr, 0, 0, dpr, 0, 0);
-  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) { const border = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1; drawTile(b, +gs[y * COLS + x] || 0, x * ts, y * ts, ts, x, y, border); }
+  for (let y = 0; y < ROWS; y++) for (let x = 0; x < COLS; x++) { const border = x === 0 || y === 0 || x === COLS - 1 || y === ROWS - 1; drawTile(b, +gs[y * COLS + x] || 0, x * ts, y * ts, ts, x, y, border, theme); }
 }
 function pick(now) {   // dva snímky, mezi kterými je právě vykreslovaný čas
   const rt = now - DELAY; let i = snaps.length - 1; while (i > 0 && snaps[i].at > rt) i--;
@@ -322,7 +343,7 @@ function draw(now, tsec) {
     if (!p[2] && !(dying > 0 && dying < 1)) continue; order.push({ i, x, y, p, dying });
   }
   order.sort((m, n) => m.y - n.y);
-  for (const o of order) drawPlayer(g, o.i, o.x * ts, o.y * ts - ts * 0.12, ts, o.p[3], !!o.p[4], tsec, { you: o.i === me && o.p[2] && S && S.phase === 'play', curse: o.p[5] && o.p[2], dying: o.dying });
+  for (const o of order) drawPlayer(g, skinOf(o.i), o.x * ts, o.y * ts - ts * 0.12, ts, o.p[3], !!o.p[4], tsec, { skate: o.p[12] > 0 && o.p[2], you: o.i === me && o.p[2] && S && S.phase === 'play', curse: o.p[5] && o.p[2], dying: o.dying });
   drawFx(now);
   g.restore();
 }
@@ -389,7 +410,7 @@ function renderOver() {
   const t = $('oTitle'); t.textContent = won ? 'VÝHRA' : r.winner < 0 ? 'REMÍZA' : 'PROHRA'; t.className = 'otitle' + (won ? '' : r.winner < 0 ? ' draw' : ' lose');
   $('oReason').textContent = won ? `Vyhráno ${r.wins[me]} : ${Math.max(...r.wins.filter((_, i) => i !== me), 0)} na kola.` : w ? `Zápas vyhrál ${w.name}.` : 'Nikdo nevyhrál dost kol.';
   const order = s.players.map((p, i) => i).sort((x, y) => r.wins[y] - r.wins[x] || r.kills[y] - r.kills[x]);
-  $('oTable').innerHTML = order.map((i) => { const p = s.players[i]; const x = r.xp && r.xp[i]; return `<div class="orow${i === r.winner ? ' win' : ''}"><img src="${portraitURL(i)}" alt=""><div>${esc(p.name)}${i === me ? ' (ty)' : ''}<br><small>vyřazení: ${r.kills[i]}</small></div><span>${r.wins[i]} ${r.wins[i] === 1 ? 'kolo' : r.wins[i] >= 2 && r.wins[i] <= 4 ? 'kola' : 'kol'}</span><span class="xg">${x ? '+' + x.gain + ' XP' : ''}</span></div>`; }).join('');
+  $('oTable').innerHTML = order.map((i) => { const p = s.players[i]; const x = r.xp && r.xp[i]; return `<div class="orow${i === r.winner ? ' win' : ''}"><img src="${portraitURL(p.skin)}" alt=""><div>${esc(p.name)}${i === me ? ' (ty)' : ''}<br><small>vyřazení: ${r.kills[i]}</small></div><span>${r.wins[i]} ${r.wins[i] === 1 ? 'kolo' : r.wins[i] >= 2 && r.wins[i] <= 4 ? 'kola' : 'kol'}</span><span class="xg">${x ? '+' + x.gain + ' XP' : ''}</span></div>`; }).join('');
   const again = $('oAgain'); const rm = s.rematch || []; const mine = !!rm[me]; const humansIn = s.players.filter((p) => !p.bot && !p.left).length; const ready = s.players.filter((p, i) => !p.bot && !p.left && rm[i]).length;
   $('oAgainTxt').textContent = s.solo ? 'Hrát znovu' : mine ? `Čekám na ostatní (${ready}/${humansIn})` : 'Odveta'; again.disabled = !s.solo && mine;
   $('oHint').textContent = s.solo ? '' : humansIn <= 1 ? 'Ostatní hráči odešli.' : '';
@@ -397,7 +418,8 @@ function renderOver() {
 }
 async function fillXp() {
   const x = S && S.result && S.result.xp && S.result.xp[me]; const box = $('oXp'); if (!x) { box.hidden = true; return; }
-  box.hidden = false; $('oXpBar').style.width = '0%'; $('oXpTxt').textContent = `+${x.gain} XP · úroveň ${x.lvl}${x.up ? ' · nová úroveň!' : ''}`;
+  const old = prof && prof.account ? prof.bombic.lvl : x.lvl; const fresh = SKINS.filter((k) => k.lvl > old && k.lvl <= x.lvl).map((k) => k.name);
+  box.hidden = false; $('oXpBar').style.width = '0%'; $('oXpTxt').textContent = `+${x.gain} XP · úroveň ${x.lvl}${x.up ? ' · nová úroveň!' : ''}${fresh.length ? ' · nový skin: ' + fresh.join(', ') : ''}`;
   await refreshProfile(); const t = prof && prof.bombic; if (t) setTimeout(() => { $('oXpBar').style.width = (t.next ? clamp((t.xp - t.from) / (t.next - t.from), 0, 1) * 100 : 100) + '%'; }, 80);
 }
 $('oAgain').onclick = () => { audio(); sendMsg({ t: 'rematch' }); };

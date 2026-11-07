@@ -93,7 +93,7 @@ export function botThink(s, i, lvl) {
   for (const k of r.order) {
     if (k === here) continue; const x = k % COLS, y = (k - x) / COLS; let sc = r.dist[k];
     const it = s.items.find((q) => q.x === x && q.y === y);
-    if (it) { if (it.type === 'skull' && lvl >= 2) continue; sc -= 6; if (lvl === 1 && r.dist[k] > 6) continue; }
+    if (it) { if ((it.type === 'skull' && lvl >= 2) || it.type === 'skate') continue; sc -= 6; if (lvl === 1 && r.dist[k] > 6) continue; }
     else if (canBomb && lvl >= 1 && r.dist[k] <= 16 && value(x, y) > 0) sc += 1; else if (lvl >= 2 && rnd() < HUNT[lvl] && enemies.some((e) => Math.abs(Math.floor(e.x) - x) + Math.abs(Math.floor(e.y) - y) <= 2)) sc += 4;
     else continue;
     if (sc < bestScore) { bestScore = sc; best = k; }

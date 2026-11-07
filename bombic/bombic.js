@@ -25,12 +25,13 @@ export function init(d) { deps = d; }
 export function bombicOf(acc) {
   let t = acc.bombic; if (!t || typeof t !== 'object') t = acc.bombic = {};
   for (const k of ['xp', 'wins', 'games', 'kills']) t[k] = Math.max(0, Math.min(1e7, Math.floor(Number(t[k]) || 0)));
+  const sk = Math.floor(Number(t.skin)); t.skin = Number.isFinite(sk) && sk >= 0 && sk < K.SKINS.length ? sk : -1;   // -1 = automaticky podle místa u stolu
   return t;
 }
 const dirty = () => { try { deps && deps.markDirty(); } catch { /* nic */ } };
 function profileOf(acc, linked) {
   const t = bombicOf(acc); const lvl = K.levelOf(t.xp);
-  return { account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, bombic: { xp: t.xp, lvl, from: K.xpFor(lvl), next: lvl >= K.MAX_LEVEL ? null : K.xpFor(lvl + 1), wins: t.wins, games: t.games, kills: t.kills }, xpRules: XP };
+  return { account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, bombic: { xp: t.xp, lvl, from: K.xpFor(lvl), next: lvl >= K.MAX_LEVEL ? null : K.xpFor(lvl + 1), wins: t.wins, games: t.games, kills: t.kills, skin: t.skin }, xpRules: XP };
 }
 function identify(msg) {
   if (!deps || !msg || typeof msg.token !== 'string' || !deps.TOKEN_RE.test(msg.token)) return null;
@@ -39,6 +40,13 @@ function identify(msg) {
 /** HTTP: me (profil pro menu). */
 export function api(action, body) {
   if (action === 'me') { const ident = identify(body || {}); return { status: 200, json: ident ? profileOf(ident.acc, ident.linked) : { account: false, xpRules: XP } }; }
+  if (action === 'skin') {   // výběr skinu: jen odemčený (podle úrovně), -1 = automaticky
+    const ident = identify(body || {}); if (!ident) return { status: 401, json: { error: 'Pro skiny se musíš přihlásit.' } };
+    const t = bombicOf(ident.acc); const want = Math.floor(Number(body.skin));
+    if (!Number.isFinite(want) || want < -1 || want >= K.SKINS.length) return { status: 400, json: { error: 'Neznámý skin.' } };
+    if (want >= 0 && K.SKINS[want].lvl > K.levelOf(t.xp)) return { status: 403, json: { error: `Tenhle skin se odemkne na úrovni ${K.SKINS[want].lvl}.` } };
+    t.skin = want; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
+  }
   return { status: 404, json: { error: 'Neznámá akce.' } };
 }
 
@@ -52,19 +60,27 @@ const live = (room) => room.players.filter((p) => p.connected && !p.bot);
 // ------------------------------------------------------------------ stav pro klienty
 function playerView(p, room) {
   const t = p.acc ? bombicOf(p.acc) : null;
-  return { name: p.name, avatar: p.acc ? p.acc.avatar : null, bot: p.bot || 0, connected: p.connected, lvl: t ? K.levelOf(t.xp) : 1, left: !!p.left, wins: room.wins[room.players.indexOf(p)] || 0 };
+  return { name: p.name, avatar: p.acc ? p.acc.avatar : null, bot: p.bot || 0, connected: p.connected, lvl: t ? K.levelOf(t.xp) : 1, skin: p.skin >= 0 ? p.skin : 0, left: !!p.left, wins: room.wins[room.players.indexOf(p)] || 0 };
 }
 function view(room, pid) {
   const you = room.players.findIndex((p) => p.id === pid);
   return {
     t: 'state', code: room.code, phase: room.phase, you, host: room.players.findIndex((p) => p.id === room.host), quick: !!room.quick, solo: !!room.solo,
     players: room.players.map((p) => playerView(p, room)), round: room.round, round_result: room.roundResult, result: room.result,
-    rematch: room.players.map((p) => p.bot || room.rematch.has(p.id)), matchId: room.matchId, need: K.WINS_NEEDED,
+    rematch: room.players.map((p) => p.bot || room.rematch.has(p.id)), matchId: room.matchId, need: K.WINS_NEEDED, map: room.map,
     auto: room.quick && room.autoAt ? Math.max(0, Math.round((room.autoAt - now()) / 1000)) : null,
     drop: room.dropFor ? { idx: room.players.findIndex((p) => p.id === room.dropFor), left: Math.max(0, Math.round((room.dropAt - now()) / 1000)) } : null,
   };
 }
-function publish(room) { for (const p of room.players) if (p.ws) send(p.ws, view(room, p.id)); }
+/** Přidělí každému jiný skin: nejdřív vybrané (a odemčené) podle pořadí u stolu, ostatním zbylé základní a pak libovolné volné. */
+function assignSkins(room) {
+  const used = new Set(); const want = room.players.map((p) => { if (!p.acc) return -1; const t = bombicOf(p.acc); return t.skin >= 0 && K.SKINS[t.skin].lvl <= K.levelOf(t.xp) ? t.skin : -1; });
+  room.players.forEach((p, i) => { p.skin = -1; if (want[i] >= 0 && !used.has(want[i])) { p.skin = want[i]; used.add(want[i]); } });
+  room.players.forEach((p) => { if (p.skin >= 0) return; let k = 0; while (used.has(k)) k++; p.skin = k; used.add(k); });
+}
+function publish(room) {
+  if (room.phase === 'lobby') assignSkins(room);
+  for (const p of room.players) if (p.ws) send(p.ws, view(room, p.id)); }
 function sendSnaps(room) {
   const g = room.game; if (!g) return;
   const withGrid = g.gridVer !== room.sentVer; room.sentVer = g.gridVer;
@@ -77,13 +93,14 @@ function fullSnap(room) { const g = room.game; if (!g) return null; return G.sna
 // ------------------------------------------------------------------ průběh zápasu
 function startRound(room) {
   room.round++; room.roundResult = null;
-  room.game = G.newRound(room.players.map((p) => p.name), crypto.randomInt(1, 2 ** 31));
+  room.game = G.newRound(room.players.map((p) => p.name), crypto.randomInt(1, 2 ** 31), { map: room.map });
   room.sentVer = 0; room.phase = 'play'; room.lastActive = now();
   room.thinkAt = room.players.map((p, i) => (p.bot ? 30 + i * 3 : 0));
   for (const p of room.players) if (p.left) G.forfeit(room.game, room.players.indexOf(p));
   publish(room); sendSnaps(room);
 }
 function startMatch(room) {
+  assignSkins(room);
   room.wins = room.players.map(() => 0); room.round = 0; room.result = null; room.rematch = new Set(); room.matchId = (room.matchId || 0) + 1; room.autoAt = null;
   room.kills = room.players.map(() => 0); room.roundsPlayed = 0;
   for (const p of room.players) { p.left = false; }
@@ -134,7 +151,7 @@ export function advance(room, n) { for (let i = 0; i < n && (room.phase === 'pla
 // ------------------------------------------------------------------ místnosti a spojení
 function newRoom() {
   const code = makeCode(); if (!code) return null;
-  const room = { code, players: [], nextId: 1, host: null, phase: 'lobby', quick: false, solo: false, game: null, result: null, roundResult: null, round: 0, wins: [], kills: [], rematch: new Set(), emptySince: now(), matchId: 0, dropTimer: null, dropAt: null, dropFor: null, thinkAt: [], autoAt: null, pause: 0, sentVer: 0, roundsPlayed: 0 };
+  const room = { code, players: [], nextId: 1, host: null, phase: 'lobby', quick: false, solo: false, game: null, result: null, roundResult: null, round: 0, wins: [], kills: [], rematch: new Set(), map: 0, emptySince: now(), matchId: 0, dropTimer: null, dropAt: null, dropFor: null, thinkAt: [], autoAt: null, pause: 0, sentVer: 0, roundsPlayed: 0 };
   rooms.set(code, room); return room;
 }
 function addPlayer(room, ws, msg) {
@@ -196,7 +213,8 @@ function leave(ws, voluntary) {
   }
   if (live(room).length === 0) room.emptySince = now();
 }
-function fillAndStart(room, fill, level) {
+function fillAndStart(room, fill, level, map) {
+  if (map !== undefined) room.map = K.mapIdx(map);
   if (fill) addBots(room, 4 - room.players.length, level || 2);
   if (room.players.length < 2) return false;
   startMatch(room); return true;
@@ -214,9 +232,10 @@ function handle(ws, msg) {
     } else if (msg.t === 'quick') {
       const ident = identify(msg);
       room = [...rooms.values()].find((r) => r.quick && r.phase === 'lobby' && r.players.length < 4 && live(r).length === r.players.length && !(ident && r.players.some((p) => p.acc === ident.acc)));
-      if (!room) { room = newRoom(); if (!room) return send(ws, { t: 'err', fatal: true, msg: 'Server je plný, zkus to později.' }); room.quick = true; }
+      if (!room) { room = newRoom(); if (!room) return send(ws, { t: 'err', fatal: true, msg: 'Server je plný, zkus to později.' }); room.quick = true; room.map = crypto.randomInt(0, K.MAPS.length); }
     } else {
       room = newRoom(); if (!room) return send(ws, { t: 'err', fatal: true, msg: 'Server je plný, zkus to později.' });
+      room.map = K.mapIdx(msg.map);
     }
     const r = addPlayer(room, ws, msg);
     if (r.err) { if (room.players.length === 0) destroy(room); return send(ws, { t: 'err', fatal: true, msg: r.err }); }
@@ -243,10 +262,11 @@ function handle(ws, msg) {
   switch (msg.t) {
     case 'in': if (room.phase === 'play' && room.game) { G.setInput(room.game, i, Math.floor(Number(msg.d))); room.lastActive = now(); } return;
     case 'bomb': if (room.phase === 'play' && room.game) { G.wantBomb(room.game, i); room.lastActive = now(); } return;
+    case 'map': if (room.phase === 'lobby' && room.host === pl.id && !room.quick) { room.map = K.mapIdx(msg.map); publish(room); } return;
     case 'start': {   // jen zakladatel: začít (nejméně 2 hráči), případně doplnit boty do 4
       if (room.phase !== 'lobby' || room.host !== pl.id) return;
       const level = K.clamp(Math.floor(Number(msg.level)) || 2, 1, 3);
-      if (!fillAndStart(room, !!msg.fill, level)) send(ws, { t: 'err', msg: 'Na hru jsou potřeba aspoň dva hráči (nebo zapni doplnění boty).' });
+      if (!fillAndStart(room, !!msg.fill, level, msg.map)) send(ws, { t: 'err', msg: 'Na hru jsou potřeba aspoň dva hráči (nebo zapni doplnění boty).' });
       return;
     }
     case 'leave': return leave(ws, true);

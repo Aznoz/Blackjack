@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23173d1f'/%3E%3Ccircle cx='30' cy='38' r='17' fill='%23252a36' stroke='%23000' stroke-width='3'/%3E%3Ccircle cx='24' cy='31' r='5' fill='%23ffffff88'/%3E%3Cpath d='M38 23q8-10 14-6' fill='none' stroke='%23e9d9ac' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='53' cy='15' r='5' fill='%23ffb02e'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="bombic.css?v=1">
+<link rel="stylesheet" href="bombic.css?v=2">
 </head>
 <body>
 
@@ -43,7 +43,10 @@
       <button class="plank" id="bCreate" type="button"><b>Vytvořit hru</b><small>kód pro kamarády</small></button>
     </div>
     <form class="join" id="joinForm"><label for="code">Mám kód od kamaráda</label><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti"><button type="submit">Připojit</button></form>
-    <button class="textbtn" id="bHow" type="button">Jak se hraje a co sbírat</button>
+    <div class="row2">
+      <button class="plank" id="bSkins" type="button"><b>Skiny</b><small id="skinSub">odemykej úrovněmi</small></button>
+      <button class="plank" id="bHow" type="button"><b>Jak se hraje</b><small>pravidla a předměty</small></button>
+    </div>
     <p class="status" id="menuStatus"></p>
   </div>
 </main>
@@ -56,8 +59,21 @@
     <div class="seg" id="botN"><button type="button" data-n="1">1</button><button type="button" data-n="2">2</button><button type="button" data-n="3" class="on">3</button></div>
     <h3>Obtížnost</h3>
     <div class="levels" id="botLevels"></div>
+    <h3>Mapa</h3>
+    <div class="maps" id="botMaps"></div>
     <button class="plank main go" id="botGo" type="button"><b>Začít zápas</b></button>
     <button class="link" data-close type="button">Zpět</button>
+  </div>
+</div>
+
+<!-- skiny -->
+<div class="modal" id="skinModal" hidden>
+  <div class="sheet">
+    <div class="shead"><h2>Skiny</h2><button class="x" data-close type="button" aria-label="Zavřít">✕</button></div>
+    <p class="muted" id="skinLvl"></p>
+    <div class="skins" id="skinGrid"></div>
+    <button class="plank small" id="skinAuto" type="button"><b>Automatický skin</b><small>podle místa u stolu</small></button>
+    <p class="muted small">Nové skiny se odemykají s úrovní hráče (až do úrovně 35). Úroveň roste za odehrané zápasy, výhry a vyřazené soupeře. Každý hráč u stolu má jiný skin, při shodě dostane druhý z nich jiný.</p>
   </div>
 </div>
 
@@ -73,7 +89,7 @@
     </ol>
     <h3>Předměty</h3>
     <div class="items" id="howItems"></div>
-    <p class="muted small">Za zápas dostaneš zkušenosti: za odehrání, výhru, vyhraná kola a vyřazené soupeře. S úrovní roste tvůj odznak, na hře samotné to nic nemění.</p>
+    <p class="muted small">Za zápas dostaneš zkušenosti: za odehrání, výhru, vyhraná kola a vyřazené soupeře. S úrovní (až 35) se odemykají nové skiny, na síle postavy to nic nemění.</p>
   </div>
 </div>
 
@@ -83,6 +99,7 @@
     <h2 id="lobbyTitle">Čekárna</h2>
     <div class="codebox"><span>Kód místnosti</span><b id="roomCode">----</b></div>
     <div class="slots" id="slots"></div>
+    <div class="mapsel" id="mapSel"></div>
     <p class="muted" id="lobbyHint"></p>
     <div class="hostbox" id="hostBox" hidden>
       <label class="chk"><input type="checkbox" id="fillBots" checked> <span>Prázdná místa doplnit boty</span></label>
@@ -134,6 +151,6 @@
 <div class="conn" id="conn" hidden>Připojuji…</div>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script src="config.js"></script>
-<script type="module" src="bombic.js?v=1"></script>
+<script type="module" src="bombic.js?v=2"></script>
 </body>
 </html>
