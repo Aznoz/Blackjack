@@ -45,6 +45,8 @@ export const PIECES = {
   hole: { name: 'Černá díra', desc: 'Střídavě přitahuje všechno do vzdálenosti 3,5 políčka. Uprostřed je smrtelná.', kind: 'hazard', cells: [[0, 0]], w: 4 },
   boulder: { name: 'Valoun', desc: 'Obrovská koule se rozkutálí po dráze dlouhé 8 políček. Přeskoč ji. Otočením se kutálí na druhou stranu.', kind: 'hazard', cells: Array.from({ length: 8 }, (_, i) => [i, 0]), face: 1, w: 4 },
   fan: { name: 'Ventilátor', desc: 'Střídavě fouká do vzdálenosti 5 políček: zvedá nebo odfoukne.', kind: 'hazard', tile: 5, cells: [[0, 0]], face: 0, w: 4 },
+  bomb: { name: 'Bomba', desc: 'Po položení hned vybuchne a zničí jeden kus, který je nejblíž (platformu i past). Polož ji na to, co chceš smazat.', kind: 'tool', blast: 1.2, one: true, cells: [[0, 0]], w: 4 },
+  megabomb: { name: 'Velká bomba', desc: 'Obrovský výbuch s dosahem 4 políček: zničí všechny kusy, kterých se dotkne.', kind: 'tool', blast: 4, one: false, cells: [[0, 0]], w: 2.5 },
 };
 export const PIECE_IDS = Object.keys(PIECES);
 export const MOVER_AMP = 3, MOVER_PERIOD = 150;        // pojízdná plošina: rozkmit v políčkách a perioda v ticcích
@@ -82,7 +84,21 @@ export function pieceCells(type, r) {
 /** Směr pasti po otočení (0 nahoru, 1 doprava, 2 dolů, 3 doleva). */
 export const faceOf = (type, r) => ((PIECES[type].face || 0) + (((r % 4) + 4) % 4)) % 4;
 export const DIRV = [[0, -1], [1, 0], [0, 1], [-1, 0]];
-export const rotatable = (type) => !['saw', 'block', 'blades', 'pendulum', 'icicle', 'bumper', 'vanish', 'hole'].includes(type);
+export const rotatable = (type) => !['saw', 'block', 'blades', 'pendulum', 'icicle', 'bumper', 'vanish', 'hole', 'bomb', 'megabomb'].includes(type);
+/** Bomby nejsou kusy trati: nic nepostaví, jen při položení smažou kusy v dosahu. */
+export const isTool = (type) => !!PIECES[type] && PIECES[type].kind === 'tool';
+/** Které kusy (z pole `pieces`) smaže bomba `type` položená na políčku (x, y). Vzdálenost se měří od středu bomby k nejbližšímu bodu políček kusu; malá bomba smaže jen nejbližší kus. */
+export function bombTargets(pieces, type, x, y) {
+  const B = PIECES[type]; if (!B || B.kind !== 'tool') return [];
+  const cx = x + 0.5, cy = y + 0.5, hit = [];
+  for (const p of pieces) {
+    let d = Infinity;
+    for (const [dx, dy] of pieceCells(p.type, p.r)) { const qx = p.x + dx, qy = p.y + dy; d = Math.min(d, Math.hypot(Math.max(qx - cx, 0, cx - (qx + 1)), Math.max(qy - cy, 0, cy - (qy + 1)))); }
+    if (d <= B.blast) hit.push([d, p]);
+  }
+  hit.sort((a, b) => a[0] - b[0] || a[1].id - b[1].id);
+  return (B.one ? hit.slice(0, 1) : hit).map((h) => h[1]);
+}
 /** Rozdělení bodáků na buňky s hroty (strana, kam míří) a pevný základ. */
 export function spikeSplit(type, r) {
   const cells = pieceCells(type, r), f = faceOf(type, r), v = (c) => (f === 0 || f === 2 ? c[1] : c[0]);

@@ -1,10 +1,10 @@
 // HOPÍK – klient: menu s výběrem postavičky, čekárna, a hra (výběr kusu → pokládání → běh) na canvasu. Pohyb vlastní postavy se počítá tady v prohlížeči
 // (stejná fyzika jako na serveru, phys.js) a každých pár ticků se hlásí serveru; ostatní hráči se zobrazují z jeho snímků a mezi nimi se plynule dopočítávají.
-import * as K from './shared.js?v=6';
-import * as P from './phys.js?v=6';
-import * as A from './art.js?v=6';
-import { startScene, stopScene } from './scene.js?v=6';
-import { createMusic } from './music.js?v=6';
+import * as K from './shared.js?v=7';
+import * as P from './phys.js?v=7';
+import * as A from './art.js?v=7';
+import { startScene, stopScene } from './scene.js?v=7';
+import { createMusic } from './music.js?v=7';
 const { COLS, ROWS, TPS, CHARS, STAGES } = K;
 
 const CFG = window.HOPIK_CONFIG || {};
@@ -66,6 +66,7 @@ const sfx = {
   bounce() { tone(220, .28, 'sine', .12, 700); },
   die() { noise(.28, .12, 1500, 150); tone(420, .4, 'sawtooth', .05, -330); },
   boom() { noise(.3, .1, 1200, 200); },
+  bomb(big) { noise(big ? .9 : .55, big ? .32 : .22, big ? 2400 : 3200, 90); tone(big ? 70 : 110, big ? .7 : .4, 'sine', big ? .3 : .22, -45); if (big) tone(48, .9, 'sine', .25, -20, .05); },
   fin() { [523, 659, 784, 1047].forEach((f, i) => tone(f, .13, 'triangle', .08, 0, i * .07)); },
   tick() { tone(740, .08, 'triangle', .07); },
   go() { tone(988, .25, 'triangle', .1); tone(1318, .3, 'triangle', .08, 0, .08); },
@@ -329,6 +330,7 @@ function onEvent(e, at) {
     case 'f': { const [, i, ord] = e; if (run.firstFin < 0) run.firstFin = nowTick(); if (i === me) { run.fin = true; } finishFx(i, ord); break; }
     case 'j': if (e[1] !== me) { /* cizí skok: tichý, ať to nehrká */ } break;
     case 'cr': if (W) P.triggerCrumble(W, e[1], e[2]); break;
+    case 'bomb': bombFx(e); break;
     default:
   }
 }
@@ -397,7 +399,7 @@ function renderPicks() {
   const sig = JSON.stringify([g.offers, g.round]); const mine = g.offers.findIndex((o) => o[1] === me);
   el.hidden = false; $('pickTitle').textContent = mine >= 0 ? 'Máš vybráno. Čekáme na ostatní…' : 'Vyber si kus!';
   if (sig === pickSig) return; pickSig = sig;
-  $('cards').innerHTML = g.offers.map(([type, by], k) => { const P_ = K.PIECES[type]; const hz = P_.kind === 'hazard'; return `<button type="button" class="pcard${hz ? ' haz' : ''}${by >= 0 ? ' taken' : ''}${by === me ? ' mine' : ''}" data-k="${k}"${by >= 0 ? ' disabled' : ''}><span class="kind">${hz ? 'past' : 'plošina'}</span><img class="ic" src="${A.pieceIcon(type, 120)}" alt=""><b>${esc(P_.name)}</b><small>${esc(P_.desc)}</small>${by >= 0 && S && S.players[by] ? `<img class="by" src="${A.portraitURL(S.players[by].char, 48)}" alt="">` : ''}</button>`; }).join('');
+  $('cards').innerHTML = g.offers.map(([type, by], k) => { const P_ = K.PIECES[type]; const hz = P_.kind === 'hazard', tl = P_.kind === 'tool'; return `<button type="button" class="pcard${hz ? ' haz' : ''}${tl ? ' tool' : ''}${by >= 0 ? ' taken' : ''}${by === me ? ' mine' : ''}" data-k="${k}"${by >= 0 ? ' disabled' : ''}><span class="kind">${hz ? 'past' : tl ? 'bomba' : 'plošina'}</span><img class="ic" src="${A.pieceIcon(type, 120)}" alt=""><b>${esc(P_.name)}</b><small>${esc(P_.desc)}</small>${by >= 0 && S && S.players[by] ? `<img class="by" src="${A.portraitURL(S.players[by].char, 48)}" alt="">` : ''}</button>`; }).join('');
 }
 $('cards').addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b || b.disabled || !GS || phase() !== 'pick' || GS.offers.some((o) => o[1] === me)) return; audio(); sfx.pick(); sendMsg({ t: 'pick', k: +b.dataset.k }); });
 const coarse = () => window.matchMedia && matchMedia('(pointer: coarse)').matches;
@@ -427,7 +429,8 @@ if (fsOK) { $('fsBtn').hidden = false; $('pFs').hidden = false; $('fsBtn').oncli
 $('rotateSkip').onclick = () => { $('rotate').classList.add('skip'); };
 function renderHint() {
   const el = $('hint'); const ph = phase(); let txt = '';
-  if (ph === 'place') { const g = GS; if (g.placed[me] || !g.piece[me]) txt = g.piece[me] ? 'Hotovo. Čekáme na ostatní…' : 'Tentokrát nemáš co pokládat.'; else txt = coarse() ? 'Přetáhni kus prstem, otoč ho a polož.' : 'Kus se hýbe myší. Otočíš ho R nebo pravým tlačítkem, položíš kliknutím.'; }
+  if (ph === 'place') { const g = GS; if (g.placed[me] || !g.piece[me]) txt = g.piece[me] ? 'Hotovo. Čekáme na ostatní…' : 'Tentokrát nemáš co pokládat.'; else if (K.isTool(g.piece[me])) txt = coarse() ? 'Bomba: přetáhni ji na kus, který chceš zničit (zčervená), a polož.' : 'Bomba: najeď na kus, který chceš zničit (zčervená), a polož kliknutím. Kruh ukazuje dosah.';
+    else txt = coarse() ? 'Přetáhni kus prstem, otoč ho a polož.' : 'Kus se hýbe myší. Otočíš ho R nebo pravým tlačítkem, položíš kliknutím.'; }
   else if (ph === 'run') txt = run.dead ? 'Vypadl jsi. Sleduj ostatní.' : run.fin ? 'V cíli! Čekáme na ostatní.' : '';
   else if (ph === 'reveal') txt = 'Kusy se odhalují…';
   $('game').classList.toggle('pk', ph === 'pick'); $('game').classList.toggle('pl', ph === 'place');
@@ -470,6 +473,7 @@ const placing = () => screen === 'game' && phase() === 'place' && GS && !GS.plac
 function pieceBox() { const t = GS.piece[me]; return K.pieceSize(t, pl.r); }
 function clampPl() { const [w, h] = pieceBox(); pl.x = clamp(pl.x, 0, COLS - w); pl.y = clamp(pl.y, 0, ROWS - h); }
 function validPl() { if (!placing() || !W) return false; return P.canPlace(W, GS.piece[me], pl.r, pl.x, pl.y); }
+const bombHits = () => (placing() && W && K.isTool(GS.piece[me]) ? K.bombTargets(W.pieces, GS.piece[me], pl.x, pl.y) : []);
 function rotate() { if (!placing() || !K.rotatable(GS.piece[me])) return; const [w0, h0] = pieceBox(); pl.r = (pl.r + 1) % 4; const [w1, h1] = pieceBox(); pl.x += Math.round((w0 - w1) / 2); pl.y += Math.round((h0 - h1) / 2); clampPl(); sfx.click(); syncGhost(); }
 function putPiece() {
   if (!placing() || pl.sent) return; if (!validPl()) { sfx.err(); shake = 0.2; toast('Sem se kus položit nedá.'); return; }
@@ -596,12 +600,13 @@ function drawWorld(now, t) {
   drawPlayers(now, t, tk);
   // duchové kusů při pokládání
   if (ph === 'place') {
-    ghosts.forEach((gh, i) => { if (!gh || i === me || !GS.piece[i]) return; A.drawPieceShape(g, GS.piece[i], gh[2], gh[0], gh[1], { own: seatColor(i), alpha: 0.5, ghost: true, t }); const [w2] = K.pieceSize(GS.piece[i], gh[2]); label(S.players[i].name, gh[0] + w2 / 2, gh[1] - 0.25, seatColor(i)); });
+    ghosts.forEach((gh, i) => { if (!gh || i === me || !GS.piece[i]) return; if (K.isTool(GS.piece[i])) blastPreview(GS.piece[i], gh[0], gh[1], [], t, 0.45); A.drawPieceShape(g, GS.piece[i], gh[2], gh[0], gh[1], { own: seatColor(i), alpha: 0.5, ghost: true, t }); const [w2] = K.pieceSize(GS.piece[i], gh[2]); label(S.players[i].name, gh[0] + w2 / 2, gh[1] - 0.25, seatColor(i)); });
     if (placing()) {
-      const ok = validPl(); const type = GS.piece[me]; pl.ok = ok; const [w2, h2] = pieceBox();
-      g.save(); g.fillStyle = ok ? 'rgba(70,196,106,.22)' : 'rgba(255,90,79,.28)'; for (const [dx, dy] of K.pieceCells(type, pl.r)) g.fillRect(pl.x + dx, pl.y + dy, 1, 1); g.restore();
+      const type = GS.piece[me]; const tool = K.isTool(type); const hits = tool ? bombHits() : []; const ok = tool ? true : validPl(); pl.ok = ok; const [w2, h2] = pieceBox();
+      if (tool) blastPreview(type, pl.x, pl.y, hits, t, 1);
+      else { g.save(); g.fillStyle = ok ? 'rgba(70,196,106,.22)' : 'rgba(255,90,79,.28)'; for (const [dx, dy] of K.pieceCells(type, pl.r)) g.fillRect(pl.x + dx, pl.y + dy, 1, 1); g.restore(); }
       A.drawPieceShape(g, type, pl.r, pl.x, pl.y, { own: seatColor(me), alpha: ok ? 0.85 : 0.5, ghost: true, t });
-      g.save(); g.strokeStyle = ok ? '#2b8f48' : '#c8261c'; g.lineWidth = 0.08; g.setLineDash([0.2, 0.15]); g.strokeRect(pl.x + 0.02, pl.y + 0.02, w2 - 0.04, h2 - 0.04); g.restore();
+      g.save(); g.strokeStyle = tool ? (hits.length ? '#c8261c' : '#7b7f8c') : ok ? '#2b8f48' : '#c8261c'; g.lineWidth = 0.08; g.setLineDash([0.2, 0.15]); g.strokeRect(pl.x + 0.02, pl.y + 0.02, w2 - 0.04, h2 - 0.04); g.restore();
       label('Ty', pl.x + w2 / 2, pl.y - 0.25, seatColor(me));
     }
   }
@@ -623,11 +628,30 @@ function drawPlayers(now, t, tk) {
     if (ph !== 'pick' && ph !== 'place' && ph !== 'reveal') label(i === me ? 'Ty' : p.name, st.x, st.y - 0.85 - (i % 2) * 0.38, seatColor(i));
   }
 }
+/** Dosah bomby při míření: kruh, a kusy, které by zničila, zčervenají (alpha = průhlednost náhledu). */
+function blastPreview(type, x, y, hits, t, alpha) {
+  const B = K.PIECES[type]; g.save(); g.globalAlpha = alpha;
+  g.beginPath(); g.arc(x + 0.5, y + 0.5, B.blast, 0, 6.283); g.fillStyle = 'rgba(255,120,40,.14)'; g.fill();
+  g.strokeStyle = 'rgba(220,60,20,.8)'; g.lineWidth = 0.08; g.setLineDash([0.3, 0.2]); g.lineDashOffset = -t * 1.5; g.stroke(); g.setLineDash([]);
+  const pul = 0.3 + 0.15 * Math.sin(t * 9); g.fillStyle = `rgba(255,50,30,${pul + 0.2})`;
+  for (const p of hits) for (const [dx, dy] of K.pieceCells(p.type, p.r)) g.fillRect(p.x + dx, p.y + dy, 1, 1);
+  g.restore();
+}
+/** Výbuch bomby: záblesk, rázová vlna do plného dosahu a trosky z kusů, které zmizely. */
+function bombFx(e) {
+  const [, , type, x, y, gone] = e; const B = K.PIECES[type]; if (!B) return; const big = type === 'megabomb'; const cx = x + 0.5, cy = y + 0.5;
+  fx.push({ k: 'blast', x: cx, y: cy, R: B.blast, life: big ? 0.75 : 0.55, t: 0 });
+  for (let k = 0; k < (big ? 46 : 22); k++) { const a = Math.random() * 6.283, v = (big ? 5 : 3) + Math.random() * (big ? 9 : 6); fx.push({ k: 'dot', x: cx, y: cy, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 2, g: 12, life: 0.5 + Math.random() * 0.6, t: 0, c: ['#ffd23a', '#ff8a2a', '#ff5a4f', '#3b4156'][k % 4], s: 0.1 + Math.random() * 0.16 }); }
+  for (const [, ptype, r2, px, py, owner] of gone) { for (const [dx, dy] of K.pieceCells(ptype, r2)) for (let k = 0; k < 3; k++) fx.push({ k: 'dot', x: px + dx + 0.5, y: py + dy + 0.5, vx: (Math.random() - 0.5) * 9, vy: -Math.random() * 7, g: 22, life: 0.6 + Math.random() * 0.5, t: 0, c: k ? seatColor(owner) : '#8a8f9f', s: 0.1 + Math.random() * 0.1 }); }
+  shake = Math.max(shake, big ? 0.55 : 0.3); sfx.bomb(big);
+  const who = S && S.players[e[1]] ? S.players[e[1]].name : ''; fx.push({ k: 'txt', x: cx, y: cy - 0.9, text: gone.length ? (big ? 'BUM!' : 'Bum!') : 'Mimo!', c: gone.length ? '#ff5a4f' : '#7b7f8c', life: 1.2, t: 0 }); void who;
+}
 function drawFx(now, t) {
   const dt = Math.min(0.05, (now - lastNow) / 1000 || 0.016);
   for (let i = fx.length - 1; i >= 0; i--) {
     const f = fx[i]; f.t += dt; const u = f.t / f.life; if (u >= 1) { fx.splice(i, 1); continue; }
     if (f.k === 'dot' || f.k === 'conf') { f.vy += f.g * dt; f.x += f.vx * dt; f.y += f.vy * dt; g.save(); g.globalAlpha = 1 - u * u; g.fillStyle = f.c; if (f.k === 'conf') { g.translate(f.x, f.y); g.rotate(f.r + f.t * 8); g.fillRect(-f.s / 2, -f.s / 3, f.s, f.s * 0.66); } else { g.beginPath(); g.arc(f.x, f.y, f.s, 0, 6.283); g.fill(); if (f.s > 0.15) { g.lineWidth = 0.04; g.strokeStyle = A.INK; g.stroke(); } } g.restore(); }
+    else if (f.k === 'blast') { g.save(); const R = f.R * (1 - Math.pow(1 - Math.min(1, u * 1.6), 3)); const gr = g.createRadialGradient(f.x, f.y, 0, f.x, f.y, Math.max(0.01, R)); gr.addColorStop(0, `rgba(255,250,210,${0.95 * (1 - u)})`); gr.addColorStop(0.5, `rgba(255,170,50,${0.6 * (1 - u)})`); gr.addColorStop(1, 'rgba(255,90,30,0)'); g.fillStyle = gr; g.beginPath(); g.arc(f.x, f.y, Math.max(0.01, R), 0, 6.283); g.fill(); g.globalAlpha = 1 - u; g.lineWidth = 0.16 * (1 - u) + 0.03; g.strokeStyle = '#fff3c4'; g.beginPath(); g.arc(f.x, f.y, Math.max(0.01, R), 0, 6.283); g.stroke(); g.restore(); }
     else if (f.k === 'ring') { g.save(); g.globalAlpha = 1 - u; g.lineWidth = 0.12 * (1 - u); g.strokeStyle = '#fff'; g.beginPath(); g.arc(f.x, f.y, 0.3 + u * 1.6, 0, 6.283); g.stroke(); g.restore(); }
     else if (f.k === 'ghost') { A.drawAnimal(g, f.ch, f.x, f.y - u * 2.4, { face: 1, t, gr: false, alpha: (1 - u) * 0.45, sc: 1 + u * 0.2 }); }
     else if (f.k === 'txt') { g.save(); g.globalAlpha = 1 - u * u; label(f.text, f.x, f.y - u * 1.2, f.c); g.restore(); }

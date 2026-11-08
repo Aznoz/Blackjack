@@ -23,9 +23,11 @@ const active = (g) => g.players.filter((p) => !p.left);
 const pickWeighted = (g, ids, ex) => { const c = ids.filter((id) => !ex.includes(id)); let r = g.rng() * c.reduce((a, id) => a + K.PIECES[id].w, 0); for (const id of c) { if ((r -= K.PIECES[id].w) < 0) return id; } return c[c.length - 1]; };
 function makeOffers(g) {
   const n = K.clamp(active(g).length + 2, 4, 6), out = [];
-  const solid = K.PIECE_IDS.filter((id) => K.PIECES[id].kind !== 'hazard'), haz = K.PIECE_IDS.filter((id) => K.PIECES[id].kind === 'hazard');
+  const solid = K.PIECE_IDS.filter((id) => K.PIECES[id].kind !== 'hazard' && K.PIECES[id].kind !== 'tool'), haz = K.PIECE_IDS.filter((id) => K.PIECES[id].kind === 'hazard');
   out.push(pickWeighted(g, solid, out)); out.push(pickWeighted(g, haz, out));
-  while (out.length < n) out.push(pickWeighted(g, K.PIECE_IDS, out));
+  // bomby se nabízejí, jen když je co ničit (malá od 2 kusů na trati, velká od 4) a nejvýš jedna v nabídce
+  const canBomb = (id) => g.pieces.length >= (id === 'megabomb' ? 4 : 2);
+  while (out.length < n) { const pool = K.PIECE_IDS.filter((id) => !K.isTool(id) || (canBomb(id) && !out.some(K.isTool))); out.push(pickWeighted(g, pool, out)); }
   for (let i = out.length - 1; i > 0; i--) { const j = Math.floor(g.rng() * (i + 1)); [out[i], out[j]] = [out[j], out[i]]; }
   return out.map((type) => ({ type, by: -1 }));
 }
@@ -60,6 +62,13 @@ export function placePiece(g, i, x, y, r) {
   x = Math.round(x); y = Math.round(y); r = ((Math.round(r) % 4) + 4) % 4; const type = g.piece[i]; if (type && !K.rotatable(type)) r = 0;
   if (!type || !Number.isFinite(x) || !Number.isFinite(y)) return 'no';
   if (!P.canPlace(g.W, type, r, x, y)) return 'invalid';
+  if (K.isTool(type)) {   // bomba: hned vybuchne a smaže kusy v dosahu (i ty, které v tomhle kole položili ostatní dřív)
+    const gone = K.bombTargets(g.pieces, type, x, y); const ids = new Set(gone.map((q) => q.id));
+    if (ids.size) { g.pieces = g.pieces.filter((q) => !ids.has(q.id)); g.W = P.buildWorld(g.stage, g.pieces); }
+    g.placed[i] = true; g.ev.push(['pl', i, null]); g.ev.push(['bomb', i, type, x, y, gone.map((q) => [q.id, q.type, q.r, q.x, q.y, q.owner])]);
+    if (g.placed.every(Boolean)) endPlace(g);
+    return 'ok';
+  }
   const pc = { id: g.nextId++, type, r, x, y, owner: i, round: g.round }; g.pieces.push(pc); P.addPlaced(g.W, pc); g.placed[i] = true; g.ev.push(['pl', i, pc]);
   if (g.placed.every(Boolean)) endPlace(g);
   return 'ok';
@@ -68,6 +77,7 @@ export function placePiece(g, i, x, y, r) {
 export function skipPlace(g, i) { if (g.phase !== 'place' || g.placed[i]) return; g.placed[i] = true; if (g.placed.every(Boolean)) endPlace(g); }
 function autoPlace(g, i) {
   const type = g.piece[i], gh = g.ghost[i]; if (!type) { g.placed[i] = true; return; }
+  if (K.isTool(type) && gh.x === 14 && gh.y === 8 && gh.r === 0) { g.placed[i] = true; return; }   // bomba, kterou hráč vůbec nezačal pokládat, nevybuchne náhodně: propadne
   if (placePiece(g, i, gh.x, gh.y, gh.r) === 'ok') return;
   for (let k = 0; k < 300; k++) { const r = Math.floor(g.rng() * 4); if (placePiece(g, i, Math.floor(g.rng() * K.COLS), Math.floor(g.rng() * K.ROWS), r) === 'ok') return; }
   g.placed[i] = true;   // není kam: kus propadne

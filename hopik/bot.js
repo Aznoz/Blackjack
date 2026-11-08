@@ -10,7 +10,7 @@ const IN = P.IN;
 
 /** Navigační graf aktuálního světa (cachovaný: přepočítá se, když se změní kusy nebo kolo). */
 export function navOf(g) {
-  const key = g.round + ':' + g.pieces.length + ':' + g.stage;
+  const key = g.round + ':' + g.pieces.map((p) => p.id).join(',') + ':' + g.stage;
   if (g.navKey !== key) { g.nav = N.buildNav(P.buildWorld(g.stage, g.pieces)); g.navKey = key; g.path = N.pathOf(g.nav); }
   return g.nav;
 }
@@ -19,13 +19,24 @@ const rnd = (g, n) => Math.floor(g.rng() * n);
 // ------------------------------------------------------------------ výběr a pokládání
 export function botPick(g, i, level) {
   const free = g.offers.map((o, k) => ({ o, k })).filter((e) => e.o.by < 0); if (!free.length) return -1;
-  const hz = free.filter((e) => K.PIECES[e.o.type].kind === 'hazard'); const want = g.rng() < (level === 1 ? 0.35 : 0.6) ? hz : free.filter((e) => K.PIECES[e.o.type].kind !== 'hazard');
+  const tool = free.filter((e) => K.isTool(e.o.type)); if (tool.length && g.pieces.some((p) => K.PIECES[p.type].kind === 'hazard') && g.rng() < (level === 1 ? 0.25 : 0.55)) return tool[0].k;   // bomba se hodí, když je na trati nějaká past
+  const hz = free.filter((e) => K.PIECES[e.o.type].kind === 'hazard'); const want = g.rng() < (level === 1 ? 0.35 : 0.6) ? hz : free.filter((e) => K.PIECES[e.o.type].kind !== 'hazard' && !K.isTool(e.o.type));
   const pool = want.length ? want : free; return pool[rnd(g, pool.length)].k;
 }
 function rotFor(type, wantFace) { const base = K.PIECES[type].face || 0; return ((wantFace - base) % 4 + 4) % 4; }
+/** Kam bot položí bombu: na past (nebo skupinu pastí) poblíž cesty k cíli; když nic užitečného nezničí, bombu neodpálí. */
+function botBomb(g, i, type, level) {
+  navOf(g); const path = (g.path || []).filter((k) => k >= 0).map((k) => [k % COLS, Math.floor(k / COLS)]); if (!path.length) return null;
+  const nearPath = (p) => { let d = 99; for (const [dx, dy] of K.pieceCells(p.type, p.r)) for (let n = 0; n < path.length; n += 2) d = Math.min(d, Math.hypot(p.x + dx - path[n][0], p.y + dy - path[n][1])); return d; };
+  const score = (x, y) => { let s = 0; for (const p of K.bombTargets(g.pieces, type, x, y)) { const near = nearPath(p) <= 5; const hz = K.PIECES[p.type].kind === 'hazard'; if (hz && near) s += 2; else if (hz) s += 0.3; else if (p.owner === i) s -= 1.5; else s -= near ? 1 : 0.2; } return s; };
+  let best = null, bs = 0.5;
+  for (const p of g.pieces) { if (K.PIECES[p.type].kind !== 'hazard') continue; for (const [dx, dy] of K.pieceCells(p.type, p.r)) { const x = p.x + dx, y = p.y + dy, sc = score(x, y) + (level >= 2 ? 0 : g.rng() * 1.5); if (sc > bs) { bs = sc; best = { x, y, r: 0 }; } } }
+  return best;
+}
 /** Kam bot položí svůj kus: { x, y, r } (vždy platné místo, pokud nějaké existuje). */
 export function botPlace(g, i, level) {
   const type = g.piece[i], W = g.W; if (!type) return null; const P_ = K.PIECES[type];
+  if (K.isTool(type)) return botBomb(g, i, type, level);
   let path = []; if (g.phase === 'place' || g.phase === 'reveal') { navOf(g); path = (g.path || []).filter((k) => k >= 0); }
   path = path.slice(2, Math.max(2, path.length - 1)); const cands = [];
   const aim = path.length && g.rng() < LV[level].aim;

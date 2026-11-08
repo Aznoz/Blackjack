@@ -167,6 +167,7 @@ export function stepWorld(W, tick) { for (const [gid, t0] of W.crumbleAt) if (ti
 /** Lze položit kus? (uvnitř hřiště, mimo obsazené a zakázané oblasti) */
 export function canPlace(W, type, r, x, y) {
   if (!K.PIECES[type]) return false;
+  if (K.isTool(type)) return x >= 0 && y >= 0 && x < COLS && y < ROWS;   // bombu lze položit kamkoli v hřišti (i na kus, který má zničit)
   const cells = K.pieceCells(type, r);
   for (const [dx, dy] of cells) {
     const cx = x + dx, cy = y + dy; if (cx < 0 || cy < 0 || cx >= COLS || cy >= ROWS) return false;

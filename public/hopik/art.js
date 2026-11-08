@@ -1,8 +1,8 @@
 // HOPÍK – grafika: všechno je nakreslené vektorově (zvířátka, terén, kusy, pasti, kulky, plameny, vlajka, pozadí) v jednotkách políček.
 // Volající nastaví transformaci canvasu tak, aby 1 jednotka = 1 políčko. Žádné emoji ani obrázky.
-import * as K from './shared.js?v=6';
-import { hatC, glassesC, bootC, backC } from './cosm.js?v=6';
-import * as P from './phys.js?v=6';
+import * as K from './shared.js?v=7';
+import { hatC, glassesC, bootC, backC } from './cosm.js?v=7';
+import * as P from './phys.js?v=7';
 const { COLS, ROWS } = K;
 export const INK = '#2b2118';
 export const SEAT = ['#ff5a4f', '#2f9cff', '#ffc928', '#46c46a'];          // barva místa u stolu (obrys jména, pecky na kusech)
@@ -467,6 +467,18 @@ function previewDyn(g, type, r, x, y, own, t, icon) {
   g.restore();
 }
 /** Nakreslí kus (základní vzhled bez pohyblivých částí). o = { alpha, tint, own (barva místa), shake, owners: [seat], t } */
+/** Bomba (malá = tmavá koule, velká = větší s červeným pruhem); cx, cy = střed políčka. */
+export function bombShape(g, cx, cy, big, t) {
+  const R = big ? 0.6 : 0.4; g.save(); g.translate(cx, cy + (big ? 0.04 : 0.07));
+  ell(g, 0, 0, R, R, big ? '#43203a' : '#3b4156', 0.06);
+  if (big) { g.save(); g.beginPath(); g.arc(0, 0, R - 0.03, 0, TAU); g.clip(); g.fillStyle = '#ff5a4f'; g.fillRect(-R, -0.1, R * 2, 0.22); g.fillStyle = '#ffd23a'; for (let k = -3; k <= 3; k++) g.fillRect(k * 0.24 - 0.06, -0.1, 0.12, 0.22); g.restore(); g.lineWidth = 0.06; g.strokeStyle = INK; g.beginPath(); g.arc(0, 0, R, 0, TAU); g.stroke(); }
+  ell(g, -R * 0.36, -R * 0.4, R * 0.3, R * 0.17, 'rgba(255,255,255,.55)', 0, -0.6);
+  rrect(g, -0.14, -R - 0.1, 0.28, 0.17, 0.05, '#8a8f9f', 0.05);
+  g.strokeStyle = '#8a5628'; g.lineWidth = 0.07; g.lineCap = 'round'; g.beginPath(); g.moveTo(0, -R - 0.08); g.quadraticCurveTo(0.2, -R - 0.32, 0.34, -R - 0.24); g.stroke();
+  const fl = 0.5 + 0.5 * Math.sin(t * 22), sx = 0.34, sy = -R - 0.24; ell(g, sx, sy, 0.1 + 0.05 * fl, 0.1 + 0.05 * fl, '#ffd23a', 0); ell(g, sx, sy, 0.05, 0.05, '#ffffff', 0);
+  g.fillStyle = '#ff8a2a'; for (let k = 0; k < 5; k++) { const an = t * 9 + k * 1.256; g.fillRect(sx + Math.cos(an) * 0.18 - 0.025, sy + Math.sin(an) * 0.18 - 0.025, 0.05, 0.05); }
+  g.restore();
+}
 export function drawPieceShape(g, type, r, x, y, o = {}) {
   const P = K.PIECES[type], cells = K.pieceCells(type, r), own = o.own || '#ffffff', face = K.faceOf(type, r);
   g.save(); if (o.alpha !== undefined) g.globalAlpha = o.alpha;
@@ -485,6 +497,7 @@ export function drawPieceShape(g, type, r, x, y, o = {}) {
     else if (type === 'pendulum') pendAnchor(g, cx, cy, own);
     else if (type === 'laser') laserShape(g, cx, cy, face, own);
     else if (type === 'fan') fanBase(g, cx, cy, face, own);
+    else if (type === 'bomb' || type === 'megabomb') bombShape(g, cx + 0.5, cy + 0.5, type === 'megabomb', o.t || 0);
   }
   if (type === 'thwomp') thwompTrack(g, x, y, r);
   if (type === 'boulder') boulderTrack(g, x, y, r % 2 === 0 ? 1 : -1);
@@ -521,7 +534,7 @@ export function startSign(g, x, y) { rrect(g, x - 0.06, y - 0.9, 0.12, 0.9, 0.03
 // ------------------------------------------------------------------ náhledy
 const iconCache = new Map();
 /** Ikona kusu pro kartičky výběru (data URL). */
-const ICON_FRAME = { blades: { w: 5, h: 5, ox: 2, oy: 2 }, pendulum: { w: 5, h: 4.3, ox: 0.5, oy: 0 }, laser: { w: 3.3, h: 1, ox: 0, oy: 0 }, fan: { w: 1.4, h: 2.7, ox: 0.2, oy: 1.7 }, rsaw: { w: 6, h: 1, ox: 0, oy: 0 }, thwomp: { w: 2.4, h: 4.4, ox: 0.2, oy: 0 }, icicle: { w: 1, h: 2.1, ox: 0, oy: 0 }, boulder: { w: 4.6, h: 1.9, ox: 0, oy: 0.9 }, hole: { w: 1, h: 1, ox: 0, oy: 0 }, retract: { w: 3, h: 2, ox: 0, oy: 0 }, mover: { w: 3, h: 1, ox: 0, oy: 0 } };
+const ICON_FRAME = { bomb: { w: 1.5, h: 1.7, ox: 0.25, oy: 0.45 }, megabomb: { w: 1.9, h: 2.1, ox: 0.45, oy: 0.65 }, blades: { w: 5, h: 5, ox: 2, oy: 2 }, pendulum: { w: 5, h: 4.3, ox: 0.5, oy: 0 }, laser: { w: 3.3, h: 1, ox: 0, oy: 0 }, fan: { w: 1.4, h: 2.7, ox: 0.2, oy: 1.7 }, rsaw: { w: 6, h: 1, ox: 0, oy: 0 }, thwomp: { w: 2.4, h: 4.4, ox: 0.2, oy: 0 }, icicle: { w: 1, h: 2.1, ox: 0, oy: 0 }, boulder: { w: 4.6, h: 1.9, ox: 0, oy: 0.9 }, hole: { w: 1, h: 1, ox: 0, oy: 0 }, retract: { w: 3, h: 2, ox: 0, oy: 0 }, mover: { w: 3, h: 1, ox: 0, oy: 0 } };
 export function pieceIcon(type, px = 120) {
   const key = type + ':' + px; if (iconCache.has(key)) return iconCache.get(key);
   const c = document.createElement('canvas'); c.width = c.height = px; const g = c.getContext('2d');

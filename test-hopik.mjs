@@ -48,6 +48,37 @@ assert.equal(JSON.parse(fs.readFileSync('./hopik/package.json', 'utf8')).type, '
   const W2 = P.buildWorld(0, g.pieces); P.addPlaced(W2, pc); assert.equal(g.pieces.length, 0, 'addPlaced nesmí měnit cizí pole kusů');
 }
 
+// --- bomby
+{
+  assert.ok(K.isTool('bomb') && K.isTool('megabomb') && !K.isTool('plank3')); assert.equal(K.rotatable('bomb'), false);
+  const pcs = [{ id: 1, type: 'plank3', r: 0, x: 8, y: 5, owner: 0, round: 1 }, { id: 2, type: 'saw', r: 0, x: 12, y: 5, owner: 1, round: 1 }, { id: 3, type: 'block', r: 0, x: 20, y: 10, owner: 0, round: 1 }];
+  assert.deepEqual(K.bombTargets(pcs, 'bomb', 9, 5).map((p) => p.id), [1], 'malá bomba smaže jeden kus pod sebou');
+  assert.deepEqual(K.bombTargets(pcs, 'bomb', 11, 5).map((p) => p.id).length, 1, 'malá bomba mezi dvěma kusy smaže jen jeden');
+  assert.deepEqual(K.bombTargets(pcs, 'bomb', 3, 3).map((p) => p.id), [], 'daleko nic');
+  assert.deepEqual(K.bombTargets(pcs, 'megabomb', 10, 5).map((p) => p.id).sort(), [1, 2], 'velká smaže všechno v dosahu');
+  assert.ok(!K.bombTargets(pcs, 'megabomb', 10, 5).some((p) => p.id === 3), 'a nic mimo dosah');
+  const W = P.buildWorld(0, []); assert.ok(P.canPlace(W, 'bomb', 0, 8, 5)); assert.ok(!P.canPlace(W, 'bomb', 0, 40, 5));
+  // v nabídce bomby nejsou, dokud není co ničit; a nejvýš jedna
+  let early = 0; for (let s = 1; s <= 60; s++) { const g = G.newGame([{ name: 'a', char: 0 }, { name: 'b', char: 1 }], s, 0); if (g.offers.some((o) => K.isTool(o.type))) early++; } assert.equal(early, 0, 'v prvním kole žádné bomby');
+  let seen = 0, multi = 0; for (let s = 1; s <= 200; s++) { const g = G.newGame([{ name: 'a', char: 0 }, { name: 'b', char: 1 }], s, 0); for (let k = 0; k < 6; k++) g.pieces.push({ id: 100 + k, type: 'plank3', r: 0, x: 2 + k * 4, y: 3, owner: 0, round: 1 }); G.startRound(g); const n = g.offers.filter((o) => K.isTool(o.type)).length; if (n) seen++; if (n > 1) multi++; }
+  assert.ok(seen > 20, 'bomby se nabízejí, když je co ničit (' + seen + ')'); assert.equal(multi, 0);
+  // celé pokládání bomby v zápase
+  const g = G.newGame([{ name: 'a', char: 0 }, { name: 'b', char: 1 }], 5, 0);
+  g.pieces.push({ id: 50, type: 'plank3', r: 0, x: 8, y: 5, owner: 0, round: 1 }, { id: 51, type: 'saw', r: 0, x: 12, y: 5, owner: 1, round: 1 }); g.nextId = 52; G.startRound(g);
+  G.pickPiece(g, 0, 0); G.pickPiece(g, 1, 1); g.piece[0] = 'bomb'; g.piece[1] = 'plank3'; g.ghost[0] = { x: 12, y: 5, r: 0 };
+  assert.equal(g.phase, 'place'); G.clearEvents(g);
+  assert.equal(G.placePiece(g, 0, 12, 5, 0), 'ok'); const ev = g.ev.find((e) => e[0] === 'bomb'); assert.ok(ev && ev[5].length === 1 && ev[5][0][0] === 51, 'bomba smazala pilu');
+  assert.ok(!g.pieces.some((p) => p.id === 51) && g.pieces.some((p) => p.id === 50), 'zbytek zůstal');
+  assert.equal(P.canPlace(g.W, 'plank3', 0, 12, 5), true, 'místo po zničené pile je zase volné');
+  assert.equal(G.placePiece(g, 1, 20, 8, 0), 'ok'); assert.ok(['reveal', 'pick'].includes(g.phase));
+  // velká bomba smaže i kus položený v tomhle kole
+  const g2 = G.newGame([{ name: 'a', char: 0 }, { name: 'b', char: 1 }], 6, 0); g2.pieces.push({ id: 60, type: 'plank3', r: 0, x: 8, y: 5, owner: 0, round: 1 }); g2.nextId = 61; G.startRound(g2);
+  G.pickPiece(g2, 0, 0); G.pickPiece(g2, 1, 1); g2.piece[0] = 'plank3'; g2.piece[1] = 'megabomb'; assert.equal(G.placePiece(g2, 0, 15, 8, 0), 'ok'); assert.equal(g2.pieces.length, 2);
+  assert.equal(G.placePiece(g2, 1, 13, 8, 0), 'ok'); assert.equal(g2.pieces.length, 0, 'velká bomba smazala všechno v dosahu 4'); 
+  // bot: neodpálí bombu naprázdno a přežije celé kolo s bombami
+  const g3 = G.newGame([{ name: 'a', char: 0 }, { name: 'b', char: 1, bot: 3 }], 7, 0); g3.pieces.push({ id: 70, type: 'saw', r: 0, x: 10, y: 14, owner: 0, round: 1 }); g3.nextId = 71; G.startRound(g3); g3.piece[1] = 'megabomb'; const c = B.botPlace(g3, 1, 3); assert.ok(c === null || K.bombTargets(g3.pieces, 'megabomb', c.x, c.y).length > 0);
+}
+
 // --- kolo: výběr, pokládání, běh, bodování
 const toPhase = (g, ph, max = 5000) => { for (let i = 0; i < max && g.phase !== ph; i++) { G.tick(g); G.clearEvents(g); } assert.equal(g.phase, ph); };
 function setup(n = 2, seed = 5, stage = 0) {
