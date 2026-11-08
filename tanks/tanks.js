@@ -159,7 +159,7 @@ function view(room, pid) {
   return {
     t: 'state', code: room.code, phase: room.phase, you, hostIdx: 0, bot: room.bot || 0, quick: !!room.quick,
     players: room.players.map((p, i) => playerView(room, p, i)),
-    hp: room.tanks.map((k) => k.hp), x: room.tanks.map((k) => r1(k.x)), fuel: room.tanks.map((k) => Math.round(k.fuel)), fmax: room.tanks.map((k) => k.fmax || FUEL_MAX),
+    hp: room.tanks.map((k) => k.hp), hpMax: room.tanks.map((k) => k.hpMax || MAX_HP), x: room.tanks.map((k) => r1(k.x)), fuel: room.tanks.map((k) => Math.round(k.fuel)), fmax: room.tanks.map((k) => k.fmax || FUEL_MAX),
     turn: room.turn, turnNo: room.turnNo, turnMs: room.phase === 'play' && room.turnEnd ? Math.max(0, room.turnEnd - now()) : 0, turnTotal: TURN_MS,
     wind: room.wind, crates: room.crates.map((c) => ({ id: c.id, x: c.x, hp: c.kind === 'hp' ? 1 : 0 })), mines: (room.mines || []).map((q) => ({ id: q.id, x: q.x, o: q.o })), ammo: you >= 0 && room.tanks[you] ? ammoOf(room, you) : {}, lock: you >= 0 && room.tanks[you] ? { ...room.tanks[you].lock } : {},
     th: P.checksum(room.h), shots: room.tanks.map((k) => k.shots), result: room.result || null, rematch: [...room.rematch],
@@ -182,7 +182,8 @@ function startMatch(room) {
   room.tanks = [xl, xr].map((x, i) => {
     const pl = room.players[i]; const up = pl && !pl.bot && pl.acc ? tankOf(pl.acc).up : {};   // trvalá vylepšení (jen lidé)
     const fmax = P.fuelMaxOf(up.tank);
-    return { x, hp: MAX_HP, fuel: fmax, fmax, armor: P.armorOf(up.armor), regen: P.regenOf(up.regen), crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 };
+    const hpMax = P.hpMaxOf(up.hull);
+    return { x, hp: hpMax, hpMax, fuel: fmax, fmax, armor: P.armorOf(up.armor), regen: P.regenOf(up.regen), crate: {}, lock: {}, fuelNext: 0, shots: 0, dmg: 0, idle: 0 };
   });
   room.crates = []; room.crateSeq = 0; room.mines = []; room.mineSeq = 0;
   room.players.forEach((p, i) => { if (p.bot) room.tanks[i].crate = botArsenal(p.bot); });   // bot má od začátku celý arzenál podle obtížnosti
@@ -217,7 +218,7 @@ function beginTurn(room, first) {
   const cur = room.tanks[room.turn];
   for (const k of Object.keys(cur.lock)) { if (--cur.lock[k] <= 0) delete cur.lock[k]; }   // nabíjení zbraní se odpočítává po vlastních tazích
   const pen = cur.fuelNext; cur.fuelNext = 0; cur.fuel = Math.round((cur.fmax || FUEL_MAX) * (1 - pen));
-  if (cur.regen > 0 && cur.hp > 0 && cur.hp < MAX_HP) { const before = cur.hp; cur.hp = Math.min(MAX_HP, cur.hp + cur.regen); bcast(room, { t: 'heal', i: room.turn, hp: cur.hp, amount: cur.hp - before }); }   // Opravárenská četa
+  if (cur.regen > 0 && cur.hp > 0 && cur.hp < (cur.hpMax || MAX_HP)) { const before = cur.hp; cur.hp = Math.min(cur.hpMax || MAX_HP, cur.hp + cur.regen); bcast(room, { t: 'heal', i: room.turn, hp: cur.hp, amount: cur.hp - before }); }   // Opravárenská četa
   const added = [];
   if (room.turnNo % 2 === 0 && room.crates.length < MAX_CRATES && Math.random() < 0.75) { const c = spawnCrate(room); if (c) added.push({ id: c.id, x: c.x, hp: c.kind === 'hp' ? 1 : 0 }); }
   room.turnEnd = now() + TURN_MS; room.phase = 'play';
@@ -260,8 +261,8 @@ function driveTick(room) {
     const c = room.crates[k];
     if (Math.abs(c.x - tk.x) < 30) {
       if (c.kind === 'hp') { // zdravotní bedna: +25 životů; s plnými životy se nesebere (zůstane na poli)
-        if (tk.hp >= MAX_HP) { if (!tk.full) tk.full = new Set(); if (!tk.full.has(c.id)) { tk.full.add(c.id); const w = room.players[i].ws; if (w) send(w, { t: 'note', msg: 'Máš plné životy, zdravotní bedna zůstává.' }); } continue; }
-        const amt = Math.min(HEAL_CRATE, MAX_HP - tk.hp); tk.hp += amt; room.crates.splice(k, 1); healed.push({ id: c.id, amt }); continue;
+        if (tk.hp >= (tk.hpMax || MAX_HP)) { if (!tk.full) tk.full = new Set(); if (!tk.full.has(c.id)) { tk.full.add(c.id); const w = room.players[i].ws; if (w) send(w, { t: 'note', msg: 'Máš plné životy, zdravotní bedna zůstává.' }); } continue; }
+        const amt = Math.min(HEAL_CRATE, (tk.hpMax || MAX_HP) - tk.hp); tk.hp += amt; room.crates.splice(k, 1); healed.push({ id: c.id, amt }); continue;
       }
       const wp = WEAPONS[c.kind]; const have = (tk.crate[c.kind] | 0) + owned(room.players[i].acc, c.kind);
       const n = Math.min(wp.max - have, (wp.pack || 2) <= 1 ? 1 : 1 + (Math.random() < 0.45 ? 1 : 0));   // víc, než uneseš, se nesebere
@@ -297,7 +298,7 @@ function doFire(room, i, a, pw, wid) {
   if (wp.fuelPen) tk.fuelNext = Math.max(tk.fuelNext, wp.fuelPen);   // nevýhody zbraní (viz physics.js consOf)
   if (wp.cd) tk.lock[wid] = wp.cd + 1;
   if (wp.util === 'heal') { // oprava: vyléčí a ukončí tah
-    tk.hp = Math.min(MAX_HP, tk.hp + wp.heal);
+    tk.hp = Math.min(tk.hpMax || MAX_HP, tk.hp + wp.heal);
     bcast(room, { t: 'heal', i, hp: tk.hp, amount: wp.heal });
     room.phase = 'resolve'; room.resolveT = setTimeout(() => afterShot(room), ms(1200));
     publish(room); return null;
@@ -425,7 +426,7 @@ function botTurn(room) {
     let target = null;
     if (lvl >= 2 || Math.random() < 0.3) {
       let bd = 1e9;
-      for (const c of room.crates) { const d = Math.abs(c.x - tk.x); const en = room.tanks[1 - bi]; if ((c.kind !== 'hp' || tk.hp < MAX_HP) && d < bd && d <= tk.fuel * 0.9 && (c.x - en.x) * (tk.x - en.x) > 0 && Math.abs(c.x - en.x) > MIN_GAP + 10) { bd = d; target = c; } }
+      for (const c of room.crates) { const d = Math.abs(c.x - tk.x); const en = room.tanks[1 - bi]; if ((c.kind !== 'hp' || tk.hp < (tk.hpMax || MAX_HP)) && d < bd && d <= tk.fuel * 0.9 && (c.x - en.x) * (tk.x - en.x) > 0 && Math.abs(c.x - en.x) > MIN_GAP + 10) { bd = d; target = c; } }
     }
     if (!target) return aimAndFire();
     const dir = Math.sign(target.x - tk.x) || 1; const tid = target.id;

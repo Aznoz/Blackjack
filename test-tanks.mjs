@@ -263,7 +263,7 @@ function findHit(room, i, w = 'std') {
 
 // --- trvalá vylepšení: nákup, strop, efekt (nádrž, pancíř, míření, opravárna, kořist)
 {
-  assert.deepEqual(P.UPGRADE_IDS, ['tank', 'aim', 'armor', 'regen', 'loot']);
+  assert.deepEqual(P.UPGRADE_IDS, ['tank', 'aim', 'armor', 'regen', 'hull', 'loot']); assert.equal(P.hpMaxOf(0), 100); assert.equal(P.hpMaxOf(10), 150); assert.equal(P.hpMaxOf(99), 150); assert.ok(P.UPGRADES.hull.price[0] > P.UPGRADES.armor.price[0], 'trup je dražší než pancíř');
   for (let l = 1; l <= 10; l++) { assert.ok(P.aimDotsOf(l) > P.aimDotsOf(l - 1), 'víc úrovní = víc teček'); assert.ok(P.fuelMaxOf(l) > P.fuelMaxOf(l - 1)); assert.ok(P.armorOf(l) > P.armorOf(l - 1)); }
   assert.equal(P.aimDotsOf(0), 10); assert.equal(P.aimDotsOf(10), 40); assert.equal(P.fuelMaxOf(0), P.FUEL_MAX); assert.equal(P.fuelMaxOf(10), Math.round(P.FUEL_MAX * 1.8)); assert.equal(P.aimDotsOf(99), P.aimDotsOf(10), 'úroveň se ořízne'); assert.equal(P.regenOf(10), 12); assert.ok(Math.abs(P.armorOf(10) - 0.3) < 1e-9 && Math.abs(P.lootOf(10) - 1.5) < 1e-9);
   for (const id of P.UPGRADE_IDS) { const u = P.UPGRADES[id]; assert.equal(u.price.length, u.max); assert.ok(u.price.every((x, k) => k === 0 || x > u.price[k - 1]), 'ceny rostou ' + id); }
@@ -282,9 +282,9 @@ function findHit(room, i, w = 'std') {
   tt.coins = 99999; tt.up.aim = 10; assert.equal(T.api('upgrade', { token: T1, id: 'aim' }).status, 409, 'nejvyšší úroveň'); assert.equal(T.api('me', { token: T1 }).json.tank.up.aim, 10);
   tt.up = { tank: 99, aim: -3, armor: 'x' }; T.tankOf(accs[T1]); assert.deepEqual([tt.up.tank, tt.up.aim, tt.up.armor], [10, 0, 0], 'poškozená data se ořežou');
   // efekt v zápase
-  for (const k of [T1, T2]) { const q = T.tankOf(accs[k]); q.up = { tank: 2, aim: 0, armor: 3, regen: 2, loot: 5 }; }
+  for (const k of [T1, T2]) { const q = T.tankOf(accs[k]); q.up = { tank: 2, aim: 0, armor: 3, regen: 2, hull: 4, loot: 5 }; }
   const m = online(); const { a, b, room } = m; const s = a.last('state');
-  assert.deepEqual(a.last('state').fmax, [220, 220], 'větší nádrž je ve stavu'); assert.equal(room.tanks[0].fuel, 220); assert.ok(Math.abs(room.tanks[0].armor - 0.09) < 1e-9);
+  assert.deepEqual(a.last('state').fmax, [220, 220], 'větší nádrž je ve stavu'); assert.deepEqual(a.last('state').hpMax, [120, 120], 'pevnější trup je ve stavu'); assert.deepEqual(room.tanks.map((k) => k.hp), [120, 120], 'zápas začíná s plnými životy trupu'); assert.equal(room.tanks[0].fuel, 220); assert.ok(Math.abs(room.tanks[0].armor - 0.09) < 1e-9);
   room.tanks[0].hp = room.tanks[1].hp = 60; const first = s.turn, cf = first === s.you ? a : b;
   cf.say({ t: 'fire', a: 90, p: 10, w: 'std' });
   await until(() => room.turn !== first && room.phase === 'play');

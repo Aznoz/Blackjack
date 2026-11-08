@@ -20,6 +20,7 @@ export const UPGRADES = {
   aim:   { id: 'aim',   name: 'Přesnost míření',   icon: '🎯', max: UPG_MAX, price: ladder(80),  per: '+3 vodicí tečky',           desc: 'Bílé vodicí tečky ukazují dál dráhu střely: bez vylepšení 10 teček, na maximu 40 (celý oblouk).' },
   armor: { id: 'armor', name: 'Pancíř',            icon: '🛡️', max: UPG_MAX, price: ladder(160), per: '−3 % přijatého poškození',  desc: 'Každá úroveň ubere 3 % z poškození, které tank dostane (na maximu −30 %).' },
   regen: { id: 'regen', name: 'Opravárenská četa', icon: '🔧', max: UPG_MAX, price: ladder(200), per: '+1 život na začátku tahu',  desc: 'Na začátku každého tvého tahu si tank sám opraví 1 život za úroveň (na maximu +12).' },
+  hull:  { id: 'hull',  name: 'Pevnější trup',     icon: '❤️', max: UPG_MAX, price: ladder(420), per: '+5 maximálních životů',     desc: 'Každá úroveň zvýší maximum životů o 5 (na maximu 150 místo 100). Drahé, protože je to silné.' },
   loot:  { id: 'loot',  name: 'Válečná kořist',    icon: '💰', max: UPG_MAX, price: ladder(160), per: '+5 % coinů z výher',        desc: 'Každá úroveň přidá 5 % k tankovým coinům za zápas (na maximu +50 %).' },
 };
 export const UPGRADE_IDS = Object.keys(UPGRADES);
@@ -29,6 +30,7 @@ export const AIM_DOTS = [10, 13, 16, 19, 22, 25, 28, 31, 34, 37, 40];   // poče
 export const aimDotsOf = (l) => AIM_DOTS[upl(l)];
 export const armorOf = (l) => 0.03 * upl(l);        // podíl poškození, který pancíř zachytí
 export const regenOf = (l) => upl(l) + (upl(l) >= 10 ? 2 : 0);   // životy na začátku tahu (maximum +12)
+export const hpMaxOf = (l) => MAX_HP + 5 * upl(l);   // maximum životů tanku (úroveň 10 = 150)
 export const lootOf = (l) => 1 + 0.05 * upl(l);
 export const DRIVE_SPEED = 72;    // px/s
 export const SLOPE_MAX = 1.7;     // nejstrmější svah, který tank vyjede (změna výšky / vodorovná vzdálenost)

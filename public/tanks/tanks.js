@@ -1,6 +1,6 @@
 // TANKOVÉ SOUBOJE – klient: menu, arzenál, canvas grafika (soumrak, oranžový destruktivní terén, tanky), míření, jízda, bedny, boti i online.
 // Výstřely i výbuchy počítá server (physics.js je stejný soubor jako na serveru), klient je jen přehrává a zaměřuje.
-import * as P from './physics.js?v=17';
+import * as P from './physics.js?v=18';
 const { W, H, WEAPONS, ORDER, COLORS, MAX_HP, FUEL_MAX } = P;
 
 const CFG = window.TANKS_CONFIG || {};
@@ -137,7 +137,7 @@ const R = {
   demoH: P.genTerrain(4242), h: null, tk: [], crates: [], mines: [], fx: [], shake: 0, aim: [{ a: 45, p: 60 }, { a: 135, p: 60 }], trace: null, shot: null, clouds: [], t: 0,
 };
 R.h = R.demoH;
-const newTk = (x, face) => ({ x, dx: x, y: 0, tilt: 0, hp: MAX_HP, face, ang: face > 0 ? 45 : 135, dead: false, flash: 0, recoil: 0, wheel: 0, col: 0, smokeT: 0 });
+const newTk = (x, face) => ({ x, dx: x, y: 0, tilt: 0, hp: MAX_HP, hpMax: MAX_HP, face, ang: face > 0 ? 45 : 135, dead: false, flash: 0, recoil: 0, wheel: 0, col: 0, smokeT: 0 });
 R.tk = [newTk(300, 1), newTk(W - 300, -1)];
 for (let i = 0; i < 6; i++) R.clouds.push({ x: Math.random() * W, y: 60 + Math.random() * 240, s: .6 + Math.random() * 1.1, v: 4 + Math.random() * 8 });
 
@@ -145,7 +145,7 @@ function resetMatch() {
   R.fx = []; R.crates = []; R.mines = []; R.trace = null; R.shot = null; R.shake = 0;
   R.aim = [{ a: 45, p: 60 }, { a: 135, p: 60 }];
   R.tk = [newTk(S.x[0], 1), newTk(S.x[1], -1)];
-  for (let i = 0; i < 2; i++) { R.tk[i].hp = S.hp[i]; R.tk[i].y = P.groundAt(R.h, R.tk[i].x); R.tk[i].col = S.players[i].color; }
+  for (let i = 0; i < 2; i++) { R.tk[i].hp = S.hp[i]; R.tk[i].hpMax = (S.hpMax && S.hpMax[i]) || MAX_HP; R.tk[i].y = P.groundAt(R.h, R.tk[i].x); R.tk[i].col = S.players[i].color; }
   sel = 'std'; fireSent = false; lastTurnNo = -1; driveDir = 0; lastTick = -1;
   $('over').hidden = true; if (overTimer) { clearTimeout(overTimer); overTimer = null; }
 }
@@ -154,7 +154,7 @@ function resetMatch() {
 function show(name) {
   screen = name; mus.mode = name === 'game' ? 'game' : 'menu';
   $('menu').hidden = name !== 'menu'; $('lobby').hidden = name !== 'lobby'; $('game').hidden = name !== 'game';
-  if (name !== 'game') { if (R.h !== R.demoH) { R.h = R.demoH; terrDirty = true; } R.tk[0].x = R.tk[0].dx = 300; R.tk[1].x = R.tk[1].dx = W - 300; R.tk.forEach((t) => { t.hp = MAX_HP; t.dead = false; t.col = 0; }); R.tk[1].col = 1; R.crates = []; R.fx = []; R.shot = null; R.trace = null; }
+  if (name !== 'game') { if (R.h !== R.demoH) { R.h = R.demoH; terrDirty = true; } R.tk[0].x = R.tk[0].dx = 300; R.tk[1].x = R.tk[1].dx = W - 300; R.tk.forEach((t) => { t.hp = t.hpMax = MAX_HP; t.dead = false; t.col = 0; }); R.tk[1].col = 1; R.crates = []; R.fx = []; R.shot = null; R.trace = null; }
   $('back').hidden = false;
 }
 function toast(t) { const e = $('toast'); e.textContent = t; e.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => { e.hidden = true; }, 3200); }
@@ -343,7 +343,7 @@ function onState(s) {
   const fresh = !prev || prev.phase === 'lobby' || prev.code !== s.code || (prev.phase === 'over' && s.phase !== 'over');
   if (fresh) { resetMatch(); }
   for (let i = 0; i < 2; i++) {
-    const t = R.tk[i]; t.x = s.x[i]; t.col = s.players[i].color;
+    const t = R.tk[i]; t.x = s.x[i]; t.col = s.players[i].color; t.hpMax = (s.hpMax && s.hpMax[i]) || MAX_HP;
     if (!R.shot) { t.hp = s.hp[i]; t.dead = s.hp[i] <= 0; }
   }
   if (s.phase === 'play') {
@@ -671,7 +671,7 @@ function updateHud(force) {
   for (let i = 0; i < 2; i++) {
     const p = S.players[i], t = R.tk[i], c = COLORS[p.color % COLORS.length].c;
     $('pb' + i).style.setProperty('--pc', c); $('pl' + i).textContent = p.lvl; $('pn' + i).textContent = p.name + (p.connected ? '' : ' (odpojen)') + (i === me ? ' (ty)' : '');
-    $('hf' + i).style.width = clamp(t.hp, 0, MAX_HP) / MAX_HP * 100 + '%'; $('hn' + i).textContent = Math.max(0, Math.round(t.hp));
+    $('hf' + i).style.width = clamp(t.hp, 0, t.hpMax || MAX_HP) / (t.hpMax || MAX_HP) * 100 + '%'; $('hn' + i).textContent = Math.max(0, Math.round(t.hp));
     $('pb' + i).classList.toggle('act', S.phase === 'play' && S.turn === i && !R.shot);
   }
   const w = S.wind; $('wind').textContent = w === 0 ? 'Bezvětří' : (w < 0 ? '◀ ' : '') + 'Vítr ' + Math.abs(w) + (w > 0 ? ' ▶' : '');
@@ -687,8 +687,8 @@ function updateHud(force) {
 }
 let hpCache = '';
 function hpHud() {
-  if (screen !== 'game' || !S) return; const k = R.tk[0].hp + '|' + R.tk[1].hp; if (k === hpCache) return; hpCache = k;
-  for (let i = 0; i < 2; i++) { const t = R.tk[i]; $('hf' + i).style.width = clamp(t.hp, 0, MAX_HP) / MAX_HP * 100 + '%'; $('hn' + i).textContent = Math.max(0, Math.round(t.hp)); }
+  if (screen !== 'game' || !S) return; const k = R.tk[0].hp + '|' + R.tk[1].hp + '|' + R.tk[0].hpMax + '|' + R.tk[1].hpMax; if (k === hpCache) return; hpCache = k;
+  for (let i = 0; i < 2; i++) { const t = R.tk[i]; $('hf' + i).style.width = clamp(t.hp, 0, t.hpMax || MAX_HP) / (t.hpMax || MAX_HP) * 100 + '%'; $('hn' + i).textContent = Math.max(0, Math.round(t.hp)); }
 }
 function placeUi() {
   if (screen !== 'game' || !S) return;

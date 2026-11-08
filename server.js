@@ -117,7 +117,7 @@ function keyOf(token) {
 }
 
 const TANK_AMMO_IDS = ['big', 'triple', 'bounce', 'roller', 'laser', 'trap', 'cluster', 'sniper', 'nuke', 'five', 'mega', 'napalm', 'airstrike', 'bounce4', 'megacluster', 'doom', 'repair', 'repair2'];
-const TANK_UPGRADE_IDS = ['tank', 'aim', 'armor', 'regen', 'loot'];   // trvalá vylepšení tanku (shodně s UPGRADES v tanks/physics.js)
+const TANK_UPGRADE_IDS = ['tank', 'aim', 'armor', 'regen', 'hull', 'loot'];   // trvalá vylepšení tanku (shodně s UPGRADES v tanks/physics.js)
 function cleanTank(t) {
   t = t && typeof t === 'object' ? t : {};
   const n = (v, max) => (Number.isFinite(v) ? Math.max(0, Math.min(max, Math.floor(v))) : 0);
