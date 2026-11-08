@@ -132,6 +132,12 @@ export function forfeit(g, i) {
   if (g.phase === 'pick' && g.pick[i] === -1) { g.pick[i] = -2; if (g.pick.every((v) => v !== -1)) endPick(g); }
   else if (g.phase === 'place' && !g.placed[i]) { g.placed[i] = true; if (g.placed.every(Boolean)) endPlace(g); }
   if (g.run && (g.phase === 'run' || g.phase === 'count')) { if (!g.run.dead[i] && g.run.fin[i] < 0) { g.run.dead[i] = true; g.run.deadAt[i] = g.rt; g.ev.push(['d', i, +g.run.bodies[i].x.toFixed(2), +g.run.bodies[i].y.toFixed(2), 0]); } }
+  // vzdal se soupeř a nikdo další nezbyl: zápas končí hned výhrou toho, kdo zůstal (body nerozhodují)
+  const rest = active(g);
+  if (!g.over && g.phase !== 'over' && g.players.length >= 2 && rest.length < 2) {
+    g.over = { winner: rest.length === 1 ? rest[0].i : -1, pts: g.players.map((q) => q.pts), rounds: g.round, forfeit: true };
+    setPhase(g, 'over');
+  }
 }
 
 function stepRun(g) {
@@ -156,7 +162,11 @@ function endRun(g) {
   for (const r of rows) { r.total = r.finish + r.first + r.solo + r.kills; g.players[r.i].pts += r.total; }
   g.roundRes = { n: g.round, rows, all, none: fins.length === 0 };
   g.history.push(g.roundRes);
-  const top = Math.max(...g.players.map((p) => p.pts)); const leaders = g.players.filter((p) => p.pts === top);
+  const top = Math.max(...g.players.map((p) => p.pts)); let leaders = g.players.filter((p) => p.pts === top);
+  if (top >= g.cfg.win && leaders.length > 1) {   // remíza v cíli: rozhodne víc bodů z posledního kola, pak víc doběhů v zápase; zůstane-li shoda, hraje se dál
+    const key = [(p) => rows[p.i].total, (p) => g.history.filter((h) => h.rows[p.i] && h.rows[p.i].fin).length];
+    for (const f of key) { const m = Math.max(...leaders.map(f)); leaders = leaders.filter((p) => f(p) === m); if (leaders.length === 1) break; }
+  }
   if ((top >= g.cfg.win && leaders.length === 1) || g.round >= g.cfg.rounds || active(g).filter((p) => !p.bot).length === 0) g.over = { winner: leaders.length === 1 ? leaders[0].i : -1, pts: g.players.map((p) => p.pts), rounds: g.round };
   setPhase(g, 'score');
 }

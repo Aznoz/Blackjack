@@ -120,7 +120,16 @@ const harmless = (g, i) => { for (let k = 0; k < 400; k++) { const x = (k * 7 + 
   const g = setup(2); g.players[0].pts = 40; g.players[1].pts = 45; for (let i = 0; i < 2; i++) assert.ok(harmless(g, i)); toPhase(g, 'run');
   const b = g.run.bodies[0]; b.x = g.W.stage.goal[0] + 1; b.y = g.W.stage.goal[1] + 1; G.tick(g); G.clientDie(g, 1, 0); toPhase(g, 'score', 600); assert.equal(g.over.winner, 0); assert.deepEqual(g.over.pts, [65, 45]); toPhase(g, 'over', 300);
   const h = setup(2); h.players[0].pts = 40; h.players[1].pts = 65; for (let i = 0; i < 2; i++) assert.ok(harmless(h, i)); toPhase(h, 'run'); const c = h.run.bodies[0]; c.x = h.W.stage.goal[0] + 1; c.y = h.W.stage.goal[1] + 1; G.tick(h); G.clientDie(h, 1, 0);
-  toPhase(h, 'score', 600); assert.deepEqual(h.players.map((p) => p.pts), [65, 65]); assert.equal(h.over, null, 'remíza na 50+ pokračuje dalším kolem'); toPhase(h, 'pick', 300); assert.equal(h.round, 2);
+  toPhase(h, 'score', 600); assert.deepEqual(h.players.map((p) => p.pts), [65, 65]); assert.equal(h.over.winner, 0, 'remíza na 50+: rozhodne víc bodů z posledního kola'); toPhase(h, 'over', 300);
+  const k = setup(2); k.players[0].pts = 60; k.players[1].pts = 60; for (let i = 0; i < 2; i++) assert.ok(harmless(k, i)); toPhase(k, 'run'); G.clientDie(k, 0, 0); G.clientDie(k, 1, 0);
+  toPhase(k, 'score', 600); assert.equal(k.over, null, 'úplná remíza (nikdo nic nezískal) pokračuje dalším kolem'); toPhase(k, 'pick', 300); assert.equal(k.round, 2);
+}
+{ // vzdání: soupeř vyhrává hned, ať je stav bodů jakýkoli
+  for (const ph of ['pick', 'place', 'run']) {
+    const g = setup(2); g.players[1].pts = 52; for (let i = 0; i < 2; i++) { assert.ok(harmless(g, i)); } if (ph === 'pick') { const g2 = setup(2); G.forfeit(g2, 0); assert.equal(g2.phase, 'over'); assert.equal(g2.over.winner, 1); continue; }
+    if (ph === 'run') toPhase(g, 'run'); G.forfeit(g, 1); assert.equal(g.phase, 'over'); assert.equal(g.over.winner, 0, 'vzdal se hráč s víc body, zůstal druhý'); assert.equal(g.over.forfeit, true);
+  }
+  const t = setup(3); G.forfeit(t, 2); assert.equal(t.over, null, 've třech zápas po jednom odchodu pokračuje'); G.forfeit(t, 1); assert.equal(t.phase, 'over'); assert.equal(t.over.winner, 0);
 }
 { // hlášení pohybu: skok o půl hřiště se zahodí, plynulý pohyb projde, mrtvý a boti se nehlásí
   const g = setup(2); for (let i = 0; i < 2; i++) assert.ok(harmless(g, i)); toPhase(g, 'run'); const b = g.run.bodies[0]; const x0 = b.x;
