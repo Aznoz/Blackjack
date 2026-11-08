@@ -207,6 +207,7 @@ document.addEventListener('click', (e) => { if (e.target.closest('[data-close]')
 const FX_INFO = {
   '': 'Barevné konfety z jamky.', sparks: 'Fontána zlatých jiskřiček.', stars: 'Hvězdičky létají vzhůru a snášejí se dolů.', rings: 'Rázové vlny se rozbíhají od jamky.', hearts: 'Srdíčka pomalu stoupají.',
   rainbow: 'Vysoký duhový gejzír.', fireworks: 'Raketa a salva barevných ohňostrojů.', lightning: 'Blesk udeří přímo do jamky.', meteor: 'Z nebe dopadne ohnivý meteorit.', goldrain: 'Zlatý déšť a třpytky.', nova: 'Výbuch supernovy s rázovými vlnami.',
+  bubbles: 'Z jamky vystoupají lesklé bubliny.', snow: 'Nad jamkou se snáší sníh.', petals: 'Okvětní lístky sakur padají k zemi.', vortex: 'Barevný vír se zatočí z jamky vzhůru.',
 };
 const SHOP = {
   skin: { tab: 'Míčky', base: { id: '', name: 'Základní míček', price: 0 }, list: K.SKINS, hint: (it) => (it.id ? 'Vzhled míčku, vidí ho všichni hráči. Barva hráče zůstává u jmenovky.' : 'Obyčejný míček v tvé barvě.') },
@@ -220,10 +221,17 @@ const eqOf = (cat) => (hasAcc() ? prof.golf.eq[cat] : '');
 const coinsNow = () => (hasAcc() ? prof.golf.coins : 0);
 function shopImg(cat, it, size) { return cat === 'skin' ? skinPreviewURL(it.id, size, colorHex(Math.max(0, myColor))) : cat === 'fx' ? fxIconURL(it.id, size) : clubIconURL(it.id, size); }
 function statRow(label, frac, txt) { return `<div class="st"><span>${label}</span><span class="bar"><i style="width:${Math.round(clamp(frac, 0, 1) * 100)}%"></i></span><span>${txt}</span></div>`; }
+/** Počet sloupců se volí tak, aby poslední řada nezůstala poloprázdná (nejvyšší počet, který se vejde a dělí počet věcí beze zbytku). */
+function fitShopGrid(n) {
+  const g = $('shopGrid'); const w = g.clientWidth || 480; const max = Math.max(3, Math.min(8, Math.floor((w + 8) / 104))); let cols = max;
+  for (let c = max; c >= 3; c--) if (n % c === 0) { cols = c; break; }
+  g.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+}
 function renderShop() {
   const cfg = SHOP[shopTab]; const items = [cfg.base, ...cfg.list]; let sel = items.find((x) => x.id === shopSel[shopTab]) || items[0]; shopSel[shopTab] = sel.id;
   $('shopCoins').textContent = coinsNow();
   $('shopTabs').innerHTML = Object.entries(SHOP).map(([k, c]) => `<button type="button" data-tab="${k}" class="${k === shopTab ? 'on' : ''}">${c.tab}</button>`).join('');
+  fitShopGrid(items.length);
   $('shopGrid').innerHTML = items.map((it) => { const own = ownsItem(shopTab, it.id), eq = own && eqOf(shopTab) === it.id; return `<button type="button" class="scard${it.id === sel.id ? ' sel' : ''}${own ? ' own' : ''}${eq ? ' eq' : ''}${!own && it.price > coinsNow() ? ' lock' : ''}" data-id="${it.id}"><img src="${shopImg(shopTab, it, 64)}" alt="" width="64" height="64"><b>${esc(it.name)}</b><small>${own ? (it.id === '' ? 'základ' : 'máš') : `<i class="coin"></i>${it.price}`}</small></button>`; }).join('');
   $('shopPrev').src = shopImg(shopTab, sel, 104); $('shopName').textContent = sel.name; $('shopHint').textContent = cfg.hint(sel);
   $('shopStats').innerHTML = shopTab === 'club' ? statRow('Síla rány', (sel.pw - 1) / 0.5, `+${Math.round((sel.pw - 1) * 100)} %`) + statRow('Zaměřovač', (sel.aim - 1) / 1, `+${Math.round((sel.aim - 1) * 100)} %`) + statRow('Písek brzdí', 1 - sel.sand, sel.sand < 1 ? `−${Math.round((1 - sel.sand) * 100)} %` : 'jako vždy') : '';

@@ -24,13 +24,16 @@ export const START_COINS = 100;
 export const SHOP_CATS = ['skin', 'fx', 'club'];
 export const SKINS = [
   { id: 'dots', name: 'Puntíkáč', price: 80 }, { id: 'checker', name: 'Šachovnice', price: 100 }, { id: 'tennis', name: 'Tenisák', price: 120 }, { id: 'stars', name: 'Hvězdná obloha', price: 140 },
-  { id: 'smile', name: 'Smajlík', price: 160 }, { id: 'soccer', name: 'Fotbal', price: 180 }, { id: 'basket', name: 'Basketbal', price: 180 }, { id: 'eight', name: 'Osmička', price: 220 },
-  { id: 'earth', name: 'Planeta', price: 300 }, { id: 'lava', name: 'Láva', price: 400 }, { id: 'ice', name: 'Ledovec', price: 400 }, { id: 'neon', name: 'Neon', price: 450 },
-  { id: 'galaxy', name: 'Galaxie', price: 600 }, { id: 'rainbow', name: 'Duha', price: 700 }, { id: 'chrome', name: 'Chrom', price: 800 }, { id: 'gold', name: 'Zlato', price: 1200 },
+  { id: 'smile', name: 'Smajlík', price: 160 }, { id: 'soccer', name: 'Fotbal', price: 180 }, { id: 'basket', name: 'Basketbal', price: 180 }, { id: 'bee', name: 'Včelka', price: 200 },
+  { id: 'eight', name: 'Osmička', price: 220 }, { id: 'camo', name: 'Maskáč', price: 240 }, { id: 'melon', name: 'Meloun', price: 260 }, { id: 'earth', name: 'Planeta', price: 300 },
+  { id: 'pumpkin', name: 'Dýně', price: 340 }, { id: 'lava', name: 'Láva', price: 400 }, { id: 'ice', name: 'Ledovec', price: 400 }, { id: 'neon', name: 'Neon', price: 450 },
+  { id: 'galaxy', name: 'Galaxie', price: 600 }, { id: 'rainbow', name: 'Duha', price: 700 }, { id: 'matrix', name: 'Matrix', price: 750 }, { id: 'chrome', name: 'Chrom', price: 800 },
+  { id: 'disco', name: 'Disco koule', price: 900 }, { id: 'gold', name: 'Zlato', price: 1200 }, { id: 'void', name: 'Černá díra', price: 1500 },
 ];
 export const WINFX = [   // přehrají se v jamce, když míček spadne do díry, a ve větší podobě po vítězství v zápase
-  { id: 'sparks', name: 'Jiskry', price: 100 }, { id: 'stars', name: 'Hvězdný déšť', price: 150 }, { id: 'rings', name: 'Rázová vlna', price: 200 }, { id: 'hearts', name: 'Srdíčka', price: 220 },
-  { id: 'rainbow', name: 'Duhový gejzír', price: 280 }, { id: 'fireworks', name: 'Ohňostroj', price: 400 }, { id: 'lightning', name: 'Blesk', price: 500 }, { id: 'meteor', name: 'Meteorit', price: 650 },
+  { id: 'sparks', name: 'Jiskry', price: 100 }, { id: 'stars', name: 'Hvězdný déšť', price: 150 }, { id: 'bubbles', name: 'Bubliny', price: 180 }, { id: 'rings', name: 'Rázová vlna', price: 200 },
+  { id: 'hearts', name: 'Srdíčka', price: 220 }, { id: 'snow', name: 'Sněžení', price: 240 }, { id: 'rainbow', name: 'Duhový gejzír', price: 280 }, { id: 'petals', name: 'Sakury', price: 320 },
+  { id: 'fireworks', name: 'Ohňostroj', price: 400 }, { id: 'lightning', name: 'Blesk', price: 500 }, { id: 'vortex', name: 'Magický vír', price: 600 }, { id: 'meteor', name: 'Meteorit', price: 650 },
   { id: 'goldrain', name: 'Zlatý déšť', price: 800 }, { id: 'nova', name: 'Supernova', price: 1000 },
 ];
 // pw = násobek rychlosti rány, aim = délka zaměřovače, sand = jak moc písek brzdí (1 = normálně, menší = míň)
