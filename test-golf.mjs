@@ -33,7 +33,7 @@ const mkW = (map, extra = {}) => P.buildWorld({ par: 2, theme: 'meadow', map, ..
 const roll = (W, b, sec, t0 = 0) => { let ev = null; for (let i = 0; i < sec / P.DT && !ev; i++) { ev = P.stepBall(W, b, t0 + i * P.DT); if (P.isRest(b)) break; } return ev; };
 {
   const W = mkW(['##########', '#T......H#', '##########']);
-  const b = P.newBall(1.5, 1.5); P.shoot(b, 0, 0.2); const v0 = P.speedOf(b); assert.ok(Math.abs(v0 - (P.VMIN + (P.VMAX - P.VMIN) * 0.2)) < 1e-9);
+  const b = P.newBall(1.5, 1.5); P.shoot(b, 0, 0.2); const v0 = P.speedOf(b); assert.ok(Math.abs(v0 - P.powV(0.2)) < 1e-9);
   assert.ok(roll(W, b, 10) === null && P.isRest(b), 'míček se na trávě zastaví'); assert.ok(b.x > 1.6 && b.x < W.cup[0], 'a dojel kousek: ' + b.x.toFixed(2));
   const weak = P.newBall(1.5, 1.5); P.shoot(weak, 0, 0); roll(W, weak, 10); const strong = P.newBall(1.5, 1.5); P.shoot(strong, 0, 0.5); roll(W, strong, 10); assert.ok(strong.x > weak.x, 'silnější rána dojede dál');
   const fast = P.newBall(1.5, 1.5); P.shoot(fast, 0, 1); assert.equal(roll(W, fast, 5), null, 'moc rychlý míček jamku přeskočí (nebo se odrazí od zdi)'); assert.ok(!fast.sunk || true);

@@ -4,14 +4,16 @@
 // Pohyblivé překážky jsou čisté funkce času t (sekundy od začátku jamky), takže se mezi hráči nic neposílá.
 export const DT = 1 / 120;                 // krok fyziky
 export const BR = 0.17;                    // poloměr míčku
-export const CUP_R = 0.27, CUP_V = 5.4;    // jamka: míček do ní spadne, když je blíž než CUP_R a pomalejší než CUP_V
-export const VMIN = 1.0, VMAX = 12.5;      // rychlost míčku po ráně (síla 0–1)
+export const CUP_R = 0.27, CUP_V = 4.5;    // jamka: míček do ní spadne, když je blíž než CUP_R a pomalejší než CUP_V
+export const VMIN = 1.0, VMAX = 19;        // rychlost míčku po ráně (síla 0–1)
+export const POW_K = 1.4;                  // křivka síly: jemné údery na krátko zůstávají snadné, plná síla je opravdu rychlá
+export const powV = (p) => VMIN + (VMAX - VMIN) * Math.pow(Math.max(0, Math.min(1, p)), POW_K);
 export const G = 9, HU = 0.3;              // tíže (sklon) a výška jednoho stupně číslice v `hgt`
 export const WALL_E = 0.78;                // odrazivost zdí
 export const C = { WALL: 0, GRASS: 1, SAND: 2, ICE: 3, HAZ: 4, BE: 5, BW: 6, BN: 7, BS: 8, T1: 9, T2: 10, T3: 11, T4: 12 };
 const CH = { '#': C.WALL, '.': C.GRASS, T: C.GRASS, H: C.GRASS, ',': C.SAND, i: C.ICE, '~': C.HAZ, E: C.BE, W: C.BW, N: C.BN, S: C.BS, 1: C.T1, 2: C.T2, 3: C.T3, 4: C.T4 };
 // tření: f = konstantní zpomalení, c = zpomalení úměrné rychlosti
-const FRIC = []; FRIC[C.GRASS] = [1.45, 0.35]; FRIC[C.SAND] = [6.5, 1.2]; FRIC[C.ICE] = [0.35, 0.15]; FRIC[C.BE] = FRIC[C.BW] = FRIC[C.BN] = FRIC[C.BS] = FRIC[C.T1] = FRIC[C.T2] = FRIC[C.T3] = FRIC[C.T4] = FRIC[C.HAZ] = FRIC[C.WALL] = FRIC[C.GRASS];
+const FRIC = []; FRIC[C.GRASS] = [1.45, 0.5]; FRIC[C.SAND] = [6.5, 1.2]; FRIC[C.ICE] = [0.35, 0.15]; FRIC[C.BE] = FRIC[C.BW] = FRIC[C.BN] = FRIC[C.BS] = FRIC[C.T1] = FRIC[C.T2] = FRIC[C.T3] = FRIC[C.T4] = FRIC[C.HAZ] = FRIC[C.WALL] = FRIC[C.GRASS];
 const BOOST = { [C.BE]: [1, 0], [C.BW]: [-1, 0], [C.BN]: [0, -1], [C.BS]: [0, 1] }; const BOOST_A = 20, BOOST_V = 10.5;
 const PARTNER = { [C.T1]: C.T2, [C.T2]: C.T1, [C.T3]: C.T4, [C.T4]: C.T3 };
 
@@ -78,7 +80,7 @@ export const newBall = (x, z) => ({ x, z, vx: 0, vz: 0, still: 99, sunk: false, 
 export const speedOf = (b) => Math.hypot(b.vx, b.vz);
 export const isRest = (b) => b.still >= 12 && !b.sunk;
 /** Rána: úhel (radiány, 0 = +x, π/2 = +z) a síla 0–1. */
-export function shoot(b, ang, pow) { const v = VMIN + (VMAX - VMIN) * Math.max(0, Math.min(1, pow)); b.vx = Math.cos(ang) * v; b.vz = Math.sin(ang) * v; b.still = 0; }
+export function shoot(b, ang, pow) { const v = powV(pow); b.vx = Math.cos(ang) * v; b.vz = Math.sin(ang) * v; b.still = 0; }
 
 function pushCircle(b, cx, cz, r, e, vsx, vsz, kind) {   // míček proti kruhu (sloup, nárazník) s povrchovou rychlostí vs
   const dx = b.x - cx, dz = b.z - cz, rr = r + BR, d2 = dx * dx + dz * dz; if (d2 >= rr * rr) return false;
@@ -142,7 +144,7 @@ export function stepBall(W, b, t) {
   if (ty2 < C.T1) b.tw = 0;
   else if (!b.tw) { const p = W.tele[PARTNER[ty2]]; if (p) { b.x = p[0]; b.z = p[1]; b.tw = 1; const s2 = Math.hypot(b.vx, b.vz) || 1; if (s2 < 3) { b.vx = b.vx / s2 * 3; b.vz = b.vz / s2 * 3; } return 'tp'; } }
   const d = Math.hypot(W.cup[0] - b.x, W.cup[1] - b.z);
-  if (d < CUP_R && Math.hypot(b.vx, b.vz) < CUP_V) { b.sunk = true; b.x = W.cup[0]; b.z = W.cup[1]; b.vx = b.vz = 0; return 'sink'; }
+  if (d < CUP_R && Math.hypot(b.vx, b.vz) < CUP_V) { b.sx = b.x; b.sz = b.z; b.sunk = true; b.x = W.cup[0]; b.z = W.cup[1]; b.vx = b.vz = 0; return 'sink'; }
   return null;
 }
 

@@ -1,7 +1,7 @@
 // MINIGOLF – 3D scéna (three.js): stavba jamky z mapy (terén po vrcholech, zdi, voda/láva, překážky, vlajka), míčky se jmenovkami, částice, kamera.
 // Fyzika je v phys.js (stejná jako na serveru), tady se jen kreslí. Všechno se kreslí z dat, žádné obrázky.
 import * as THREE from './vendor/three.module.min.js';
-import * as P from './phys.js?v=1';
+import * as P from './phys.js?v=2';
 
 const rgb = (h) => new THREE.Color(h);
 // Vzhled prostředí: nebe (nahoře, u obzoru), mlha, barvy podlahy, písku, ledu, zdí, tekutiny, okolí a doplňky.
@@ -25,7 +25,7 @@ const glowTex = canvasTex(64, 64, (g, w, h) => { const r = g.createRadialGradien
 
 export function createScene(canvas, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, opts.maxDpr || 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, opts.maxDpr || 2)); renderer.localClippingEnabled = true;   // míček klesající do jamky se u země ořízne
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   let shadows = opts.shadows !== false; renderer.shadowMap.enabled = shadows; renderer.shadowMap.type = THREE.PCFShadowMap;
   const scene = new THREE.Scene(); const cam = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
@@ -101,8 +101,8 @@ export function createScene(canvas, opts = {}) {
     const [tx, tz] = W.tee; const tHeight = P.heightAt(W, tx, tz).y;
     const mat = new THREE.Mesh(new THREE.CircleGeometry(0.36, 28), bas({ map: canvasTex(64, 64, (g, ww, hh) => { g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.arc(32, 32, 30, 0, 7); g.fill(); g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.arc(32, 32, 22, 0, 7); g.fill(); }), transparent: true, depthWrite: false })); mat.rotation.x = -Math.PI / 2; mat.position.set(tx, tHeight + 0.012, tz); holeGroup.add(mat);
     const [cxp, czp] = W.cup; const cH = P.heightAt(W, cxp, czp).y;
-    const hole = new THREE.Mesh(new THREE.CircleGeometry(P.CUP_R * 1.15, 28), bas({ color: 0x0b0b10 })); hole.rotation.x = -Math.PI / 2; hole.position.set(cxp, cH + 0.014, czp); holeGroup.add(hole);
-    const rim = new THREE.Mesh(new THREE.RingGeometry(P.CUP_R * 1.15, P.CUP_R * 1.5, 28), bas({ color: 0xffffff, transparent: true, opacity: 0.85 })); rim.rotation.x = -Math.PI / 2; rim.position.set(cxp, cH + 0.013, czp); holeGroup.add(rim);
+    const hole = new THREE.Mesh(new THREE.CircleGeometry(P.CUP_R * 1.25, 28), bas({ color: 0x0b0b10 })); hole.rotation.x = -Math.PI / 2; hole.position.set(cxp, cH + 0.014, czp); holeGroup.add(hole);
+    const rim = new THREE.Mesh(new THREE.RingGeometry(P.CUP_R * 1.25, P.CUP_R * 1.55, 28), bas({ color: 0xffffff, transparent: true, opacity: 0.85 })); rim.rotation.x = -Math.PI / 2; rim.position.set(cxp, cH + 0.013, czp); holeGroup.add(rim);
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.5, 8), std({ color: 0xf2f2f2 })); pole.position.set(cxp + 0.04, cH + 0.75, czp); pole.castShadow = true; holeGroup.add(pole);
     const fg = new THREE.PlaneGeometry(0.62, 0.36, 8, 1); fg.translate(0.31, 0, 0); const fm = std({ color: th.flag, side: THREE.DoubleSide, roughness: 0.6 }); flag = new THREE.Mesh(fg, fm); flag.position.set(cxp + 0.05, cH + 1.34, czp); flag.castShadow = true; holeGroup.add(flag);
     const gold = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), std({ color: 0xffd24a, metalness: 0.6, roughness: 0.3 })); gold.position.set(cxp + 0.04, cH + 1.52, czp); holeGroup.add(gold);
@@ -208,13 +208,16 @@ export function createScene(canvas, opts = {}) {
   function moveBall(i, x, z, vis = 1, alpha) {
     const b = balls[i]; if (!b) return; const hh = P.heightAt(W, x, z).y; if (b.px !== null) { const dx = x - b.px, dz = z - b.pz, d = Math.hypot(dx, dz); if (d > 1e-5 && d < 2) { const axis = new THREE.Vector3(dz, 0, -dx).normalize(); b.q.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, d / P.BR)); b.mesh.quaternion.copy(b.q); } }
     b.px = x; b.pz = z; b.x = x; b.z = z; b.g.visible = vis > 0; b.g.position.set(x, hh, z); b.mesh.position.y = P.BR - b.sink; b.sh.position.y = 0.012;
-    if (alpha !== undefined) b.mat.opacity = alpha; b.sh.visible = vis > 0;
+    // klesání do jamky: část míčku pod úrovní země se ořízne a míček se kreslí přes tmavý kruh jamky, takže vypadá, že padá dovnitř
+    const sk = b.sink > 0.002; if (sk !== !!b.sinking) { b.sinking = sk; b.mat.depthTest = !sk; b.mat.clippingPlanes = sk ? [b.clip || (b.clip = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0))] : null; b.mesh.renderOrder = sk ? 8 : 0; b.mat.needsUpdate = true; }
+    if (sk) { b.clip.constant = -hh; const dk = Math.max(0.25, 1 - b.sink * 2.6); b.mat.color.setScalar(dk); b.mat.emissiveIntensity = 0.12 * dk; } else if (b.sinking === false && b.mat.color.r !== 1) { b.mat.color.setScalar(1); b.mat.emissiveIntensity = 0.12; }
+    if (alpha !== undefined) b.mat.opacity = alpha; b.sh.visible = vis > 0 && !sk;
   }
   const dots = []; const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false }); for (let i = 0; i < 16; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), dotMat.clone()); m.visible = false; m.renderOrder = 15; scene.add(m); dots.push(m); }
   const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false })); arrow.visible = false; arrow.renderOrder = 15; scene.add(arrow);
   function aim(on, x, z, dx, dz, pow) {   // směr (dx, dz) a síla 0–1; tečky ukazují směr a délku rány
     for (const d of dots) d.visible = false; arrow.visible = false; if (!on) return;
-    const len = 0.9 + pow * 4.2; const n = Math.max(3, Math.round(len / 0.32)); const col = new THREE.Color().setHSL(0.33 - pow * 0.33, 0.95, 0.55);
+    const len = 0.9 + pow * 5.6; const n = Math.max(3, Math.round(len / 0.32)); const col = new THREE.Color().setHSL(0.33 - pow * 0.33, 0.95, 0.55);
     for (let i = 0; i < n && i < dots.length; i++) { const t = 0.35 + (i + 1) * len / n; const yy = P.heightAt(W, x + dx * t, z + dz * t).y + P.BR; dots[i].position.set(x + dx * t, yy, z + dz * t); dots[i].material.color.copy(col); dots[i].visible = true; dots[i].scale.setScalar(1.2 - i / n * 0.5); }
     const t = 0.35 + len + 0.28; const ay = P.heightAt(W, x + dx * t, z + dz * t).y + P.BR; arrow.position.set(x + dx * t, ay, z + dz * t); arrow.material.color.copy(col); arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, 0, dz)); arrow.visible = true;
   }
