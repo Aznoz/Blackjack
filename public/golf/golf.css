@@ -106,4 +106,4 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: #fff; font-f
 .strokes .clubTag { font-size: 11px; font-weight: 800; color: #ffe27a; align-self: center; }
 @media (max-height: 520px) { .shopGrid { max-height: 30vh; } .shopTop { grid-template-columns: 76px 1fr; } .shopTop img { width: 76px; height: 76px; } }
 
-@media (max-width: 560px) { .shopGrid { gap: 5px; } .scard { padding: 5px 1px 5px; border-radius: 12px; gap: 2px; } .scard b { font-size: 9px; letter-spacing: -.1px; } .scard small { font-size: 9.5px; gap: 2px; } .scard small .coin { width: 9px; height: 9px; } .scard.eq::after { font-size: 6px; top: 2px; right: 1px; padding: 1px 3px; } }
+@media (max-width: 560px) { .shopGrid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 7px; } .scard { padding: 7px 3px 6px; } .scard b { font-size: 11px; } .scard small { font-size: 10.5px; } .scard.eq::after { font-size: 8px; } }
