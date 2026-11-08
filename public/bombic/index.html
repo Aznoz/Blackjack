@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='14' fill='%23173d1f'/%3E%3Ccircle cx='30' cy='38' r='17' fill='%23252a36' stroke='%23000' stroke-width='3'/%3E%3Ccircle cx='24' cy='31' r='5' fill='%23ffffff88'/%3E%3Cpath d='M38 23q8-10 14-6' fill='none' stroke='%23e9d9ac' stroke-width='4' stroke-linecap='round'/%3E%3Ccircle cx='53' cy='15' r='5' fill='%23ffb02e'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="bombic.css?v=4">
+<link rel="stylesheet" href="bombic.css?v=5">
 </head>
 <body>
 
@@ -18,7 +18,7 @@
     <canvas id="mscene" aria-hidden="true"></canvas>
     <header class="mtop">
       <a class="chip" id="back" href="../">← Herna</a>
-      <button class="chip ico" id="muteBtn" type="button" aria-label="Zvuk"></button>
+      <span class="mbtns"><button class="chip ico" id="fsBtn" type="button" aria-label="Celá obrazovka" hidden>⛶</button><button class="chip ico" id="muteBtn" type="button" aria-label="Zvuk"></button></span>
     </header>
     <h1 class="logo" aria-label="Bombic"><span>B</span><span>O</span><span>M</span><span>B</span><span>I</span><span>C</span></h1>
   </section>
@@ -137,6 +137,7 @@
     <div class="mine" id="mine"></div>
     <button class="bombbtn" id="bombBtn" type="button" aria-label="Položit bombu"><svg viewBox="0 0 48 48" aria-hidden="true"><g stroke="#05060a" stroke-width="2.4" stroke-linejoin="round" stroke-linecap="round"><circle cx="22" cy="29" r="15" fill="#2a2f3c"/><circle cx="16" cy="23" r="4.4" fill="#ffffff99" stroke="none"/><path d="M30 16q6-8 12-5" fill="none" stroke="#e9d9ac" stroke-width="3.4"/><circle cx="43" cy="11" r="4.6" fill="#ffb02e"/></g></svg></button>
   </div>
+  <div class="rotate" id="rotate"><div><div class="phone"></div>Otoč telefon na šířku<button class="link" id="rotateSkip" type="button">Hrát i na výšku</button></div></div>
   <div class="over" id="over" hidden>
     <div class="ocard">
       <div class="otitle" id="oTitle">VÝHRA</div>
@@ -155,6 +156,7 @@
       <h2>Menu</h2>
       <p class="muted">Hra běží dál, zastavit se nedá.</p>
       <button class="plank" id="pMute" type="button"><b>Zvuk</b></button>
+      <button class="plank" id="pFs" type="button" hidden><b>Celá obrazovka</b></button>
       <button class="plank" data-close type="button"><b>Pokračovat</b></button>
       <button class="plank danger" id="pLeave" type="button"><b>Vzdát se a odejít</b></button>
     </div>
@@ -164,6 +166,6 @@
 <div class="conn" id="conn" hidden>Připojuji…</div>
 <div class="toast" id="toast" role="alert" hidden></div>
 <script src="config.js"></script>
-<script type="module" src="bombic.js?v=4"></script>
+<script type="module" src="bombic.js?v=5"></script>
 </body>
 </html>

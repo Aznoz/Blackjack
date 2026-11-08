@@ -179,3 +179,33 @@ button { cursor: pointer; }
 .si.on { border-color: var(--ok); background: rgba(63, 161, 74, .25); } .si.on small { color: var(--ok); }
 .orow .cg { color: var(--yl); font-size: 13px; } .orow .xg { text-align: right; line-height: 1.2; }
 .bombbtn.skate { background: radial-gradient(circle at 35% 30%, #ffb35a, #e0661a 75%); box-shadow: 0 6px 0 #5a2a08, 0 0 18px 4px rgba(255, 170, 60, .7), 0 12px 20px rgba(0, 0, 0, .5); }
+
+/* ----- telefon: hra přes celou obrazovku, ovládání a HUD ji překrývají (třída ov na #game, nastavuje se jen na dotykovém zařízení) */
+.mbtns { display: flex; gap: 8px; }
+.rotate { position: absolute; inset: 0; z-index: 45; background: rgba(13, 32, 19, .97); display: none; align-items: center; justify-content: center; text-align: center; font-weight: 900; font-size: 20px; }
+.rotate > div { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.phone { width: 44px; height: 76px; margin-bottom: 14px; border: 5px solid #ffe9c4; border-radius: 10px; background: #1f1409; position: relative; animation: rot 1.8s ease-in-out infinite; }
+.phone::after { content: ''; position: absolute; left: 50%; bottom: 4px; width: 10px; height: 4px; margin-left: -5px; border-radius: 2px; background: #ffe9c4; }
+@keyframes rot { 0%, 20% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) and (max-width: 760px) { #game.ov:not([hidden]) .rotate:not(.skip) { display: flex; } }
+#game.ov .gfield { position: absolute; inset: 0; }
+#game.ov .gtop { position: absolute; left: 0; right: 0; top: 0; z-index: 8; background: none; border: 0; padding: calc(env(safe-area-inset-top) + 4px) calc(env(safe-area-inset-right) + 8px) 4px calc(env(safe-area-inset-left) + 8px); pointer-events: none; gap: 6px; }
+#game.ov .gtop > * { pointer-events: auto; }
+#game.ov .pchips { pointer-events: none; } #game.ov .pc { opacity: .88; }
+#game.ov .gtime { background: rgba(20, 12, 5, .7); border-radius: 10px; padding: 3px 8px; } #game.ov .gtime b { font-size: 20px; }
+#game.ov #pauseBtn { opacity: .75; }
+#game.ov .ghud { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; background: none; border: 0; pointer-events: none; min-height: 0; padding: 8px calc(env(safe-area-inset-right) + 14px) calc(env(safe-area-inset-bottom) + 10px) calc(env(safe-area-inset-left) + 14px); align-items: flex-end; }
+#game.ov .pad, #game.ov .bombbtn { pointer-events: auto; opacity: .55; transition: opacity .12s; }
+#game.ov .pad.on, #game.ov .bombbtn.down, #game.ov .bombbtn:active { opacity: .95; }
+#game.ov .pad { background: radial-gradient(circle, rgba(0, 0, 0, .3) 0 30%, rgba(255, 220, 160, .1) 31% 100%); }
+#game.ov .bombbtn { box-shadow: 0 4px 0 #5a1208; }
+#game.ov .mine { position: absolute; left: calc(env(safe-area-inset-left) + 14px); right: calc(env(safe-area-inset-right) + 14px); bottom: calc(env(safe-area-inset-bottom) + 156px); flex: none; flex-wrap: wrap; justify-content: center; pointer-events: none; gap: 4px; }
+#game.ov .mine .st { background: rgba(20, 12, 5, .7); }
+@media (orientation: landscape) {   /* na šířku je hřiště užší než okno, takže se HUD vejde do volných okrajů a nezakrývá mapu */
+  #game.ov .gtop { right: auto; bottom: auto; }
+  #game.ov .gtime { position: fixed; right: calc(env(safe-area-inset-right) + 8px); top: calc(env(safe-area-inset-top) + 4px); }
+  #game.ov .pchips { display: flex; position: fixed; right: calc(env(safe-area-inset-right) + 8px); top: calc(env(safe-area-inset-top) + 58px); flex-direction: column; gap: 4px; align-items: flex-end; }
+  #game.ov .pc .nm { display: none; } #game.ov .pc { padding-right: 8px; } #game.ov .pc img { width: 32px; height: 32px; }
+  #game.ov .mine { right: auto; left: calc(env(safe-area-inset-left) + 14px); bottom: calc(env(safe-area-inset-bottom) + 130px); flex-direction: column; flex-wrap: nowrap; align-items: flex-start; justify-content: flex-end; }
+}
+#game.ov .dropnote { bottom: 70px; }

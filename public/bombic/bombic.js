@@ -1,8 +1,8 @@
 // BOMBIC – klient: menu, čekárna, hřiště na canvasu (les, pařezy, bomby, plameny, předměty), ovládání klávesnicí i dotykem, boti i online.
 // Simulaci počítá server, klient dostává snímky (20× za sekundu) a mezi nimi plynule dopočítává pohyb (zpoždění ~100 ms).
-import * as K from './shared.js?v=4';
-import { drawTile, drawItem, drawBomb, drawFlame, drawWarn, drawPlayer, portraitURL, itemURL, mapThumb, cosmURL } from './art.js?v=4';
-import { startScene, stopScene } from './scene.js?v=4';
+import * as K from './shared.js?v=5';
+import { drawTile, drawItem, drawBomb, drawFlame, drawWarn, drawPlayer, portraitURL, itemURL, mapThumb, cosmURL } from './art.js?v=5';
+import { startScene, stopScene } from './scene.js?v=5';
 const { COLS, ROWS, SKINS, MAPS } = K;
 
 const CFG = window.BOMBIC_CONFIG || {};
@@ -81,11 +81,36 @@ $('muteBtn').onclick = toggleMute; $('pMute').onclick = toggleMute; syncMute();
 let screen = 'menu';
 function show(name) {
   screen = name; for (const id of ['menu', 'lobby', 'game']) $(id).hidden = id !== name;
-  if (name === 'game') resize();
+  if (name === 'game') { $('game').classList.toggle('ov', coarse()); resize(); if (isFs() && coarse()) lockLand(false); } else unlockLand();
   if (name === 'menu') startScene($('mscene')); else stopScene();
 }
 let toastT = null;
 function toast(msg) { const el = $('toast'); el.textContent = msg; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2600); }
+// ------------------------------------------------------------------ celá obrazovka + šířka (stejně jako v Hopíkovi a Tancích)
+const coarse = () => !!(window.matchMedia && matchMedia('(pointer: coarse)').matches);
+const rootEl = document.documentElement;
+const fsOK = !!(rootEl.requestFullscreen || rootEl.webkitRequestFullscreen);
+const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+async function lockLand(verbose) {   // zámek orientace jde jen v celé obrazovce; zkusí se víc způsobů, protože prohlížeče se liší
+  if (!coarse()) return false;
+  const so = screen.orientation;
+  for (const mode of ['landscape', 'landscape-primary']) { try { if (so && so.lock) { await so.lock(mode); return true; } } catch (e) { /* zkusí se další */ } }
+  try { const old = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation; if (old && old.call(screen, 'landscape')) return true; } catch (e) { /* nic */ }
+  if (verbose && window.innerHeight > window.innerWidth) toast('Telefon zámek na šířku nepovolil. Zkus zapnout automatické otáčení a otočit ho.');
+  return false;
+}
+function unlockLand() { try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* nic */ } }
+async function enterFs() {
+  try { if (rootEl.requestFullscreen) await rootEl.requestFullscreen({ navigationUI: 'hide' }); else if (rootEl.webkitRequestFullscreen) rootEl.webkitRequestFullscreen(); } catch (e) { /* prohlížeč nepustil */ }
+  await lockLand(true);
+}
+function exitFs() { unlockLand(); try { if (document.exitFullscreen) document.exitFullscreen(); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) { /* nic */ } }
+function autoFs() { if (fsOK && coarse() && !isFs() && LS.get('bombic_fs') !== '0') enterFs(); }   // na dotykových zařízeních se při startu hry zkusí celá obrazovka + šířka (jde jen z klepnutí)
+function toggleFs() { if (isFs()) { LS.set('bombic_fs', '0'); exitFs(); } else { LS.set('bombic_fs', '1'); enterFs(); } }
+function syncFs() { const on = isFs(); if (on && coarse() && screen === 'game') lockLand(false); $('fsBtn').textContent = on ? '⤢' : '⛶'; $('fsBtn').setAttribute('aria-label', on ? 'Ukončit celou obrazovku' : 'Celá obrazovka'); $('pFs').innerHTML = `<b>Celá obrazovka: ${on ? 'zapnutá' : 'vypnutá'}</b>`; if (screen === 'game') setTimeout(resize, 150); }
+if (fsOK) { $('fsBtn').hidden = false; $('pFs').hidden = false; $('fsBtn').onclick = toggleFs; $('pFs').onclick = toggleFs; document.addEventListener('fullscreenchange', syncFs); document.addEventListener('webkitfullscreenchange', syncFs); syncFs(); }
+$('rotateSkip').onclick = () => { $('rotate').classList.add('skip'); };
+window.addEventListener('orientationchange', () => { if (screen === 'game') setTimeout(resize, 200); });
 function setStatus(msg, err) { const el = $('menuStatus'); el.textContent = msg || ''; el.classList.toggle('err', !!err); }
 const openModal = (id) => { $(id).hidden = false; };
 document.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) { const m = e.target.closest('.modal'); if (m) m.hidden = true; } else if (e.target.classList && e.target.classList.contains('modal')) e.target.hidden = true; });
@@ -212,6 +237,7 @@ function sendMsg(m) {
 setInterval(() => { if (ws && ws.readyState === 1 && screen !== 'menu') { try { ws.send('{"t":"ping"}'); } catch (e) { /* nic */ } } }, 20000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && session && wantOpen && !ws) connect(); });
 function startGame(req) {
+  autoFs();
   setStatus(''); LS.set('bombic_name', ($('name').value || '').trim());
   session = null; LS.del('bombic_resume'); S = null; resetBoard(); outbox = []; retry = 0;
   if (!(ws && ws.readyState === 1)) setStatus('Připojuji…');
@@ -435,9 +461,9 @@ function padMove(e) {
   const k = len > R * 0.6 ? (R * 0.6) / len : 1; knob.style.transform = `translate(${dx * k}px, ${dy * k}px)`;
   if (d !== padDir) { padDir = d; recompute(); }
 }
-pad.addEventListener('pointerdown', (e) => { e.preventDefault(); audio(); padId = e.pointerId; try { pad.setPointerCapture(e.pointerId); } catch (x) { /* nic */ } padMove(e); });
+pad.addEventListener('pointerdown', (e) => { e.preventDefault(); audio(); padId = e.pointerId; pad.classList.add('on'); try { pad.setPointerCapture(e.pointerId); } catch (x) { /* nic */ } padMove(e); });
 pad.addEventListener('pointermove', (e) => { if (e.pointerId === padId) padMove(e); });
-const padEnd = (e) => { if (e.pointerId !== padId) return; padId = null; padDir = 0; knob.style.transform = ''; recompute(); };
+const padEnd = (e) => { if (e.pointerId !== padId) return; padId = null; padDir = 0; pad.classList.remove('on'); knob.style.transform = ''; recompute(); };
 pad.addEventListener('pointerup', padEnd); pad.addEventListener('pointercancel', padEnd);
 const bb = $('bombBtn');
 bb.addEventListener('pointerdown', (e) => { e.preventDefault(); audio(); bb.classList.add('down'); dropBomb(); });
