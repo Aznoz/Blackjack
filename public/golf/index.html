@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Minigolf</title>
+<meta name="theme-color" content="#0c3b2c">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230c3b2c'/%3E%3Ccircle cx='32' cy='38' r='15' fill='%23fff'/%3E%3Ccircle cx='27' cy='34' r='2' fill='%23ccd'/%3E%3Ccircle cx='36' cy='40' r='2' fill='%23ccd'/%3E%3Cpath d='M44 8v28' stroke='%23c6ff4d' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M44 9l12 5-12 6z' fill='%23ff4f6a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="golf.css?v=1">
+</head>
+<body>
+<canvas id="gl" aria-hidden="true"></canvas>
+
+<!-- hlavní menu -->
+<main id="menu" class="screen">
+  <header class="top">
+    <a class="chip" id="back" href="../">← Herna</a>
+    <span class="chips"><button class="chip ico" id="fsBtn" type="button" aria-label="Celá obrazovka" hidden>⛶</button><button class="chip ico" id="musicBtn" type="button" aria-label="Hudba"></button><button class="chip ico" id="muteBtn" type="button" aria-label="Zvuk"></button></span>
+  </header>
+  <section class="hero">
+    <h1 class="logo" aria-label="Minigolf"><span class="lw">MINI</span><span class="lb" aria-hidden="true"></span><span class="lw">GOLF</span></h1>
+    <p class="tag">Všichni hrají naráz. Kdo to dá na míň ran?</p>
+  </section>
+  <div class="mwrap">
+    <section class="glass colors"><h2>Tvůj míček</h2><div class="swatches" id="swatches"></div></section>
+    <div class="prof" id="prof" hidden><div class="pname" id="pName">Hráč</div><div class="prec" id="pRec"></div><div class="coinchip" id="pCoins"><i class="coin"></i><b>0</b></div></div>
+    <label class="field" id="nameField" hidden>Tvoje jméno<input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza"></label>
+    <button class="btn main" id="bBot" type="button"><b>Hrát proti botům</b><small>1 až 3 soupeři, tři obtížnosti</small></button>
+    <div class="row2">
+      <button class="btn" id="bQuick" type="button"><b>Online</b><small>rychlá hra, 2–4 hráči</small></button>
+      <button class="btn" id="bCreate" type="button"><b>Vytvořit hru</b><small>kód pro kamarády</small></button>
+    </div>
+    <form class="join" id="joinForm"><label for="code">Mám kód od kamaráda</label><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="KÓD" aria-label="Kód místnosti"><button type="submit">Připojit</button></form>
+    <button class="btn ghost" id="bHow" type="button"><b>Jak se hraje</b></button>
+    <p class="status" id="menuStatus"></p>
+  </div>
+</main>
+
+<!-- boj proti botům -->
+<div class="modal" id="botModal" hidden>
+  <div class="sheet">
+    <h2>Proti botům</h2>
+    <div class="opt"><label>Hřiště</label><div class="chipsel" id="botCourse"></div></div>
+    <div class="opt"><label>Počet jamek</label><div class="chipsel" id="botHoles"></div></div>
+    <div class="opt"><label>Soupeři</label><div class="chipsel" id="botN"></div></div>
+    <div class="opt"><label>Obtížnost</label><div class="chipsel" id="botLv"></div><p class="hint" id="botLvInfo"></p></div>
+    <div class="opt"><label>Čas na jamku</label><div class="chipsel" id="botTime"></div></div>
+    <div class="acts"><button class="btn ghost" id="botCancel" type="button"><b>Zpět</b></button><button class="btn main" id="botGo" type="button"><b>Hrát</b></button></div>
+  </div>
+</div>
+
+<!-- jak se hraje -->
+<div class="modal" id="howModal" hidden>
+  <div class="sheet">
+    <h2>Jak se hraje</h2>
+    <ol class="how">
+      <li><b>Všichni hrají naráz</b> – žádné střídání. Každý šťouchá do svého míčku, ostatní vidíš jako průhledné míčky. Míčky se nesrážejí.</li>
+      <li><b>Rána:</b> přitiskni prst (nebo myš) kdekoli na hřišti, <b>táhni dozadu</b> a pusť. Míček vyletí opačným směrem, čím dál zatáhneš, tím silněji. Zaměřovač ukazuje směr a sílu. Zrušíš to návratem k místu dotyku.</li>
+      <li><b>Kamera</b> je za míčkem. Otáčíš ji tlačítky ⟲ ⟳, dvěma prsty (nebo pravým tlačítkem myši, klávesami A D). Tlačítko Shora ukáže celou jamku.</li>
+      <li><b>Cíl:</b> dostat míček do jamky na co nejméně ran. Moc rychlý míček jamku přeskočí! Voda a láva = zpátky na místo posledního úderu a rána navíc.</li>
+      <li><b>Čas:</b> každá jamka má limit. Až první hráč dokončí, ostatním zbývá jen krátká doba. Kdo jamku nedokončí, dostane par + 4 rány.</li>
+      <li><b>Překážky:</b> písek brzdí, led klouže, žluté šipky zrychlují, fialové kruhy jsou teleporty, nárazníky míček odpálí. Pozor na otáčivé tyče, mlýn a brány.</li>
+      <li>Vyhrává nejméně ran za celé hřiště. Za zápas dostaneš coiny, za jamku na jednu ránu bonus.</li>
+    </ol>
+    <div class="acts"><button class="btn main" id="howClose" type="button"><b>Rozumím</b></button></div>
+  </div>
+</div>
+
+<!-- čekárna -->
+<section id="lobby" class="screen" hidden>
+  <header class="top"><button class="chip" id="lobLeave" type="button">← Odejít</button><span class="chips"><button class="chip ico" id="lobMute" type="button" aria-label="Zvuk"></button></span></header>
+  <div class="mwrap">
+    <section class="glass codebox"><span>Kód místnosti</span><b id="lobCode">----</b><button class="chip" id="lobCopy" type="button">Kopírovat</button><small id="lobSub"></small></section>
+    <section class="glass"><h2>Hráči</h2><div class="plist" id="plist"></div></section>
+    <section class="glass" id="cfgBox"><h2>Nastavení</h2>
+      <div class="opt"><label>Hřiště</label><div class="chipsel" id="lobCourse"></div></div>
+      <div class="opt"><label>Jamek</label><div class="chipsel" id="lobHoles"></div></div>
+      <div class="opt"><label>Čas na jamku</label><div class="chipsel" id="lobTime"></div></div>
+      <div class="opt"><label>Čas po prvním dokončení</label><div class="chipsel" id="lobGrace"></div></div>
+      <p class="hint" id="cfgNote"></p>
+    </section>
+    <div class="row2" id="hostActs">
+      <label class="check"><input type="checkbox" id="fillBots"> doplnit boty</label>
+      <button class="btn main" id="lobStart" type="button"><b>Začít hru</b></button>
+    </div>
+    <p class="status" id="lobStatus"></p>
+  </div>
+</section>
+
+<!-- hra -->
+<section id="game" class="screen" hidden>
+  <div class="gtop">
+    <button class="chip ico" id="pauseBtn" type="button" aria-label="Menu">☰</button>
+    <div class="hinfo"><b id="hName">Jamka 1</b><span id="hSub">Par 3</span></div>
+    <div class="timer" id="timer"><b id="tVal">60</b><i id="tBar"></i></div>
+  </div>
+  <div class="board" id="board"></div>
+  <div class="strokes" id="strokes"><span>Rány</span><b id="sVal">0</b></div>
+  <div class="banner" id="banner" hidden></div>
+  <div class="intro" id="intro" hidden><small id="iHole"></small><b id="iName"></b><span id="iPar"></span><em id="iCount"></em></div>
+  <div class="power" id="power" hidden><i id="pFill"></i><b id="pTxt">0 %</b></div>
+  <div class="tip" id="tip" hidden>Táhni prstem DOZADU a pusť</div>
+  <div class="ctl l"><button class="rb" id="rotL" type="button" aria-label="Otočit kameru doleva">⟲</button></div>
+  <div class="ctl r"><button class="rb" id="rotR" type="button" aria-label="Otočit kameru doprava">⟳</button><button class="rb txt" id="topBtn" type="button">Shora</button></div>
+  <div class="ov" id="scoreOv" hidden></div>
+  <div class="ov" id="overOv" hidden></div>
+  <div class="drop" id="dropBar" hidden></div>
+</section>
+
+<!-- pauza -->
+<div class="modal" id="pauseModal" hidden>
+  <div class="sheet small">
+    <h2>Pauza</h2>
+    <p class="hint">Hra běží dál, ostatní hrají.</p>
+    <div class="acts col">
+      <button class="btn main" id="pResume" type="button"><b>Pokračovat</b></button>
+      <button class="btn" id="pFs" type="button" hidden><b>Celá obrazovka</b></button>
+      <button class="btn" id="pMusic" type="button"><b>Hudba</b></button>
+      <button class="btn" id="pSound" type="button"><b>Zvuk</b></button>
+      <button class="btn danger" id="pLeave" type="button"><b>Odejít ze hry</b></button>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast" hidden></div>
+<script src="config.js?v=1"></script>
+<script type="module" src="golf.js?v=1"></script>
+</body>
+</html>
