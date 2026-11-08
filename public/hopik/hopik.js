@@ -1,10 +1,10 @@
 // HOPÍK – klient: menu s výběrem postavičky, čekárna, a hra (výběr kusu → pokládání → běh) na canvasu. Pohyb vlastní postavy se počítá tady v prohlížeči
 // (stejná fyzika jako na serveru, phys.js) a každých pár ticků se hlásí serveru; ostatní hráči se zobrazují z jeho snímků a mezi nimi se plynule dopočítávají.
-import * as K from './shared.js?v=5';
-import * as P from './phys.js?v=5';
-import * as A from './art.js?v=5';
-import { startScene, stopScene } from './scene.js?v=5';
-import { createMusic } from './music.js?v=5';
+import * as K from './shared.js?v=6';
+import * as P from './phys.js?v=6';
+import * as A from './art.js?v=6';
+import { startScene, stopScene } from './scene.js?v=6';
+import { createMusic } from './music.js?v=6';
 const { COLS, ROWS, TPS, CHARS, STAGES } = K;
 
 const CFG = window.HOPIK_CONFIG || {};
@@ -490,7 +490,17 @@ window.addEventListener('keydown', (e) => {
 });
 window.addEventListener('keyup', (e) => { const k = KEYMAP[e.code]; if (k) keys.delete(k); });
 window.addEventListener('blur', () => { keys.clear(); touch.L = touch.R = touch.J = false; });
-for (const [id, k] of [['tbL', 'L'], ['tbR', 'R'], ['tbJ', 'J']]) {
+// doleva/doprava: prst jde plynule přejet z jednoho tlačítka na druhé bez zvednutí
+{
+  const pad = $('tpad'), bl = $('tbL'), br = $('tbR'), act = new Map();
+  const apply = () => { const ds = [...act.values()]; touch.L = ds.includes('L'); touch.R = ds.includes('R'); bl.classList.toggle('down', touch.L); br.classList.toggle('down', touch.R); };
+  const dirAt = (e) => { const a = bl.getBoundingClientRect(), b = br.getBoundingClientRect(); return e.clientX < (a.right + b.left) / 2 ? 'L' : 'R'; };
+  pad.addEventListener('pointerdown', (e) => { if (!e.target.closest('.tb')) return; e.preventDefault(); audio(); act.set(e.pointerId, dirAt(e)); apply(); try { pad.setPointerCapture(e.pointerId); } catch (x) { /* nic */ } });
+  pad.addEventListener('pointermove', (e) => { if (!act.has(e.pointerId)) return; const d = dirAt(e); if (act.get(e.pointerId) !== d) { act.set(e.pointerId, d); apply(); } });
+  for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) pad.addEventListener(ev, (e) => { if (act.delete(e.pointerId)) apply(); });
+  window.addEventListener('blur', () => { act.clear(); apply(); });
+}
+for (const [id, k] of [['tbJ', 'J']]) {
   const b = $(id);
   b.addEventListener('pointerdown', (e) => { e.preventDefault(); audio(); touch[k] = true; b.classList.add('down'); try { b.setPointerCapture(e.pointerId); } catch (x) { /* nic */ } });
   for (const ev of ['pointerup', 'pointercancel', 'lostpointercapture']) b.addEventListener(ev, () => { touch[k] = false; b.classList.remove('down'); });

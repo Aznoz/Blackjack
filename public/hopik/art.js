@@ -1,8 +1,8 @@
 // HOPÍK – grafika: všechno je nakreslené vektorově (zvířátka, terén, kusy, pasti, kulky, plameny, vlajka, pozadí) v jednotkách políček.
 // Volající nastaví transformaci canvasu tak, aby 1 jednotka = 1 políčko. Žádné emoji ani obrázky.
-import * as K from './shared.js?v=5';
-import { hatC, glassesC, bootC, backC } from './cosm.js?v=5';
-import * as P from './phys.js?v=5';
+import * as K from './shared.js?v=6';
+import { hatC, glassesC, bootC, backC } from './cosm.js?v=6';
+import * as P from './phys.js?v=6';
 const { COLS, ROWS } = K;
 export const INK = '#2b2118';
 export const SEAT = ['#ff5a4f', '#2f9cff', '#ffc928', '#46c46a'];          // barva místa u stolu (obrys jména, pecky na kusech)
