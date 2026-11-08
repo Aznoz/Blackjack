@@ -96,13 +96,14 @@ export function fxIconURL(id, size = 96) {
 }
 
 /** Ikona hole: šikmá tyč s hlavou, barva podle kvality. */
-const CLUB_COL = { '': ['#b98a52', '#d8d8d8'], iron: ['#9aa3ad', '#cfd6dd'], sand: ['#c9a65a', '#e6d28a'], driver: ['#6b7480', '#2b6fe0'], titan: ['#8fd0e8', '#d8f4ff'], goldclub: ['#e0b020', '#fff0a0'], plasma: ['#a24dff', '#4af0ff'] };
+const CLUB_COL = { '': ['#b98a52', '#d8d8d8'], iron: ['#9aa3ad', '#cfd6dd'], sand: ['#c9a65a', '#e6d28a'], driver: ['#6b7480', '#2b6fe0'], titan: ['#8fd0e8', '#d8f4ff'], goldclub: ['#e0b020', '#fff0a0'], plasma: ['#a24dff', '#4af0ff'], putter: ['#7d8791', '#f2f2f2'], wood: ['#8a5a2b', '#b9783a'], ruby: ['#c0183c', '#ff6b86'], diamond: ['#7fe6ff', '#ffffff'], dragon: ['#ff5a1a', '#ffd23a'] };
 export function clubIconURL(id, size = 96) {
   const key = 'cl' + id + size; if (iconCache.has(key)) return iconCache.get(key);
   const c = document.createElement('canvas'); c.width = c.height = size; const g = c.getContext('2d'); const s = size; const [shaft, head] = CLUB_COL[id] || CLUB_COL[''];
   const bg = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s * 0.7); bg.addColorStop(0, '#1d3a2c'); bg.addColorStop(1, '#0c1f17'); g.fillStyle = bg; g.beginPath(); g.arc(s / 2, s / 2, s / 2 - 1, 0, TAU); g.fill();
   g.save(); g.beginPath(); g.arc(s / 2, s / 2, s / 2 - 2, 0, TAU); g.clip();
-  if (id === 'plasma' || id === 'goldclub') { g.shadowColor = id === 'plasma' ? '#7a5cff' : '#ffd24a'; g.shadowBlur = 12; }
+  const GLOW = { plasma: '#7a5cff', goldclub: '#ffd24a', ruby: '#ff2a55', diamond: '#8ff0ff', dragon: '#ff7a1a' };
+  if (GLOW[id]) { g.shadowColor = GLOW[id]; g.shadowBlur = 12; }
   g.strokeStyle = shaft; g.lineWidth = s * 0.055; g.lineCap = 'round'; g.beginPath(); g.moveTo(s * 0.8, s * 0.14); g.lineTo(s * 0.34, s * 0.7); g.stroke();
   g.fillStyle = head; g.beginPath(); g.moveTo(s * 0.3, s * 0.66); g.lineTo(s * 0.46, s * 0.74); g.lineTo(s * 0.5, s * 0.84); g.lineTo(s * 0.18, s * 0.8); g.closePath(); g.fill(); g.shadowBlur = 0;
   g.fillStyle = '#fff'; g.beginPath(); g.arc(s * 0.62, s * 0.84, s * 0.07, 0, TAU); g.fill(); g.fillStyle = 'rgba(0,0,0,.12)'; g.beginPath(); g.arc(s * 0.64, s * 0.86, s * 0.05, 0, TAU); g.fill(); g.restore();

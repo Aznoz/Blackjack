@@ -40,7 +40,12 @@ export const CLUBS = [
   { id: 'driver', name: 'Driver', price: 400, pw: 1.12, aim: 1.1, sand: 1, desc: 'Silná rána na dlouhé jamky.' },
   { id: 'titan', name: 'Titanový driver', price: 700, pw: 1.18, aim: 1.25, sand: 1, desc: 'Silná rána a delší zaměřovač.' },
   { id: 'goldclub', name: 'Zlatá hůl', price: 1200, pw: 1.24, aim: 1.4, sand: 0.7, desc: 'Silná, dlouhý zaměřovač, písek méně brzdí.' },
-  { id: 'plasma', name: 'Plazmová hůl', price: 2000, pw: 1.3, aim: 1.6, sand: 0.5, desc: 'Nejsilnější rána, nejdelší zaměřovač.' },
+  { id: 'plasma', name: 'Plazmová hůl', price: 2000, pw: 1.3, aim: 1.6, sand: 0.5, desc: 'Velmi silná rána a dlouhý zaměřovač.' },
+  { id: 'putter', name: 'Přesný patr', price: 100, pw: 1.03, aim: 1.7, sand: 1, desc: 'Skoro stejná síla, ale hodně dlouhý zaměřovač.' },
+  { id: 'wood', name: 'Dřevěná pětka', price: 300, pw: 1.09, aim: 1.05, sand: 0.85, desc: 'Vyvážená hůl do každého terénu.' },
+  { id: 'ruby', name: 'Rubínová hůl', price: 1600, pw: 1.27, aim: 1.3, sand: 0.6, desc: 'Silná rána a písek skoro nevadí.' },
+  { id: 'diamond', name: 'Diamantová hůl', price: 3000, pw: 1.38, aim: 1.8, sand: 0.4, desc: 'Extrémní síla a dlouhý zaměřovač.' },
+  { id: 'dragon', name: 'Dračí hůl', price: 5000, pw: 1.5, aim: 2, sand: 0.3, desc: 'Absolutně nejsilnější hůl ze všech.' },
 ];
 export const BASE_CLUB = { id: '', name: 'Základní hůl', price: 0, pw: 1, aim: 1, sand: 1, desc: 'Obyčejná hůl, každý ji má.' };
 const LISTS = { skin: SKINS, fx: WINFX, club: CLUBS };
