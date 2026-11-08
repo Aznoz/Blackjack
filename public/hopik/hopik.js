@@ -1,10 +1,10 @@
 // HOPÍK – klient: menu s výběrem postavičky, čekárna, a hra (výběr kusu → pokládání → běh) na canvasu. Pohyb vlastní postavy se počítá tady v prohlížeči
 // (stejná fyzika jako na serveru, phys.js) a každých pár ticků se hlásí serveru; ostatní hráči se zobrazují z jeho snímků a mezi nimi se plynule dopočítávají.
-import * as K from './shared.js?v=7';
-import * as P from './phys.js?v=7';
-import * as A from './art.js?v=7';
-import { startScene, stopScene } from './scene.js?v=7';
-import { createMusic } from './music.js?v=7';
+import * as K from './shared.js?v=8';
+import * as P from './phys.js?v=8';
+import * as A from './art.js?v=8';
+import { startScene, stopScene } from './scene.js?v=8';
+import { createMusic } from './music.js?v=8';
 const { COLS, ROWS, TPS, CHARS, STAGES } = K;
 
 const CFG = window.HOPIK_CONFIG || {};
@@ -441,12 +441,13 @@ function renderHint() {
 
 // ------------------------------------------------------------------ výsledky kola a zápasu
 function rowHtml(i, extra) { const p = S.players[i]; return `<div class="orow${extra.win ? ' win' : ''}" style="--c:${A.SEAT[i]}"><img src="${A.portraitURL(p.char, 56, extra.win ? 'win' : '', p.cs)}" alt=""><div class="nm">${esc(p.name)}${i === me ? ' (ty)' : ''}<small>${extra.sub}</small>${extra.coins ? `<span class="cg">${coinI}+${extra.coins}</span>` : ''}${extra.bar !== undefined ? `<div class="bar"><i style="width:${clamp(extra.bar, 0, 100)}%"></i></div>` : ''}</div><span class="tot">${extra.tot}</span></div>`; }
+const winPts = (g) => (g && g.cfg && g.cfg.win) || K.WIN_POINTS;   // cíl zápasu podle nastavení místnosti (30 / 50 / 75 / 100)
 function showScore() {
   const g = GS; if (!g || !g.res || !S) return; const r = g.res;
-  $('sTitle').textContent = `Kolo ${r.n}`;
+  $('sTitle').textContent = `Kolo ${r.n} · cíl ${winPts(g)} bodů`;
   $('sNote').textContent = r.all ? 'Doběhli všichni, trať byla moc snadná. Za doběh se body nedávají.' : r.none ? 'Nikdo nedoběhl. Příště to zkus víc podrazit, ale ne zas tolik.' : '';
   const order = r.rows.map((x, i) => i).sort((a, b) => r.rows[b].total - r.rows[a].total || g.pts[b] - g.pts[a]);
-  $('sTable').innerHTML = order.map((i) => { const x = r.rows[i]; const parts = []; if (x.finish) parts.push('doběh +' + x.finish); if (x.first) parts.push('první +' + x.first); if (x.solo) parts.push('jediný +' + x.solo); if (x.kills) parts.push('pasti +' + x.kills); return rowHtml(i, { sub: `${x.fin ? 'v cíli' : 'nedoběhl'}${parts.length ? ' · ' + parts.join(', ') : ''} · celkem ${g.pts[i]} z ${K.WIN_POINTS}`, tot: '+' + x.total, bar: (g.pts[i] / K.WIN_POINTS) * 100, win: x.total > 0 && x.total === Math.max(...r.rows.map((y) => y.total)) }); }).join('');
+  $('sTable').innerHTML = order.map((i) => { const x = r.rows[i]; const parts = []; if (x.finish) parts.push('doběh +' + x.finish); if (x.first) parts.push('první +' + x.first); if (x.solo) parts.push('jediný +' + x.solo); if (x.kills) parts.push('pasti +' + x.kills); return rowHtml(i, { sub: `${x.fin ? 'v cíli' : 'nedoběhl'}${parts.length ? ' · ' + parts.join(', ') : ''} · celkem ${g.pts[i]} z ${winPts(g)}`, tot: '+' + x.total, bar: Math.min(100, (g.pts[i] / winPts(g)) * 100), win: x.total > 0 && x.total === Math.max(...r.rows.map((y) => y.total)) }); }).join('');
   $('sNext').textContent = g.over ? 'Zápas končí…' : 'Další kolo se chystá…';
   $('score').hidden = false; const mine = r.rows[me]; if (mine && mine.total > 0) sfx.win(); else if (mine && !mine.fin) sfx.lose();
 }
@@ -670,7 +671,7 @@ function frame(now) {
   // časomíra
   const left = secsLeft(); const showT = phase() === 'pick' || phase() === 'place' || phase() === 'run'; const tb = $('gTimer');
   tb.textContent = showT ? String(Math.max(0, Math.ceil(left))) : '·'; tb.parentElement.classList.toggle('low', showT && left <= 5 && left > 0);
-  $('gRound').textContent = `Kolo ${GS.round}${GS.bonus ? (GS.sub === 1 ? ' · bonus' : ' · bonus 2×') : ''}`;
+  $('gRound').textContent = `Kolo ${GS.round} · do ${winPts(GS)} b.${GS.bonus ? (GS.sub === 1 ? ' · bonus' : ' · bonus 2×') : ''}`;
   if (phase() === 'place') { if (placing()) { const ok = validPl(); if (ok !== pl.ok) { pl.ok = ok; } } renderHint(); }
   if (now - (frame.last || 0) > 400) { frame.last = now; renderChips(); }
   lastNow = now;

@@ -163,8 +163,9 @@ function endRun(g) {
   g.roundRes = { n: g.round, rows, all, none: fins.length === 0 };
   g.history.push(g.roundRes);
   const top = Math.max(...g.players.map((p) => p.pts)); let leaders = g.players.filter((p) => p.pts === top);
-  if (top >= g.cfg.win && leaders.length > 1) {   // remíza v cíli: rozhodne víc bodů z posledního kola, pak víc doběhů v zápase; zůstane-li shoda, hraje se dál
-    const key = [(p) => rows[p.i].total, (p) => g.history.filter((h) => h.rows[p.i] && h.rows[p.i].fin).length];
+  if (top >= g.cfg.win && leaders.length > 1) {   // remíza v cíli: rozhodne víc bodů z posledního kola, pak víc doběhů, víc bodů za pasti a víc prvních míst; zůstane-li shoda, hraje se dál
+    const sumH = (p, f) => g.history.reduce((a, h) => a + (h.rows[p.i] ? f(h.rows[p.i]) : 0), 0);
+    const key = [(p) => rows[p.i].total, (p) => sumH(p, (r) => (r.fin ? 1 : 0)), (p) => sumH(p, (r) => r.kills), (p) => sumH(p, (r) => (r.first ? 1 : 0))];
     for (const f of key) { const m = Math.max(...leaders.map(f)); leaders = leaders.filter((p) => f(p) === m); if (leaders.length === 1) break; }
   }
   if ((top >= g.cfg.win && leaders.length === 1) || g.round >= g.cfg.rounds || active(g).filter((p) => !p.bot).length === 0) g.over = { winner: leaders.length === 1 ? leaders[0].i : -1, pts: g.players.map((p) => p.pts), rounds: g.round };
