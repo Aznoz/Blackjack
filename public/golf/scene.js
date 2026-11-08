@@ -1,7 +1,7 @@
 // MINIGOLF – 3D scéna (three.js): stavba jamky z mapy (terén po vrcholech, zdi, voda/láva, překážky, vlajka), míčky se jmenovkami, částice, kamera.
 // Fyzika je v phys.js (stejná jako na serveru), tady se jen kreslí. Všechno se kreslí z dat, žádné obrázky.
 import * as THREE from './vendor/three.module.min.js';
-import * as P from './phys.js?v=2';
+import * as P from './phys.js?v=3';
 
 const rgb = (h) => new THREE.Color(h);
 // Vzhled prostředí: nebe (nahoře, u obzoru), mlha, barvy podlahy, písku, ledu, zdí, tekutiny, okolí a doplňky.
@@ -25,7 +25,7 @@ const glowTex = canvasTex(64, 64, (g, w, h) => { const r = g.createRadialGradien
 
 export function createScene(canvas, opts = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, opts.maxDpr || 2)); renderer.localClippingEnabled = true;   // míček klesající do jamky se u země ořízne
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, opts.maxDpr || 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace; renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.05;
   let shadows = opts.shadows !== false; renderer.shadowMap.enabled = shadows; renderer.shadowMap.type = THREE.PCFShadowMap;
   const scene = new THREE.Scene(); const cam = new THREE.PerspectiveCamera(55, 1, 0.1, 600);
@@ -69,6 +69,11 @@ export function createScene(canvas, opts = {}) {
     }
     const gGeo = new THREE.BufferGeometry(); gGeo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3)); gGeo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3)); gGeo.computeVertexNormals();
     const ground = new THREE.Mesh(gGeo, std({ vertexColors: true, roughness: world.theme === 'ice' ? 0.3 : 0.95 })); ground.receiveShadow = true; holeGroup.add(ground);
+    ground.material.onBeforeCompile = (sh) => {   // skutečná díra v zemi: fragmenty uvnitř jamky se zahodí
+      sh.uniforms.uCup = { value: new THREE.Vector2(W.cup[0], W.cup[1]) }; sh.uniforms.uCupR = { value: P.CUP_R };
+      sh.vertexShader = 'varying vec2 vWxz;\n' + sh.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\n vWxz = (modelMatrix * vec4(transformed, 1.0)).xz;');
+      sh.fragmentShader = 'varying vec2 vWxz; uniform vec2 uCup; uniform float uCupR;\n' + sh.fragmentShader.replace('void main() {', 'void main() {\n if (distance(vWxz, uCup) < uCupR) discard;');
+    };
     if (hpos.length) {
       const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(hpos, 3)); hg.setAttribute('uv', new THREE.Float32BufferAttribute(huv, 2)); hg.computeVertexNormals();
       const lava = world.theme === 'lava'; const lt = liquidTex(lava ? '#ff6a1a' : '#' + rgb(th.liq).getHexString(), lava ? '#ffd24a' : '#bfe6ff'); const lm = std({ map: lt, emissive: rgb(th.liqEm), emissiveIntensity: lava ? 0.9 : 0.25, roughness: 0.25, transparent: !lava, opacity: lava ? 1 : 0.92 });
@@ -101,8 +106,12 @@ export function createScene(canvas, opts = {}) {
     const [tx, tz] = W.tee; const tHeight = P.heightAt(W, tx, tz).y;
     const mat = new THREE.Mesh(new THREE.CircleGeometry(0.36, 28), bas({ map: canvasTex(64, 64, (g, ww, hh) => { g.fillStyle = 'rgba(255,255,255,.9)'; g.beginPath(); g.arc(32, 32, 30, 0, 7); g.fill(); g.fillStyle = 'rgba(0,0,0,.18)'; g.beginPath(); g.arc(32, 32, 22, 0, 7); g.fill(); }), transparent: true, depthWrite: false })); mat.rotation.x = -Math.PI / 2; mat.position.set(tx, tHeight + 0.012, tz); holeGroup.add(mat);
     const [cxp, czp] = W.cup; const cH = P.heightAt(W, cxp, czp).y;
-    const hole = new THREE.Mesh(new THREE.CircleGeometry(P.CUP_R * 1.25, 28), bas({ color: 0x0b0b10 })); hole.rotation.x = -Math.PI / 2; hole.position.set(cxp, cH + 0.014, czp); holeGroup.add(hole);
-    const rim = new THREE.Mesh(new THREE.RingGeometry(P.CUP_R * 1.25, P.CUP_R * 1.55, 28), bas({ color: 0xffffff, transparent: true, opacity: 0.85 })); rim.rotation.x = -Math.PI / 2; rim.position.set(cxp, cH + 0.013, czp); holeGroup.add(rim);
+    // jamka: plastový kalíšek zapuštěný do země (světlé stěny, ke dnu tmavší, žádná černá), bílý okraj
+    { const D = P.CUP_DEPTH, R = P.CUP_R; const cg = new THREE.CylinderGeometry(R, R, D, 36, 1, true); const cc = []; const pa = cg.attributes.position;
+      for (let i = 0; i < pa.count; i++) { const k = 0.38 + 0.62 * ((pa.getY(i) + D / 2) / D); cc.push(0.9 * k, 0.92 * k, 0.94 * k); } cg.setAttribute('color', new THREE.Float32BufferAttribute(cc, 3));
+      const wall = new THREE.Mesh(cg, std({ vertexColors: true, side: THREE.BackSide, roughness: 0.8 })); wall.position.set(cxp, cH - D / 2 - 0.001, czp); holeGroup.add(wall);
+      const bot = new THREE.Mesh(new THREE.CircleGeometry(R, 36), std({ color: 0x6f757b, roughness: 0.9 })); bot.rotation.x = -Math.PI / 2; bot.position.set(cxp, cH - D, czp); holeGroup.add(bot);
+      const rim = new THREE.Mesh(new THREE.RingGeometry(R - 0.004, R + 0.045, 36), bas({ color: 0xf6f6f0 })); rim.rotation.x = -Math.PI / 2; rim.position.set(cxp, cH + 0.004, czp); holeGroup.add(rim); }
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, 1.5, 8), std({ color: 0xf2f2f2 })); pole.position.set(cxp + 0.04, cH + 0.75, czp); pole.castShadow = true; holeGroup.add(pole);
     const fg = new THREE.PlaneGeometry(0.62, 0.36, 8, 1); fg.translate(0.31, 0, 0); const fm = std({ color: th.flag, side: THREE.DoubleSide, roughness: 0.6 }); flag = new THREE.Mesh(fg, fm); flag.position.set(cxp + 0.05, cH + 1.34, czp); flag.castShadow = true; holeGroup.add(flag);
     const gold = new THREE.Mesh(new THREE.SphereGeometry(0.04, 10, 8), std({ color: 0xffd24a, metalness: 0.6, roughness: 0.3 })); gold.position.set(cxp + 0.04, cH + 1.52, czp); holeGroup.add(gold);
@@ -208,10 +217,7 @@ export function createScene(canvas, opts = {}) {
   function moveBall(i, x, z, vis = 1, alpha) {
     const b = balls[i]; if (!b) return; const hh = P.heightAt(W, x, z).y; if (b.px !== null) { const dx = x - b.px, dz = z - b.pz, d = Math.hypot(dx, dz); if (d > 1e-5 && d < 2) { const axis = new THREE.Vector3(dz, 0, -dx).normalize(); b.q.premultiply(new THREE.Quaternion().setFromAxisAngle(axis, d / P.BR)); b.mesh.quaternion.copy(b.q); } }
     b.px = x; b.pz = z; b.x = x; b.z = z; b.g.visible = vis > 0; b.g.position.set(x, hh, z); b.mesh.position.y = P.BR - b.sink; b.sh.position.y = 0.012;
-    // klesání do jamky: část míčku pod úrovní země se ořízne a míček se kreslí přes tmavý kruh jamky, takže vypadá, že padá dovnitř
-    const sk = b.sink > 0.002; if (sk !== !!b.sinking) { b.sinking = sk; b.mat.depthTest = !sk; b.mat.clippingPlanes = sk ? [b.clip || (b.clip = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0))] : null; b.mesh.renderOrder = sk ? 8 : 0; b.mat.needsUpdate = true; }
-    if (sk) { b.clip.constant = -hh; const dk = Math.max(0.25, 1 - b.sink * 2.6); b.mat.color.setScalar(dk); b.mat.emissiveIntensity = 0.12 * dk; } else if (b.sinking === false && b.mat.color.r !== 1) { b.mat.color.setScalar(1); b.mat.emissiveIntensity = 0.12; }
-    if (alpha !== undefined) b.mat.opacity = alpha; b.sh.visible = vis > 0 && !sk;
+    if (alpha !== undefined) b.mat.opacity = alpha; b.sh.visible = vis > 0 && b.sink < 0.03;
   }
   const dots = []; const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false }); for (let i = 0; i < 16; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), dotMat.clone()); m.visible = false; m.renderOrder = 15; scene.add(m); dots.push(m); }
   const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false })); arrow.visible = false; arrow.renderOrder = 15; scene.add(arrow);

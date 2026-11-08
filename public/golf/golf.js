@@ -1,9 +1,9 @@
 // MINIGOLF – klient: menu, čekárna a hra. 3D scéna je v scene.js (three.js), fyzika míčku v phys.js (stejná jako na serveru): míček hráče se počítá tady v prohlížeči
 // a hlásí se serveru, ostatní míčky se dopočítávají z jeho snímků. Ovládání: táhni prstem dozadu a pusť (prak), kamera je za míčkem a jde otáčet.
-import * as K from './shared.js?v=2';
-import * as P from './phys.js?v=2';
-import * as C from './courses.js?v=2';
-import { createScene } from './scene.js?v=2';
+import * as K from './shared.js?v=3';
+import * as P from './phys.js?v=3';
+import * as C from './courses.js?v=3';
+import { createScene } from './scene.js?v=3';
 
 const CFG = window.GOLF_CONFIG || {};
 const $ = (id) => document.getElementById(id);
@@ -159,7 +159,7 @@ function onMsg(m) {
     case 'state': return onState(m);
     case 'game': return onGame(m);
     case 'tk': return onTick(m);
-    case 'nosink': if (ball) { ball.sunk = false; sunkLocal = false; } return;
+    case 'nosink': if (ball) { ball.sunk = false; sunkLocal = false; ball.y = P.BR; ball.vy = 0; respawnAt = performance.now() + 50; sinkT[me] = 0; } return;
     default:
   }
 }
@@ -256,10 +256,10 @@ function previewLobby(c) { previewHole(c); }
 
 // ------------------------------------------------------------------ hra: stav
 let W = null, DF = null, ball = null, strokes = 0, lastShot = null, sunkLocal = false, doneSrv = 0, respawnAt = 0, acc = 0, lastRep = 0, lastMv = false, lastTick = 0, ccount = -1;
-const SINK_S = 0.65; let sinkFrom = [];
+let cups = [];   // míčky ostatních, které padají do jamky (stejná fyzika jako u mého míčku)
 let others = []; let holeT0 = 0, snapR = 0, scoreEnds = 0, sinkT = [];
 const tObs = () => (Date.now() + offset - holeT0) / 1000;
-let yaw = 0, yawGoal = null, zoom = 1, topView = false, camInit = false, rotHold = 0; const camP = { x: 0, y: 5, z: 0 }, camL = { x: 0, y: 0, z: 0 };
+let yaw = 0, pitch = 0.64, yawGoal = null, zoom = 1, topView = false, camInit = false, rotHold = 0; const camP = { x: 0, y: 5, z: 0 }, camL = { x: 0, y: 0, z: 0 };
 let paused = false;
 
 function hintYaw(x, z) {   // směr po nejkratší cestě k jamce (kamera se po ráně otočí tím směrem)
@@ -275,7 +275,7 @@ function hintYaw(x, z) {   // směr po nejkratší cestě k jamce (kamera se po 
 function setupHole() {
   W = P.buildWorld(C.holeDef(GS.c, GS.k)); DF = P.distField(W); previewKey = ''; V.setHole(W);
   V.setBalls(S.players.map((p, i) => ({ color: colorHex(p.color), name: p.name, mine: i === me })));
-  ball = P.newBall(W.tee[0], W.tee[1]); strokes = 0; lastShot = { x: W.tee[0], z: W.tee[1] }; sunkLocal = false; doneSrv = 0; respawnAt = 0; acc = 0; lastMv = false; sinkT = S.players.map(() => 0); sinkFrom = S.players.map(() => null);
+  ball = P.newBall(W.tee[0], W.tee[1]); strokes = 0; lastShot = { x: W.tee[0], z: W.tee[1] }; sunkLocal = false; doneSrv = 0; respawnAt = 0; acc = 0; lastMv = false; sinkT = S.players.map(() => 0); cups = S.players.map(() => null);
   others = S.players.map(() => ({ x: W.tee[0], z: W.tee[1], rx: W.tee[0], rz: W.tee[1], vx: 0, vz: 0, m: 0, s: 0, d: 0, recv: 0 }));
   yaw = hintYaw(W.tee[0], W.tee[1]); yawGoal = null; camInit = false; $('banner').hidden = true; $('scoreOv').hidden = true;
   for (let i = 0; i < S.players.length; i++) V.moveBall(i, W.tee[0], W.tee[1], 1);
@@ -307,7 +307,7 @@ function onEvent(e) {
   else if (k === 'pen') { if (i !== me) { const o = others[i]; V.fx.splash(o.rx, o.rz); sfx.splash(); } }
   else if (k === 'fin') {
     if (i === me) { doneSrv = e[2] ? 2 : 1; if (!e[2] && !sunkLocal) { banner(`Míček zvednut<small>${GS.cap} ran – nestíhal(a) jsi</small>`, 2600); sfx.bad(); } }
-    else { const o = others[i]; if (e[2]) { sinkFrom[i] = [o.rx, o.rz]; sinkT[i] = 0.001; V.fx.confetti(W.cup[0], W.cup[1]); sfx.cup(); toast(`${p.name} dokončil(a) jamku za ${e[3]}`, 1800); } else { sinkT[i] = -1; toast(`${p.name} zvedl(a) míček`, 1800); } }
+    else { const o = others[i]; if (e[2]) { startCup(i, o); V.fx.confetti(W.cup[0], W.cup[1]); sfx.cup(); toast(`${p.name} dokončil(a) jamku za ${e[3]}`, 1800); } else { sinkT[i] = -1; toast(`${p.name} zvedl(a) míček`, 1800); } }
   }
 }
 function banner(html, ms = 2200) { const b = $('banner'); b.innerHTML = html; b.hidden = false; b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; clearTimeout(banner.t); banner.t = setTimeout(() => { b.hidden = true; }, ms); }
@@ -316,22 +316,28 @@ const scoreWord = (s, par) => (s === 1 ? 'Hole in one!' : s - par <= -3 ? 'Albat
 // ------------------------------------------------------------------ hra: fyzika vlastního míčku
 const canShoot = () => !!(GS && GS.ph === 'play' && ball && V && P.isRest(ball) && !sunkLocal && !doneSrv && strokes < GS.cap && !respawnAt && !paused && tObs() >= 0);
 function stepMine(dt) {
-  if (!ball || sunkLocal || !GS || GS.ph !== 'play' || respawnAt) return;
+  if (!ball || !GS || respawnAt || (!sunkLocal && GS.ph !== 'play')) return;
   acc = Math.min(acc + dt, 0.1); let n = 0; const t = tObs();
   while (acc >= P.DT && n < 14) {
-    acc -= P.DT; n++; const ev = P.stepBall(W, ball, t - acc);
+    acc -= P.DT; n++; if (sunkLocal) { P.stepBall(W, ball, 0); continue; } const ev = P.stepBall(W, ball, t - acc);
     if (ball.hit > 0.9) { const nw = performance.now(); if (nw - lastTick > 70) { lastTick = nw; if (ball.hk === 'b') { sfx.boing(); V.fx.sparks(ball.x, ball.z, 0xff7a9a); } else { sfx.tick(clamp(ball.hit / 10, 0, 1)); if (ball.hit > 3) V.fx.sparks(ball.x, ball.z, 0xffffff); } } }
     if (ev === 'sink') { onSink(); return; }
     if (ev === 'hz') { onWater(); return; }
     if (ev === 'tp') { sfx.tele(); V.fx.tele(ball.x, ball.z, 0xd9a0ff); }
   }
 }
-function sinkPose(i, fb) {   // míček dojede do středu jamky a klesne do ní; vrací polohu a hloubku
-  const f = sinkFrom[i] || fb; const u = clamp(sinkT[i] / SINK_S, 0, 1); const kk = clamp(u / 0.42, 0, 1); const k = 1 - (1 - kk) * (1 - kk); const dd = clamp((u - 0.1) / 0.9, 0, 1);
-  return { x: lerp(f[0], W.cup[0], k), z: lerp(f[1], W.cup[1], k), depth: dd * dd * (P.BR * 2 + 0.1), vis: u < 1 ? 1 : 0 };
+function startCup(i, o) {   // míček soupeře dojede k jamce a spadne do ní vlastní tíhou
+  const cb = P.newBall(o.rx, o.rz); const dx = W.cup[0] - o.rx, dz = W.cup[1] - o.rz, dc = Math.hypot(dx, dz) || 1;
+  if (dc > 0.5) { cb.x = W.cup[0] - dx / dc * 0.5; cb.z = W.cup[1] - dz / dc * 0.5; }
+  const sp = clamp(Math.hypot(o.vx, o.vz), 2, 4.5); cb.vx = dx / dc * sp; cb.vz = dz / dc * sp; cb.still = 0; cb.acc = 0; cb.age = 0; cups[i] = cb; sinkT[i] = 0.001;
+}
+function stepCup(cb, dt) {
+  cb.age += dt; cb.acc = Math.min(cb.acc + dt, 0.1);
+  if (!cb.sunk && cb.age > 1.4) { cb.x = W.cup[0]; cb.z = W.cup[1]; cb.vx = cb.vz = 0; cb.y = P.BR + 0.02; }   // kdyby se míček přes jamku jen odrazil, stejně ho tam dostaneme
+  while (cb.acc >= P.DT) { cb.acc -= P.DT; P.stepBall(W, cb, 0); }
 }
 function onSink() {
-  sunkLocal = true; sinkT[me] = 0.001; sinkFrom[me] = [ball.sx !== undefined ? ball.sx : W.cup[0], ball.sz !== undefined ? ball.sz : W.cup[1]]; V.fx.confetti(W.cup[0], W.cup[1]); sendMsg({ t: 'sink', x: ball.x, z: ball.z });
+  sunkLocal = true; V.fx.confetti(W.cup[0], W.cup[1]); sendMsg({ t: 'sink', x: ball.x, z: ball.z });
   const ace = strokes === 1; (ace ? sfx.ace : sfx.cup)(); banner(`${scoreWord(strokes, GS.par)}<small>${strokes} ${strokes === 1 ? 'rána' : strokes < 5 ? 'rány' : 'ran'} · par ${GS.par}</small>`, 2800);
   sendRep(true);
 }
@@ -357,18 +363,22 @@ function pullVec() {
   return { ok, p, dx: c * fw - s * rg, dz: s * fw + c * rg };
 }
 glc.addEventListener('contextmenu', (e) => e.preventDefault());
+function ballHit(e) {   // je prst/myš na míčku? (jen odtud se dá střílet, jinde se otáčí kamera)
+  if (!ball || !W) return false; const gy = P.heightAt(W, ball.x, ball.z).y + P.BR; const [sx, sy] = V.project(ball.x, gy, ball.z, innerWidth, innerHeight);
+  const r = (e.pointerType === 'mouse' ? 40 : 58) / Math.sqrt(zoom); return Math.hypot(e.clientX - sx, e.clientY - sy) <= r;
+}
 glc.addEventListener('pointerdown', (e) => {
   if (screen !== 'game' || !GS) return; audio(); try { glc.setPointerCapture(e.pointerId); } catch (x) { /* nic */ }
-  if (e.pointerType === 'mouse' && e.button !== 0) { ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, cam: true }); return; }
-  const cam = pull !== null || ptr.size > 0 || !canShoot(); ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, cam });
-  if (!cam) pull = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 };
+  const shoot0 = (e.pointerType !== 'mouse' || e.button === 0) && pull === null && ptr.size === 0 && canShoot() && ballHit(e);
+  ptr.set(e.pointerId, { x: e.clientX, y: e.clientY, cam: !shoot0 });
+  if (shoot0) { pull = { id: e.pointerId, x0: e.clientX, y0: e.clientY, dx: 0, dy: 0 }; $('tip').hidden = true; }
 });
 glc.addEventListener('pointermove', (e) => {
   const p = ptr.get(e.pointerId); if (!p) return;
   if (p.cam) {
     const cams = [...ptr.values()].filter((q) => q.cam);
     if (cams.length >= 2) { const o = cams.find((q) => q !== p); const d0 = Math.hypot(p.x - o.x, p.y - o.y), d1 = Math.hypot(e.clientX - o.x, e.clientY - o.y); if (d0 > 8 && d1 > 8) zoom = clamp(zoom * d0 / d1, 0.55, 2.2); }
-    yaw -= (e.clientX - p.x) * 0.0065; yawGoal = null; p.x = e.clientX; p.y = e.clientY; return;
+    yaw -= (e.clientX - p.x) * 0.0065; pitch = clamp(pitch + (e.clientY - p.y) * 0.004, 0.28, 1.3); yawGoal = null; p.x = e.clientX; p.y = e.clientY; return;
   }
   if (pull && pull.id === e.pointerId) { pull.dx = e.clientX - pull.x0; pull.dy = e.clientY - pull.y0; }
 });
@@ -394,7 +404,7 @@ function updateCamera(dt) {
   if (!W) return; const k = 1 - Math.exp(-dt * 7); const cx = W.w / 2, cz = W.h / 2; let px, py, pz, lx, ly, lz; const up = V.cam.up;
   const bx = ball ? ball.x : W.tee[0], bz = ball ? ball.z : W.tee[1]; const gh = (x, z) => P.heightAt(W, x, z).y;
   const ph = GS ? GS.ph : 'score'; const f = [Math.cos(yaw), Math.sin(yaw)];
-  const behind = () => { const d = 5.4 * zoom, pitch = 0.64; return { px: bx - f[0] * d * Math.cos(pitch), py: gh(bx, bz) + 0.2 + d * Math.sin(pitch), pz: bz - f[1] * d * Math.cos(pitch), lx: bx + f[0] * 1.4, ly: gh(bx, bz) + 0.1, lz: bz + f[1] * 1.4 }; };
+  const behind = () => { const d = 5.4 * zoom; return { px: bx - f[0] * d * Math.cos(pitch), py: gh(bx, bz) + 0.2 + d * Math.sin(pitch), pz: bz - f[1] * d * Math.cos(pitch), lx: bx + f[0] * 1.4, ly: gh(bx, bz) + 0.1, lz: bz + f[1] * 1.4 }; };
   let tgt; up.set(0, 1, 0);
   if (ph === 'intro' && GS) {
     const u = clamp(1 + tObs() / K.INTRO_S, 0, 1); const e = u * u * (3 - 2 * u); const b = behind(); const R = Math.max(W.w, W.h); const hf = Math.atan2(W.cup[1] - W.tee[1], W.cup[0] - W.tee[0]);
@@ -414,12 +424,12 @@ function updateOthers(dt) {
   if (!GS || !S) return; const now = performance.now();
   S.players.forEach((p, i) => {
     if (i === me) return; const o = others[i]; if (!o) return; let vis = 1;
-    let pose = null; if (sinkT[i] > 0) { sinkT[i] += dt; pose = sinkPose(i, [o.rx, o.rz]); vis = pose.vis; }
+    const cb = sinkT[i] > 0 ? cups[i] : null; if (cb) { sinkT[i] += dt; stepCup(cb, dt); o.rx = cb.x; o.rz = cb.z; }
     else if (sinkT[i] < 0 || o.d === 1 || p.left) vis = 0;
     else if (o.d === 2) vis = 0;
     else { const age = Math.min(0.3, (now - o.recv) / 1000); const tx = o.m ? o.x + o.vx * age : o.x, tz = o.m ? o.z + o.vz * age : o.z; const k = 1 - Math.exp(-dt * (o.m ? 16 : 10)); o.rx = lerp(o.rx, tx, k); o.rz = lerp(o.rz, tz, k); }
-    const b = V.balls[i]; if (b) b.sink = pose ? pose.depth : 0;
-    if (pose) V.moveBall(i, pose.x, pose.z, vis); else V.moveBall(i, o.rx, o.rz, vis);
+    const b = V.balls[i]; if (b) b.sink = cb ? P.BR - cb.y : 0;
+    V.moveBall(i, o.rx, o.rz, vis);
   });
 }
 let hudT = 0, perfAcc = 0, perfN = 0, lowQ = false;
@@ -438,11 +448,10 @@ function frame(now) {
   if (screen === 'game' && GS && W) {
     if (rotHold || keys.has('ArrowLeft') || keys.has('KeyA') || keys.has('ArrowRight') || keys.has('KeyD')) { const d = rotHold || ((keys.has('ArrowRight') || keys.has('KeyD') ? 1 : 0) - (keys.has('ArrowLeft') || keys.has('KeyA') ? 1 : 0)); yaw += d * 1.9 * dt; yawGoal = null; }
     if (yawGoal !== null) { const d = angDiff(yaw, yawGoal); yaw += d * Math.min(1, dt * 4.5); if (Math.abs(d) < 0.01) yawGoal = null; }
-    if (respawnAt && performance.now() >= respawnAt) { respawnAt = 0; ball.x = lastShot.x; ball.z = lastShot.z; ball.vx = ball.vz = 0; ball.still = 99; ball.sunk = false; sinkT[me] = 0; sendRep(true); yawGoal = hintYaw(ball.x, ball.z); }
+    if (respawnAt && performance.now() >= respawnAt) { respawnAt = 0; ball.x = lastShot.x; ball.z = lastShot.z; ball.vx = ball.vz = 0; ball.y = P.BR; ball.vy = 0; ball.still = 99; ball.sunk = false; sinkT[me] = 0; sendRep(true); yawGoal = hintYaw(ball.x, ball.z); }
     const wasMoving = ball && !P.isRest(ball); stepMine(dt); if (ball && !sunkLocal && GS.ph === 'play' && !respawnAt) { sendRep(false); if (wasMoving && P.isRest(ball)) { yawGoal = hintYaw(ball.x, ball.z); sendRep(true); } }
-    if (sinkT[me] > 0) sinkT[me] += dt;
-    const mb = V.balls[me]; const mp = sinkT[me] > 0 ? sinkPose(me, [ball.x, ball.z]) : null; if (mb) mb.sink = mp ? mp.depth : 0;
-    if (mp) V.moveBall(me, mp.x, mp.z, mp.vis); else V.moveBall(me, ball.x, ball.z, sinkT[me] < 0 ? 0 : 1);
+    const mb = V.balls[me]; if (mb) mb.sink = P.BR - ball.y;
+    V.moveBall(me, ball.x, ball.z, sinkT[me] < 0 ? 0 : 1);
     if (pull) { const v = pullVec(); if (v && v.ok && canShoot()) { V.aim(true, ball.x, ball.z, v.dx, v.dz, v.p); $('power').hidden = false; $('pFill').style.width = v.p * 100 + '%'; $('pTxt').textContent = Math.round(v.p * 100) + ' %'; } else { V.aim(false); $('power').hidden = true; } }
     updateOthers(dt);
   } else if (screen !== 'game' && W) { preview = preview || { a: 0 }; preview.a += dt * 0.13; const cx = W.w / 2, cz = W.h / 2, R = Math.max(W.w, W.h) * 0.62 + 5; V.cam.up.set(0, 1, 0); V.cam.position.set(cx + Math.cos(preview.a) * R, R * 0.62 + 2.5, cz + Math.sin(preview.a) * R * 0.8); V.cam.lookAt(cx, 0, cz); V.aim(false); }
@@ -479,6 +488,6 @@ function renderOver() {
 }
 
 // ------------------------------------------------------------------ start
-window.__golf = { get S() { return S; }, get GS() { return GS; }, get ball() { return ball; }, get W() { return W; }, get strokes() { return strokes; }, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, shoot, canShoot, get me() { return me; }, tObs };
+window.__golf = { get V() { return V; }, get S() { return S; }, get GS() { return GS; }, get ball() { return ball; }, get W() { return W; }, get strokes() { return strokes; }, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, shoot, canShoot, get me() { return me; }, tObs };
 syncAudioUi(); refreshProfile();
 const saved = SS.get('golf_room'); if (saved) { try { const r = JSON.parse(saved); connect().then(() => sendMsg({ t: 'resume', code: r.code, token: r.token })).catch(() => SS.del('golf_room')); } catch (e) { SS.del('golf_room'); } }

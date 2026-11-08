@@ -4,7 +4,7 @@
 // Pohyblivé překážky jsou čisté funkce času t (sekundy od začátku jamky), takže se mezi hráči nic neposílá.
 export const DT = 1 / 120;                 // krok fyziky
 export const BR = 0.17;                    // poloměr míčku
-export const CUP_R = 0.27, CUP_V = 4.5;    // jamka: míček do ní spadne, když je blíž než CUP_R a pomalejší než CUP_V
+export const CUP_R = 0.32, CUP_DEPTH = 0.4, GF = 30;   // jamka: skutečná díra (poloměr, hloubka); míček v ní padá vlastní tíhou (GF = tíže při pádu)
 export const VMIN = 1.0, VMAX = 19;        // rychlost míčku po ráně (síla 0–1)
 export const POW_K = 1.4;                  // křivka síly: jemné údery na krátko zůstávají snadné, plná síla je opravdu rychlá
 export const powV = (p) => VMIN + (VMAX - VMIN) * Math.pow(Math.max(0, Math.min(1, p)), POW_K);
@@ -76,7 +76,7 @@ export const gateUp = (o, t) => { const p = ((t / o.per + (o.ph || 0)) % 1 + 1) 
 export function gateLift(o, t) { const p = ((t / o.per + (o.ph || 0)) % 1 + 1) % 1, d = o.duty ?? 0.5, e = 0.06; if (p < d - e) return 1; if (p < d) return (d - p) / e; if (p < 1 - e) return 0; return 0; }
 
 // ------------------------------------------------------------------ míček
-export const newBall = (x, z) => ({ x, z, vx: 0, vz: 0, still: 99, sunk: false, tw: 0, hit: 0, hk: '' });
+export const newBall = (x, z) => ({ x, z, vx: 0, vz: 0, y: BR, vy: 0, still: 99, sunk: false, tw: 0, hit: 0, hk: '' });
 export const speedOf = (b) => Math.hypot(b.vx, b.vz);
 export const isRest = (b) => b.still >= 12 && !b.sunk;
 /** Rána: úhel (radiány, 0 = +x, π/2 = +z) a síla 0–1. */
@@ -104,20 +104,44 @@ function segDist(b, s) {   // nejbližší bod úsečky k míčku
   const abx = s[2] - s[0], abz = s[3] - s[1]; const l2 = abx * abx + abz * abz || 1e-9; let u = ((b.x - s[0]) * abx + (b.z - s[1]) * abz) / l2; u = Math.max(0, Math.min(1, u)); return [s[0] + abx * u, s[1] + abz * u];
 }
 
+
+/** Míček u jamky: skutečné 3D. Jamka je válcová díra v zemi (poloměr CUP_R, hloubka CUP_DEPTH). Míček je koule, která se opírá o okraj (kružnici), když je jeho střed nad dírou,
+ * a padá, jakmile střed přejde dovnitř; uvnitř naráží do stěny a odskakuje od dna. Všechno se počítá v rovině (vzdálenost od osy jamky, výška středu míčku nad zemí). */
+function cupStep(W, b) {
+  const dx = b.x - W.cup[0], dz = b.z - W.cup[1]; let d = Math.hypot(dx, dz); const rx = d > 1e-6 ? dx / d : 1, rz = d > 1e-6 ? dz / d : 0;
+  let vr = b.vx * rx + b.vz * rz; const vt = -b.vx * rz + b.vz * rx;
+  b.vy -= GF * DT; b.y += b.vy * DT;
+  const R = CUP_R;
+  if (d >= R) { if (b.y < BR) { b.y = BR; if (b.vy < 0) b.vy = 0; } }          // rovná zem kolem jamky
+  if (b.y >= 0 && d < R + BR) {                                                  // okraj jamky (kružnice poloměru R ve výšce země)
+    const dr = d - R, dist = Math.hypot(dr, b.y);
+    if (dist < BR) {
+      const nr = dist > 1e-6 ? dr / dist : 0, ny = dist > 1e-6 ? b.y / dist : 1;
+      d = R + nr * BR; b.y = ny * BR; const vn = vr * nr + b.vy * ny;
+      if (vn < 0) { const e = vn < -1.5 ? 0.3 : 0; vr -= (1 + e) * vn * nr; b.vy -= (1 + e) * vn * ny; }
+    }
+  } else if (b.y < 0) {                                                          // uvnitř díry: stěna válce
+    if (d > R - BR) { d = R - BR; if (vr > 0) vr = -vr * 0.3; }
+    const yb = -CUP_DEPTH + BR;
+    if (b.y < yb) { b.y = yb; b.vy = b.vy < -1.2 ? -b.vy * 0.3 : 0; }
+    if (b.y <= yb + 1e-6) { const k = Math.max(0, 1 - 7 * DT); vr *= k; b.vx *= k; b.vz *= k; if (Math.hypot(vr, vt) < 0.05) { vr = 0; b.vx = 0; b.vz = 0; } }
+  }
+  b.x = W.cup[0] + rx * d; b.z = W.cup[1] + rz * d;
+  const tx = -rz, tz = rx; const vtt = b.y <= -CUP_DEPTH + BR + 1e-6 ? vt * Math.max(0, 1 - 7 * DT) : vt;
+  b.vx = vr * rx + vtt * tx; b.vz = vr * rz + vtt * tz;
+}
+
 /** Jeden krok fyziky (DT). t = čas jamky v sekundách. Vrací událost: 'sink' (v jamce), 'hz' (spadl do vody/lávy), 'tp' (teleport) nebo null. */
 export function stepBall(W, b, t) {
-  if (b.sunk) return null;
+  if (b.sunk) { cupStep(W, b); return null; }
   b.hit = 0; b.hk = '';
   const hh = heightAt(W, b.x, b.z); let ax = -G * hh.gx, az = -G * hh.gz;
   const ty = cellType(W, b.x, b.z);
   const bo = BOOST[ty]; if (bo && b.vx * bo[0] + b.vz * bo[1] < BOOST_V) { ax += bo[0] * BOOST_A; az += bo[1] * BOOST_A; }
   for (const o of W.objs) if (o.k === 'wind' && b.x > o.x - o.w / 2 && b.x < o.x + o.w / 2 && b.z > o.z - o.d / 2 && b.z < o.z + o.d / 2) { ax += o.ax; az += o.az; }
-  // přitahování k jamce, když se míček plouží kolem
-  const cdx = W.cup[0] - b.x, cdz = W.cup[1] - b.z, cd = Math.hypot(cdx, cdz), sp0 = Math.hypot(b.vx, b.vz);
-  if (cd < 0.5 && sp0 < 3.2 && cd > 1e-4) { const k = 7 * (1 - cd / 0.5); ax += cdx / cd * k; az += cdz / cd * k; }
   b.vx += ax * DT; b.vz += az * DT;
   const fr = FRIC[ty] || FRIC[C.GRASS]; const sp = Math.hypot(b.vx, b.vz);
-  if (sp > 0) { const dec = (fr[0] + fr[1] * sp) * DT; if (sp <= dec) { b.vx = 0; b.vz = 0; } else { const k = (sp - dec) / sp; b.vx *= k; b.vz *= k; } }
+  if (sp > 0 && b.y <= BR + 0.02 && b.y >= 0) { const dec = (fr[0] + fr[1] * sp) * DT; if (sp <= dec) { b.vx = 0; b.vz = 0; } else { const k = (sp - dec) / sp; b.vx *= k; b.vz *= k; } }
   b.x += b.vx * DT; b.z += b.vz * DT;
   // zdi (políčka)
   for (let it = 0; it < 2; it++) {
@@ -144,7 +168,7 @@ export function stepBall(W, b, t) {
   if (ty2 < C.T1) b.tw = 0;
   else if (!b.tw) { const p = W.tele[PARTNER[ty2]]; if (p) { b.x = p[0]; b.z = p[1]; b.tw = 1; const s2 = Math.hypot(b.vx, b.vz) || 1; if (s2 < 3) { b.vx = b.vx / s2 * 3; b.vz = b.vz / s2 * 3; } return 'tp'; } }
   const d = Math.hypot(W.cup[0] - b.x, W.cup[1] - b.z);
-  if (d < CUP_R && Math.hypot(b.vx, b.vz) < CUP_V) { b.sx = b.x; b.sz = b.z; b.sunk = true; b.x = W.cup[0]; b.z = W.cup[1]; b.vx = b.vz = 0; return 'sink'; }
+  if (d < CUP_R + BR + 0.05 || b.y !== BR) { cupStep(W, b); if (b.y !== BR || b.vy !== 0) b.still = 0; if (b.y < -BR) { b.sunk = true; return 'sink'; } }
   return null;
 }
 
