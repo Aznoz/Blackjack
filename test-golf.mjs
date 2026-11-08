@@ -129,6 +129,26 @@ const TK = ['a', 'b', 'c', 'd', 'e'].map((ch) => ch.repeat(24)), TX = 'x'.repeat
   assert.equal(A.api('color', { token: TK[0], color: 3 }).json.golf.color, 3); assert.equal(A.api('color', { token: TK[0], color: 99 }).status, 400); assert.equal(A.api('color', { token: TX, color: 1 }).status, 401);
   const t = A.golfOf(accs[TK[0]]); t.wins = -5; t.color = 77; t.coins = 'x'; A.golfOf(accs[TK[0]]); assert.equal(t.wins, 0, 'sanitizace'); assert.equal(t.color, -1); assert.equal(t.coins, 100); t.color = 3;
 }
+{ // obchod: koupě za coiny, výběr, hole mění sílu rány a písek
+  const t = A.golfOf(accs[TK[1]]); assert.deepEqual(t.eq, { skin: '', fx: '', club: '' }); assert.deepEqual(t.own, []);
+  assert.equal(A.api('buy', { token: TX, cat: 'skin', id: 'dots' }).status, 401); assert.equal(A.api('buy', { token: TK[1], cat: 'nic', id: 'dots' }).status, 400); assert.equal(A.api('buy', { token: TK[1], cat: 'skin', id: 'nic' }).status, 400);
+  assert.equal(A.api('buy', { token: TK[1], cat: 'club', id: 'plasma' }).status, 402, 'na plazmovou hůl nemá');
+  let r = A.api('buy', { token: TK[1], cat: 'skin', id: 'dots' }); assert.equal(r.status, 200); assert.equal(r.json.golf.coins, 20); assert.deepEqual(r.json.golf.own, ['skin:dots']); assert.equal(r.json.golf.eq.skin, 'dots', 'koupená věc se rovnou nasadí');
+  assert.equal(A.api('buy', { token: TK[1], cat: 'skin', id: 'dots' }).status, 409, 'dvakrát ne');
+  assert.equal(A.api('equip', { token: TK[1], cat: 'fx', id: 'sparks' }).status, 403, 'nekoupenou věc nasadit nejde');
+  assert.equal(A.api('equip', { token: TK[1], cat: 'skin', id: '' }).json.golf.eq.skin, '', 'prázdné id = základ'); assert.equal(A.api('equip', { token: TK[1], cat: 'skin', id: 'dots' }).json.golf.eq.skin, 'dots');
+  t.coins = 5000; for (const [c, id] of [['fx', 'rings'], ['club', 'driver']]) assert.equal(A.api('buy', { token: TK[1], cat: c, id }).status, 200);
+  assert.deepEqual(A.golfOf(accs[TK[1]]).eq, { skin: 'dots', fx: 'rings', club: 'driver' });
+  accs[TK[1]].golf.own.push('skin:podvod'); accs[TK[1]].golf.eq.skin = 'podvod'; A.golfOf(accs[TK[1]]); assert.ok(!accs[TK[1]].golf.own.includes('skin:podvod'), 'neznámá věc se zahodí'); assert.equal(accs[TK[1]].golf.eq.skin, '');
+  accs[TK[1]].golf.eq.fx = 'sparks'; assert.equal(A.golfOf(accs[TK[1]]).eq.fx, '', 'nasadit jde jen koupené'); A.api('equip', { token: TK[1], cat: 'skin', id: 'dots' }); A.api('equip', { token: TK[1], cat: 'fx', id: 'rings' });
+  t.coins = 100; t.own = []; t.eq = { skin: '', fx: '', club: '' };
+  assert.ok(K.CLUBS.every((c) => c.pw > 1 && c.pw <= 1.5 && c.aim >= 1 && c.sand > 0 && c.sand <= 1) && K.clubOf('').pw === 1 && K.clubOf('nic').pw === 1);
+  for (const l of [K.SKINS, K.WINFX, K.CLUBS]) { assert.equal(new Set(l.map((x) => x.id)).size, l.length, 'id jsou jedinečná'); assert.ok(l.every((x) => /^[A-Za-z0-9]{2,12}$/.test(x.id) && x.price > 0)); }
+  const base = P.newBall(1.5, 1.5); P.shoot(base, 0, 1); const big = P.newBall(1.5, 1.5); P.shoot(big, 0, 1, K.clubOf('plasma').pw);
+  assert.ok(Math.abs(P.speedOf(big) / P.speedOf(base) - 1.3) < 1e-9, 'hůl násobí rychlost'); const cheat = P.newBall(1.5, 1.5); P.shoot(cheat, 0, 1, 9); assert.ok(Math.abs(P.speedOf(cheat) - P.speedOf(base)) < 1e-9, 'přehnaný násobek se ignoruje');
+  const SW = mkW(['####################', '#T,,,,,,,,,,,,,,,,H#', '####################']); const a1 = P.newBall(1.5, 1.5); P.shoot(a1, 0, 0.5); roll(SW, a1, 15); const a2 = P.newBall(1.5, 1.5); a2.sand = K.clubOf('sand').sand; P.shoot(a2, 0, 0.5); roll(SW, a2, 15);
+  assert.ok(a2.x > a1.x + 0.5, 'pískovka zajede v písku dál'); const g1 = P.newBall(1.5, 1.5); P.shoot(g1, 0, 0.5); const g2 = P.newBall(1.5, 1.5); g2.sand = 0.4; P.shoot(g2, 0, 0.5); const GW = mkW(['####################', '#T..................#', '####################']); roll(GW, g1, 15); roll(GW, g2, 15); assert.ok(Math.abs(g1.x - g2.x) < 1e-9, 'na trávě pískovka nic nemění');
+}
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 function client() {
   const ws = { readyState: 1, out: [], h: {}, bufferedAmount: 0, send(d) { this.out.push(JSON.parse(d)); }, close() { this.readyState = 3; this.h.close && this.h.close(); }, on(e, f) { this.h[e] = f; }, terminate() { this.close(); }, ping() {} };
@@ -170,6 +190,15 @@ function client() {
   const a = client(), b = client(); a.say({ t: 'create', token: TK[0], name: 'Honza' }); const code = a.last('joined').code; b.say({ t: 'join', code, token: TK[1], name: 'Eva' }); a.say({ t: 'start' }); const room = A.rooms.get(code); assert.equal(room.phase, 'play');
   const tok = b.last('joined').token; b.close(); assert.ok(room.dropFor, 'běží odpočet na návrat'); const b2 = client(); b2.say({ t: 'resume', code, token: tok }); assert.ok(b2.last('state') && b2.last('game'), 'po návratu dostane stav'); assert.equal(room.dropFor, null);
   b2.close(); await sleep(150); assert.ok(room.players[1].left, 'po vypršení se vzdá'); assert.equal(room.phase, 'play'); a.say({ t: 'leave' }); await sleep(10); assert.ok(!A.rooms.has(code));
+}
+{ // výbava ostatních se posílá v seznamu hráčů a po startu zápasu je zamčená (hůl se neposílá)
+  const t = A.golfOf(accs[TK[3]]); t.coins = 5000; for (const [c, id] of [['skin', 'galaxy'], ['fx', 'fireworks'], ['club', 'titan']]) assert.equal(A.api('buy', { token: TK[3], cat: c, id }).status, 200);
+  const a = client(), b = client(); a.say({ t: 'create', token: TK[3], name: 'Jana' }); const code = a.last('joined').code; b.say({ t: 'join', code, token: TK[4], name: 'Karel' });
+  let st = b.last('state'); assert.equal(st.players[0].sk, 'galaxy'); assert.equal(st.players[0].fx, 'fireworks'); assert.equal(st.players[1].sk, ''); assert.ok(!('club' in st.players[0]), 'hůl ostatní nevidí');
+  a.say({ t: 'start' }); A.api('equip', { token: TK[3], cat: 'skin', id: '' }); const room = A.rooms.get(code); A.advance(room, 1); a.say({ t: 'ping' });
+  st = b.last('state'); assert.equal(st.players[0].sk, 'galaxy', 'v zápase se skin nemění'); a.say({ t: 'leave' }); b.say({ t: 'leave' });
+  t.coins = 100; t.own = []; t.eq = { skin: '', fx: '', club: '' };
+  const bots = client(); bots.say({ t: 'bot', token: TK[4], name: 'Karel', level: 1, n: 3, cfg: { holes: 3, time: 45, grace: 15 } }); const sb = bots.last('state'); assert.ok(sb.players.slice(1).every((p) => (p.sk === '' || K.shopItem('skin', p.sk)) && (p.fx === '' || K.shopItem('fx', p.fx))), 'boti mají jen existující výbavu'); bots.say({ t: 'leave' });
 }
 console.log('Minigolf: všechny testy prošly');
 process.exit(0);

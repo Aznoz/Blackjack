@@ -164,12 +164,15 @@ function cleanHopik(t) {   // Hopík: vybraná postavička, výhry zápasů, ode
   return out;
 }
 
-function cleanGolf(t) {   // Minigolf: barva míčku, výhry zápasů, odehrané zápasy, jamky na jednu ránu, dokončené jamky a coiny (podrobná kontrola je v golf/golf.js, golfOf)
+function cleanGolf(t) {   // Minigolf: barva míčku, výhry zápasů, odehrané zápasy, jamky na jednu ránu, dokončené jamky, coiny a obchod (podrobná kontrola je v golf/golf.js, golfOf)
   t = t && typeof t === 'object' ? t : {};
   const n = (v) => (Number.isFinite(v) ? Math.max(0, Math.min(1e7, Math.floor(v))) : 0);
   const c = Math.floor(Number(t.color));
   const out = { color: Number.isFinite(c) && c >= 0 && c < 64 ? c : -1, wins: n(t.wins), games: n(t.games), aces: n(t.aces), holes: n(t.holes) };
   if (Number.isFinite(t.coins)) out.coins = n(t.coins);   // bez `coins` začíná hráč na startovních 100 (golf/shared.js)
+  const KEY = /^[a-z]{2,6}:[A-Za-z0-9]{2,12}$/;   // koupené věci 'kategorie:id' a vybraná výbava (přesná kontrola je v golfOf)
+  if (Array.isArray(t.own)) out.own = [...new Set(t.own.filter((k) => typeof k === 'string' && KEY.test(k)))].slice(0, 80);
+  if (t.eq && typeof t.eq === 'object') { const eq = {}; for (const cc of ['skin', 'fx', 'club']) if (typeof t.eq[cc] === 'string' && /^[A-Za-z0-9]{0,12}$/.test(t.eq[cc])) eq[cc] = t.eq[cc]; out.eq = eq; }
   return out;
 }
 

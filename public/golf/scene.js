@@ -1,7 +1,8 @@
 // MINIGOLF – 3D scéna (three.js): stavba jamky z mapy (terén po vrcholech, zdi, voda/láva, překážky, vlajka), míčky se jmenovkami, částice, kamera.
 // Fyzika je v phys.js (stejná jako na serveru), tady se jen kreslí. Všechno se kreslí z dat, žádné obrázky.
 import * as THREE from './vendor/three.module.min.js';
-import * as P from './phys.js?v=3';
+import * as P from './phys.js?v=4';
+import { SKIN_ART } from './cosm.js?v=4';
 
 const rgb = (h) => new THREE.Color(h);
 // Vzhled prostředí: nebe (nahoře, u obzoru), mlha, barvy podlahy, písku, ledu, zdí, tekutiny, okolí a doplňky.
@@ -204,14 +205,19 @@ export function createScene(canvas, opts = {}) {
     g.fillStyle = 'rgba(10,25,20,.72)'; g.beginPath(); g.roundRect(128 - tw / 2, 8, tw, 48, 24); g.fill(); g.fillStyle = color; g.beginPath(); g.arc(128 - tw / 2 + 20, 32, 9, 0, 7); g.fill(); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(name, 128 + 10, 33, tw - 44);
     const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false, depthTest: false })); sp.scale.set(1.5, 0.375, 1); sp.renderOrder = 20; return sp;
   }
-  function setBalls(list) {   // list: [{ color: '#hex', name, mine }]
+  function setBalls(list) {   // list: [{ color: '#hex', name, mine, skin }]; skin = id skinu z obchodu (nebo prázdné = obyčejný míček v barvě hráče)
     for (const b of balls) { scene.remove(b.g); b.g.traverse((o) => { if (o.material) { if (o.material.map) o.material.map.dispose(); o.material.dispose(); } }); } balls.length = 0;
     list.forEach((p) => {
-      const g = new THREE.Group(); const mat = new THREE.MeshStandardMaterial({ map: ballTex(p.color), roughness: 0.25, metalness: 0.05, transparent: true, opacity: p.mine ? 1 : 0.6, emissive: new THREE.Color(p.color), emissiveIntensity: 0.12 });
-      const mesh = new THREE.Mesh(ballGeo, mat); mesh.castShadow = true; g.add(mesh);
+      const art = p.skin ? SKIN_ART[p.skin] : null; const op = p.mine ? 1 : 0.6; let mat;
+      if (art) {
+        const map = canvasTex(256, 128, (g, w, h) => art.paint(g, w, h), true); map.wrapT = THREE.ClampToEdgeWrapping;
+        mat = new THREE.MeshStandardMaterial({ map, roughness: art.rough, metalness: art.metal, transparent: true, opacity: op });
+        if (art.em) { mat.emissive = new THREE.Color(art.em[0]); mat.emissiveMap = map; mat.emissiveIntensity = art.em[1]; }
+      } else mat = new THREE.MeshStandardMaterial({ map: ballTex(p.color), roughness: 0.25, metalness: 0.05, transparent: true, opacity: op, emissive: new THREE.Color(p.color), emissiveIntensity: 0.12 });
+      const g = new THREE.Group(); const mesh = new THREE.Mesh(ballGeo, mat); mesh.castShadow = true; g.add(mesh);
       const sh = new THREE.Mesh(new THREE.CircleGeometry(0.3, 16), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false, opacity: shadows ? 0 : 1 })); sh.rotation.x = -Math.PI / 2; g.add(sh);
       const label = p.mine ? null : labelSprite(p.name, p.color); if (label) { label.position.y = 0.75; g.add(label); }
-      scene.add(g); balls.push({ g, mesh, sh, label, mat, x: 0, z: 0, q: new THREE.Quaternion(), px: null, pz: null, vis: 1, sink: 0 });
+      scene.add(g); balls.push({ g, mesh, sh, label, mat, art, x: 0, z: 0, q: new THREE.Quaternion(), px: null, pz: null, vis: 1, sink: 0 });
     });
   }
   function moveBall(i, x, z, vis = 1, alpha) {
@@ -219,24 +225,95 @@ export function createScene(canvas, opts = {}) {
     b.px = x; b.pz = z; b.x = x; b.z = z; b.g.visible = vis > 0; b.g.position.set(x, hh, z); b.mesh.position.y = P.BR - b.sink; b.sh.position.y = 0.012;
     if (alpha !== undefined) b.mat.opacity = alpha; b.sh.visible = vis > 0 && b.sink < 0.03;
   }
-  const dots = []; const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false }); for (let i = 0; i < 16; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), dotMat.clone()); m.visible = false; m.renderOrder = 15; scene.add(m); dots.push(m); }
+  const dots = []; const dotMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.95, depthTest: false }); for (let i = 0; i < 30; i++) { const m = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), dotMat.clone()); m.visible = false; m.renderOrder = 15; scene.add(m); dots.push(m); }
   const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.15, 0.4, 12), new THREE.MeshBasicMaterial({ color: 0xffffff, depthTest: false })); arrow.visible = false; arrow.renderOrder = 15; scene.add(arrow);
-  function aim(on, x, z, dx, dz, pow) {   // směr (dx, dz) a síla 0–1; tečky ukazují směr a délku rány
+  function aim(on, x, z, dx, dz, pow, reach = 1) {   // směr (dx, dz) a síla 0–1; tečky ukazují směr a délku rány (reach = delší zaměřovač od hole)
     for (const d of dots) d.visible = false; arrow.visible = false; if (!on) return;
-    const len = 0.9 + pow * 5.6; const n = Math.max(3, Math.round(len / 0.32)); const col = new THREE.Color().setHSL(0.33 - pow * 0.33, 0.95, 0.55);
+    const len = (0.9 + pow * 5.6) * reach; const n = Math.max(3, Math.round(len / 0.32)); const col = new THREE.Color().setHSL(0.33 - pow * 0.33, 0.95, 0.55);
     for (let i = 0; i < n && i < dots.length; i++) { const t = 0.35 + (i + 1) * len / n; const yy = P.heightAt(W, x + dx * t, z + dz * t).y + P.BR; dots[i].position.set(x + dx * t, yy, z + dz * t); dots[i].material.color.copy(col); dots[i].visible = true; dots[i].scale.setScalar(1.2 - i / n * 0.5); }
     const t = 0.35 + len + 0.28; const ay = P.heightAt(W, x + dx * t, z + dz * t).y + P.BR; arrow.position.set(x + dx * t, ay, z + dz * t); arrow.material.color.copy(col); arrow.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), new THREE.Vector3(dx, 0, dz)); arrow.visible = true;
   }
-  // částice
-  const NP = 420; const pp = { pos: new Float32Array(NP * 3), col: new Float32Array(NP * 3), vel: new Float32Array(NP * 3), life: new Float32Array(NP), max: new Float32Array(NP), g: new Float32Array(NP), next: 0 };
-  const pg = new THREE.BufferGeometry(); pg.setAttribute('position', new THREE.BufferAttribute(pp.pos, 3)); pg.setAttribute('color', new THREE.BufferAttribute(pp.col, 3)); const pm = new THREE.PointsMaterial({ size: 0.16, vertexColors: true, transparent: true, depthWrite: false, map: glowTex, sizeAttenuation: true }); const points = new THREE.Points(pg, pm); points.frustumCulled = false; scene.add(points);
-  function emit(x, y, z, n, o = {}) { const c = rgb(o.col ?? 0xffffff); for (let i = 0; i < n; i++) { const k = pp.next++ % NP; const a = Math.random() * Math.PI * 2, sp = (o.speed ?? 2) * (0.4 + Math.random() * 0.8); pp.pos.set([x, y, z], k * 3); pp.vel.set([Math.cos(a) * sp, (o.up ?? 2) * (0.5 + Math.random()), Math.sin(a) * sp], k * 3); pp.life[k] = pp.max[k] = (o.life ?? 0.8) * (0.6 + Math.random() * 0.6); pp.g[k] = o.g ?? 7; const cc = o.rainbow ? new THREE.Color().setHSL(Math.random(), 0.9, 0.6) : c; pp.col.set([cc.r, cc.g, cc.b], k * 3); } }
+  // částice: několik vrstev (kulatá záře, aditivní záře pro jiskry, hvězdičky, srdíčka), prstence, záblesky, časovač a meteority pro efekty výhry
+  const starTex = canvasTex(64, 64, (g) => { g.fillStyle = '#fff'; g.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, r = i % 2 ? 13 : 30; g.lineTo(32 + Math.cos(a) * r, 33 + Math.sin(a) * r); } g.closePath(); g.fill(); });
+  const heartTex = canvasTex(64, 64, (g) => { g.fillStyle = '#fff'; g.beginPath(); g.moveTo(32, 54); g.bezierCurveTo(4, 34, 12, 8, 32, 22); g.bezierCurveTo(52, 8, 60, 34, 32, 54); g.fill(); });
+  // částice mají vlastní shader: barva, velikost a průhlednost každé zvlášť (slábnou plynule a jsou vidět i na světlém ledu a písku, kde by aditivní záře zmizela)
+  const PVS = 'uniform float scale;\nattribute vec3 pcol;\nattribute float alpha;\nattribute float psize;\nvarying vec3 vc;\nvarying float va;\nvoid main(){\n vc = pcol; va = alpha;\n vec4 mv = modelViewMatrix * vec4(position, 1.0);\n gl_PointSize = psize * scale / max(0.1, -mv.z);\n gl_Position = projectionMatrix * mv;\n}';
+  const PFS = 'uniform sampler2D map;\nvarying vec3 vc;\nvarying float va;\nvoid main(){\n float a = texture2D(map, gl_PointCoord).a * va;\n if (a < 0.01) discard;\n gl_FragColor = vec4(vc, a);\n#include <colorspace_fragment>\n}';
+  const partScale = { value: 400 };
+  function makeLayer(tex, N, size) {
+    const L = { N, size, pos: new Float32Array(N * 3), col: new Float32Array(N * 3), alpha: new Float32Array(N), psz: new Float32Array(N), vel: new Float32Array(N * 3), life: new Float32Array(N), max: new Float32Array(N), g: new Float32Array(N), next: 0 };
+    for (let i = 0; i < N; i++) L.pos[i * 3 + 1] = -50;
+    L.geo = new THREE.BufferGeometry(); L.geo.setAttribute('position', new THREE.BufferAttribute(L.pos, 3)); L.geo.setAttribute('pcol', new THREE.BufferAttribute(L.col, 3)); L.geo.setAttribute('alpha', new THREE.BufferAttribute(L.alpha, 1)); L.geo.setAttribute('psize', new THREE.BufferAttribute(L.psz, 1));
+    L.mat = new THREE.ShaderMaterial({ uniforms: { map: { value: tex }, scale: partScale }, vertexShader: PVS, fragmentShader: PFS, transparent: true, depthWrite: false });
+    L.points = new THREE.Points(L.geo, L.mat); L.points.frustumCulled = false; L.points.renderOrder = 11; scene.add(L.points); return L;
+  }
+  const layers = { glow: makeLayer(glowTex, 420, 0.2), add: makeLayer(glowTex, 700, 0.34), star: makeLayer(starTex, 200, 0.46), heart: makeLayer(heartTex, 140, 0.5) };
+  /** Vyšle částice: o.layer (glow | add | star | heart), o.col, o.speed, o.up, o.g, o.life, o.rainbow, o.sph (do všech stran), o.pal (paleta barev), o.jx (rozptyl polohy). */
+  function emit(x, y, z, n, o = {}) {
+    const L = layers[o.layer || 'glow']; const c = rgb(o.col ?? 0xffffff);
+    for (let i = 0; i < n; i++) {
+      const k = L.next++ % L.N; const sp = (o.speed ?? 2) * (0.4 + Math.random() * 0.8); let vx, vy, vz;
+      if (o.sph) { const u = Math.random() * 2 - 1, a = Math.random() * Math.PI * 2, r = Math.sqrt(1 - u * u); vx = Math.cos(a) * r * sp; vy = u * sp + (o.up ?? 0); vz = Math.sin(a) * r * sp; }
+      else { const a = Math.random() * Math.PI * 2; vx = Math.cos(a) * sp; vy = (o.up ?? 2) * (0.5 + Math.random()); vz = Math.sin(a) * sp; }
+      L.pos[k * 3] = x + (o.jx ? (Math.random() - 0.5) * o.jx : 0); L.pos[k * 3 + 1] = y; L.pos[k * 3 + 2] = z + (o.jx ? (Math.random() - 0.5) * o.jx : 0); L.vel[k * 3] = vx; L.vel[k * 3 + 1] = vy; L.vel[k * 3 + 2] = vz;
+      L.life[k] = L.max[k] = (o.life ?? 0.8) * (0.6 + Math.random() * 0.6); L.g[k] = o.g ?? 7; L.alpha[k] = 1; L.psz[k] = L.size * (o.size ?? 1) * (0.75 + Math.random() * 0.6);
+      const cc = o.rainbow ? new THREE.Color().setHSL(Math.random(), 0.9, 0.58) : o.pal ? new THREE.Color(o.pal[Math.floor(Math.random() * o.pal.length)]) : c; L.col.set([cc.r, cc.g, cc.b], k * 3);
+    }
+  }
+  const timers = []; const after = (dt, fn) => timers.push({ at: clock + dt, fn });
+  const ringGeo = new THREE.RingGeometry(0.86, 1, 56); const rings = [];
+  function ring(x, y, z, col, r1, life, r0 = 0.25) { const m = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 1, depthWrite: false, side: THREE.DoubleSide })); m.rotation.x = -Math.PI / 2; m.position.set(x, y + 0.06, z); m.scale.setScalar(r0); m.renderOrder = 13; scene.add(m); rings.push({ m, t: 0, life, r0, r1 }); }
+  const flashes = [];   // záblesky: sloup světla nebo koule, rychle slábnou
+  function flash(geo, col, x, y, z, life, s0 = 1, s1 = 1) { const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.9, depthWrite: false })); m.position.set(x, y, z); m.scale.setScalar(s0); m.renderOrder = 14; scene.add(m); flashes.push({ m, t: 0, life, s0, s1 }); }
+  const colGeo = new THREE.CylinderGeometry(0.14, 0.14, 18, 10, 1, true), orbGeo = new THREE.SphereGeometry(1, 20, 14);
+  const meteors = [];
+  const PAL = [0xff3b5c, 0xffc21a, 0x2fb4ff, 0x3ddc5a, 0xff5ce0, 0xff8a1c];
+  const burst = (x, y, z, col, n, sp) => { emit(x, y, z, n, { layer: 'add', col, sph: true, speed: sp, up: 0.4, g: 3.2, life: 1.3 }); emit(x, y, z, Math.round(n / 3), { layer: 'star', col: 0xffd84a, sph: true, speed: sp * 0.6, g: 3, life: 0.9, size: 0.6 }); };
+  const FXW = {   // efekty výhry: (x, y = výška jamky, z, k = síla; po vítězství v zápase je k větší)
+    '': (x, y, z, k) => emit(x, y + 0.3, z, Math.round(60 * k), { rainbow: true, speed: 2.8, up: 5.5, g: 7, life: 1.5 }),
+    sparks: (x, y, z, k) => { emit(x, y + 0.2, z, Math.round(55 * k), { layer: 'add', col: 0xffd84a, speed: 3.4, up: 6, g: 9, life: 0.9 }); emit(x, y + 0.2, z, Math.round(30 * k), { layer: 'add', col: 0xfff3b0, speed: 1.4, up: 8, g: 8, life: 1.2 }); },
+    stars: (x, y, z, k) => { emit(x, y + 0.3, z, Math.round(26 * k), { layer: 'star', pal: [0xffc21a, 0xff9a1a, 0xffe14a], speed: 2.4, up: 6.5, g: 4.5, life: 1.9 }); emit(x, y + 0.3, z, Math.round(30 * k), { layer: 'add', col: 0xffc21a, speed: 2.2, up: 5, g: 5, life: 1.1 }); },
+    rings: (x, y, z, k) => { for (let i = 0; i < 3; i++) after(i * 0.2, () => ring(x, y, z, i === 1 ? 0xffb020 : 0x2fb4ff, 4.2 * k, 0.9)); emit(x, y + 0.1, z, 14, { layer: 'add', col: 0x2fb4ff, speed: 1.4, up: 3, g: 6, life: 0.7 }); },
+    hearts: (x, y, z, k) => emit(x, y + 0.3, z, Math.round(22 * k), { layer: 'heart', pal: [0xff5fa0, 0xff9ac4, 0xff2d6a], speed: 1.3, up: 3.4, g: -0.7, life: 2.4 }),
+    rainbow: (x, y, z, k) => { emit(x, y + 0.2, z, Math.round(110 * k), { rainbow: true, speed: 0.9, up: 9.5, g: 7.5, life: 1.9 }); ring(x, y, z, 0xff5ce0, 1.8, 0.6); },
+    fireworks: (x, y, z, k) => {
+      for (let i = 0; i < 9; i++) after(i * 0.055, () => emit(x, y + 0.2 + i * 0.4, z, 5, { layer: 'add', col: 0xffc060, speed: 0.25, up: -0.5, g: 2, life: 0.5 }));
+      const n = k > 1.2 ? 6 : 3; for (let b = 0; b < n; b++) after(0.55 + b * 0.28, () => { const a = b * 2.1 + Math.random(), r = b ? 1.2 + Math.random() * 1.2 : 0; burst(x + Math.cos(a) * r, y + 3.3 + Math.random() * 1.4, z + Math.sin(a) * r, PAL[(b + Math.floor(Math.random() * 3)) % PAL.length], 48, 3.3); });
+    },
+    lightning: (x, y, z, k) => {
+      const hit = () => { flash(colGeo, 0x6ab8ff, x, y + 9, z, 0.32, 1, 0.3); emit(x, y + 0.2, z, 40, { layer: 'add', col: 0x3aa8ff, sph: true, speed: 3.6, up: 1.5, g: 6, life: 0.6 }); ring(x, y, z, 0x3aa8ff, 2.6 * k, 0.5); };
+      hit(); after(0.14, () => flash(colGeo, 0xffe96a, x + 0.15, y + 9, z - 0.1, 0.26, 1.7, 0.4)); if (k > 1.2) { after(0.5, hit); after(0.9, hit); }
+    },
+    meteor: (x, y, z, k) => { meteors.push({ t: 0, dur: 0.7, x0: x - 7, y0: y + 15, z0: z - 5, x, y, z, k, m: (() => { const m = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: 0x4a2a1c })); m.scale.setScalar(0.28); scene.add(m); return m; })() }); },
+    goldrain: (x, y, z, k) => { emit(x, y + 0.2, z, 22, { layer: 'add', col: 0xffd24a, speed: 1.8, up: 5, g: 8, life: 1 }); const T = 1.8 * (k > 1.2 ? 1.5 : 1); for (let t = 0; t < T; t += 0.05) after(t, () => { emit(x, y + 3.6 + Math.random() * 1.6, z, 3, { pal: [0xffc21a, 0xffe27a, 0xe8a812], speed: 0.25, up: -0.4, g: 3.4, life: 1.4, jx: 3.2 * (k > 1.2 ? 1.4 : 1) }); if (Math.random() < 0.5) emit(x, y + 3.2, z, 1, { layer: 'star', col: 0xffc21a, speed: 0.3, up: -0.3, g: 3, life: 1.2, jx: 3 }); }); },
+    nova: (x, y, z, k) => { flash(orbGeo, 0xffb020, x, y + 0.4, z, 0.55, 0.2, 3.4 * k); ring(x, y, z, 0xffb040, 5.2 * k, 0.8); after(0.25, () => ring(x, y, z, 0xff6a3a, 6.5 * k, 0.9)); emit(x, y + 0.4, z, Math.round(90 * k), { layer: 'add', pal: [0xffe27a, 0xffa040, 0xff6a3a], sph: true, speed: 5, up: 1, g: 1.4, life: 1.3 }); emit(x, y + 0.4, z, Math.round(28 * k), { layer: 'star', col: 0xff7a1a, sph: true, speed: 3.4, up: 2, g: 2, life: 1.4 }); },
+  };
+  function stepFx(dt) {
+    partScale.value = renderer.domElement.height * 0.5;
+    for (const L of Object.values(layers)) {
+      for (let k = 0; k < L.N; k++) {
+        if (L.life[k] <= 0) { if (L.alpha[k] > 0) { L.alpha[k] = 0; L.pos[k * 3 + 1] = -50; } continue; }
+        L.life[k] -= dt; L.vel[k * 3 + 1] -= L.g[k] * dt; L.pos[k * 3] += L.vel[k * 3] * dt; L.pos[k * 3 + 1] += L.vel[k * 3 + 1] * dt; L.pos[k * 3 + 2] += L.vel[k * 3 + 2] * dt; L.alpha[k] = Math.min(1, Math.max(0, L.life[k] / L.max[k]) * 2.4);
+      }
+      const A = L.geo.attributes; A.position.needsUpdate = A.alpha.needsUpdate = A.pcol.needsUpdate = A.psize.needsUpdate = true;
+    }
+    for (let i = timers.length - 1; i >= 0; i--) if (timers[i].at <= clock) { const f = timers[i].fn; timers.splice(i, 1); f(); }
+    for (let i = rings.length - 1; i >= 0; i--) { const r = rings[i]; r.t += dt; const u = Math.min(1, r.t / r.life); r.m.scale.setScalar(r.r0 + (r.r1 - r.r0) * (1 - Math.pow(1 - u, 2))); r.m.material.opacity = 1 - u; if (u >= 1) { scene.remove(r.m); r.m.material.dispose(); rings.splice(i, 1); } }
+    for (let i = flashes.length - 1; i >= 0; i--) { const f = flashes[i]; f.t += dt; const u = Math.min(1, f.t / f.life); f.m.scale.setScalar(f.s0 + (f.s1 - f.s0) * u); f.m.material.opacity = 0.9 * (1 - u); if (u >= 1) { scene.remove(f.m); f.m.material.dispose(); flashes.splice(i, 1); } }
+    for (let i = meteors.length - 1; i >= 0; i--) {
+      const m = meteors[i]; m.t += dt; const u = Math.min(1, m.t / m.dur); const x = m.x0 + (m.x - m.x0) * u, y = m.y0 + (m.y - m.y0) * u * u, z = m.z0 + (m.z - m.z0) * u; m.m.position.set(x, y + 0.2, z);
+      emit(x, y + 0.2, z, 4, { layer: 'add', pal: [0xff8a1c, 0xffd24a, 0xff4a00], speed: 0.5, up: 0.3, g: 0, life: 0.5 }); emit(x, y + 0.2, z, 1, { layer: 'glow', col: 0x6a5a50, speed: 0.4, up: 0.4, g: -1, life: 0.9 });
+      if (u >= 1) { scene.remove(m.m); m.m.material.dispose(); meteors.splice(i, 1); emit(m.x, m.y + 0.2, m.z, Math.round(80 * m.k), { layer: 'add', pal: [0xff8a1c, 0xffd24a, 0xff4a00], sph: true, speed: 4.4, up: 2.5, g: 6, life: 1 }); emit(m.x, m.y + 0.2, m.z, 18, { layer: 'glow', col: 0x7a6a60, speed: 1.6, up: 1.8, g: -0.4, life: 1.5 }); ring(m.x, m.y, m.z, 0xffa040, 3.4 * m.k, 0.7); flash(orbGeo, 0xffd080, m.x, m.y + 0.3, m.z, 0.35, 0.3, 2.2); }
+    }
+  }
   const fx = {
     splash: (x, z) => emit(x, P.heightAt(W, x, z).y, z, 26, { col: th.liq === 0xff5a14 ? 0xffa030 : 0xbfe6ff, speed: 1.6, up: 3.4, g: 9, life: 0.9 }),
     sparks: (x, z, c = 0xffe08a) => emit(x, P.heightAt(W, x, z).y + 0.2, z, 10, { col: c, speed: 2.2, up: 1.6, g: 6, life: 0.45 }),
     puff: (x, z, c = 0xf0e0b0) => emit(x, P.heightAt(W, x, z).y + 0.08, z, 6, { col: c, speed: 0.9, up: 0.7, g: 3, life: 0.5 }),
     confetti: (x, z) => emit(x, P.heightAt(W, x, z).y + 0.3, z, 60, { rainbow: true, speed: 2.8, up: 5.5, g: 7, life: 1.5 }),
     tele: (x, z, c = 0xc080ff) => emit(x, P.heightAt(W, x, z).y + 0.2, z, 16, { col: c, speed: 1.2, up: 2.4, g: 1, life: 0.7 }),
+    /** Efekt výhry z obchodu na místě jamky; big = oslava vítěze celého zápasu (silnější). */
+    win: (id, x, z, big) => { try { (FXW[id] || FXW[''])(x, P.heightAt(W, x, z).y, z, big ? 1.7 : 1); } catch (e) { /* efekt nesmí shodit hru */ } },
   };
   // ambient: sníh / jiskry / listí
   const amb = { n: 110, pos: new Float32Array(110 * 3), v: new Float32Array(110 * 3) }; const ag = new THREE.BufferGeometry(); ag.setAttribute('position', new THREE.BufferAttribute(amb.pos, 3));
@@ -246,8 +323,8 @@ export function createScene(canvas, opts = {}) {
 
   function update(dt, t) {
     clock += dt; for (const f of anim) f(t);
-    for (let k = 0; k < NP; k++) { if (pp.life[k] <= 0) { pp.pos[k * 3 + 1] = -50; continue; } pp.life[k] -= dt; pp.vel[k * 3 + 1] -= pp.g[k] * dt; pp.pos[k * 3] += pp.vel[k * 3] * dt; pp.pos[k * 3 + 1] += pp.vel[k * 3 + 1] * dt; pp.pos[k * 3 + 2] += pp.vel[k * 3 + 2] * dt; }
-    pg.attributes.position.needsUpdate = true; pg.attributes.color.needsUpdate = true;
+    stepFx(dt);
+    balls.forEach((b, bi) => { if (!b.art || !b.art.anim) return; if (b.art.anim === 'scroll') b.mat.map.offset.x = (clock * 0.12) % 1; else if (b.art.em) b.mat.emissiveIntensity = b.art.em[1] * (0.72 + 0.28 * Math.sin(clock * 3 + bi)); });
     if (W) { const cx = W.w / 2, cz = W.h / 2, R = Math.max(W.w, W.h) * 0.9; for (let i = 0; i < amb.n; i++) { for (let a = 0; a < 3; a++) amb.pos[i * 3 + a] += amb.v[i * 3 + a] * dt; if (amb.pos[i * 3 + 1] < 0 || amb.pos[i * 3 + 1] > 8) amb.pos[i * 3 + 1] = amb.v[i * 3 + 1] > 0 ? 0 : 7; if (Math.abs(amb.pos[i * 3] - cx) > R) amb.pos[i * 3] = cx - Math.sign(amb.pos[i * 3] - cx) * R; if (Math.abs(amb.pos[i * 3 + 2] - cz) > R) amb.pos[i * 3 + 2] = cz - Math.sign(amb.pos[i * 3 + 2] - cz) * R; } ag.attributes.position.needsUpdate = true; }
     sky.position.copy(cam.position);
   }

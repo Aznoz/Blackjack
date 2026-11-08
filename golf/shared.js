@@ -17,3 +17,40 @@ export const CAP_OVER_PAR = 4;                   // kdo jamku nedokončí, dosta
 export const capOf = (par) => par + CAP_OVER_PAR;
 export const COINS = { play: 10, win: 30, ace: 15, hole: 2 };   // coiny za zápas, výhru, jamku na jednu ránu a každou dokončenou jamku
 export const START_COINS = 100;
+
+// ------------------------------------------------------------------ obchod: skiny míčků, efekty výhry a hole
+// Koupené věci se ukládají v účtu jako 'kategorie:id' (acc.golf.own), vybraná výbava v acc.golf.eq = { skin, fx, club }; prázdné id = základ (zdarma).
+// Skin a efekt vidí všichni hráči, hůl jen její majitel (mění sílu rány a zaměřovač). Kresba skinů a efektů je v public/golf/cosm.js a scene.js.
+export const SHOP_CATS = ['skin', 'fx', 'club'];
+export const SKINS = [
+  { id: 'dots', name: 'Puntíkáč', price: 80 }, { id: 'checker', name: 'Šachovnice', price: 100 }, { id: 'tennis', name: 'Tenisák', price: 120 }, { id: 'stars', name: 'Hvězdná obloha', price: 140 },
+  { id: 'smile', name: 'Smajlík', price: 160 }, { id: 'soccer', name: 'Fotbal', price: 180 }, { id: 'basket', name: 'Basketbal', price: 180 }, { id: 'eight', name: 'Osmička', price: 220 },
+  { id: 'earth', name: 'Planeta', price: 300 }, { id: 'lava', name: 'Láva', price: 400 }, { id: 'ice', name: 'Ledovec', price: 400 }, { id: 'neon', name: 'Neon', price: 450 },
+  { id: 'galaxy', name: 'Galaxie', price: 600 }, { id: 'rainbow', name: 'Duha', price: 700 }, { id: 'chrome', name: 'Chrom', price: 800 }, { id: 'gold', name: 'Zlato', price: 1200 },
+];
+export const WINFX = [   // přehrají se v jamce, když míček spadne do díry, a ve větší podobě po vítězství v zápase
+  { id: 'sparks', name: 'Jiskry', price: 100 }, { id: 'stars', name: 'Hvězdný déšť', price: 150 }, { id: 'rings', name: 'Rázová vlna', price: 200 }, { id: 'hearts', name: 'Srdíčka', price: 220 },
+  { id: 'rainbow', name: 'Duhový gejzír', price: 280 }, { id: 'fireworks', name: 'Ohňostroj', price: 400 }, { id: 'lightning', name: 'Blesk', price: 500 }, { id: 'meteor', name: 'Meteorit', price: 650 },
+  { id: 'goldrain', name: 'Zlatý déšť', price: 800 }, { id: 'nova', name: 'Supernova', price: 1000 },
+];
+// pw = násobek rychlosti rány, aim = délka zaměřovače, sand = jak moc písek brzdí (1 = normálně, menší = míň)
+export const CLUBS = [
+  { id: 'iron', name: 'Železná sedmička', price: 150, pw: 1.06, aim: 1, sand: 1, desc: 'Trochu silnější rána.' },
+  { id: 'sand', name: 'Pískovka', price: 250, pw: 1.04, aim: 1, sand: 0.4, desc: 'Písek míček skoro nebrzdí.' },
+  { id: 'driver', name: 'Driver', price: 400, pw: 1.12, aim: 1.1, sand: 1, desc: 'Silná rána na dlouhé jamky.' },
+  { id: 'titan', name: 'Titanový driver', price: 700, pw: 1.18, aim: 1.25, sand: 1, desc: 'Silná rána a delší zaměřovač.' },
+  { id: 'goldclub', name: 'Zlatá hůl', price: 1200, pw: 1.24, aim: 1.4, sand: 0.7, desc: 'Silná, dlouhý zaměřovač, písek méně brzdí.' },
+  { id: 'plasma', name: 'Plazmová hůl', price: 2000, pw: 1.3, aim: 1.6, sand: 0.5, desc: 'Nejsilnější rána, nejdelší zaměřovač.' },
+];
+export const BASE_CLUB = { id: '', name: 'Základní hůl', price: 0, pw: 1, aim: 1, sand: 1, desc: 'Obyčejná hůl, každý ji má.' };
+const LISTS = { skin: SKINS, fx: WINFX, club: CLUBS };
+export const shopItem = (cat, id) => { const l = LISTS[cat]; return l ? l.find((x) => x.id === id) || null : null; };
+export const clubOf = (id) => shopItem('club', id) || BASE_CLUB;
+/** Výbava: jen koupené věci (own = Set 'kategorie:id'), jinak základ. */
+export function cleanEq(eq, own) {
+  const o = { skin: '', fx: '', club: '' };
+  for (const c of SHOP_CATS) { const v = eq && typeof eq[c] === 'string' ? eq[c] : ''; if (v && shopItem(c, v) && own && own.has(c + ':' + v)) o[c] = v; }
+  return o;
+}
+/** Veřejná část výbavy, kterou vidí ostatní hráči (hůl ne). */
+export const pubEq = (eq) => ({ skin: eq && eq.skin || '', fx: eq && eq.fx || '' });

@@ -8,7 +8,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%230c3b2c'/%3E%3Ccircle cx='32' cy='38' r='15' fill='%23fff'/%3E%3Ccircle cx='27' cy='34' r='2' fill='%23ccd'/%3E%3Ccircle cx='36' cy='40' r='2' fill='%23ccd'/%3E%3Cpath d='M44 8v28' stroke='%23c6ff4d' stroke-width='4' stroke-linecap='round'/%3E%3Cpath d='M44 9l12 5-12 6z' fill='%23ff4f6a'/%3E%3C/svg%3E">
-<link rel="stylesheet" href="golf.css?v=3">
+<link rel="stylesheet" href="golf.css?v=4">
 </head>
 <body>
 <canvas id="gl" aria-hidden="true"></canvas>
@@ -28,6 +28,7 @@
     <div class="prof" id="prof" hidden><div class="pname" id="pName">Hráč</div><div class="prec" id="pRec"></div><div class="coinchip" id="pCoins"><i class="coin"></i><b>0</b></div></div>
     <label class="field" id="nameField" hidden>Tvoje jméno<input id="name" maxlength="14" autocomplete="nickname" placeholder="Např. Honza"></label>
     <button class="btn main" id="bBot" type="button"><b>Hrát proti botům</b><small>1 až 3 soupeři, tři obtížnosti</small></button>
+    <button class="btn shopbtn" id="bShop" type="button"><b>Obchod</b><small id="shopSub">skiny míčků, efekty výhry, hole</small></button>
     <div class="row2">
       <button class="btn" id="bQuick" type="button"><b>Online</b><small>rychlá hra, 2–4 hráči</small></button>
       <button class="btn" id="bCreate" type="button"><b>Vytvořit hru</b><small>kód pro kamarády</small></button>
@@ -51,6 +52,17 @@
   </div>
 </div>
 
+<!-- obchod -->
+<div class="modal" id="shopModal" hidden>
+  <div class="sheet shop">
+    <div class="shead"><h2>Obchod</h2><div class="coinchip sm"><i class="coin"></i><b id="shopCoins">0</b></div><button class="chip ico" data-close type="button" aria-label="Zavřít">✕</button></div>
+    <div class="shopTop"><img id="shopPrev" alt="" width="104" height="104"><div class="shopInfo"><b id="shopName"></b><small id="shopHint"></small><div class="stats" id="shopStats"></div><div class="shopBtns"><button class="btn small" id="shopBuy" type="button" hidden><b></b></button><button class="btn small ghost" id="shopTry" type="button" hidden><b>Ukázka efektu</b></button></div></div></div>
+    <div class="chipsel tabs" id="shopTabs"></div>
+    <div class="shopGrid" id="shopGrid"></div>
+    <p class="hint" id="shopNote"></p>
+  </div>
+</div>
+
 <!-- jak se hraje -->
 <div class="modal" id="howModal" hidden>
   <div class="sheet">
@@ -62,7 +74,7 @@
       <li><b>Cíl:</b> dostat míček do jamky na co nejméně ran. Moc rychlý míček jamku přeskočí! Voda a láva = zpátky na místo posledního úderu a rána navíc.</li>
       <li><b>Čas:</b> každá jamka má limit. Až první hráč dokončí, ostatním zbývá jen krátká doba. Kdo jamku nedokončí, dostane par + 4 rány.</li>
       <li><b>Překážky:</b> písek brzdí, led klouže, žluté šipky zrychlují, fialové kruhy jsou teleporty, nárazníky míček odpálí. Pozor na otáčivé tyče, mlýn a brány.</li>
-      <li>Vyhrává nejméně ran za celé hřiště. Za zápas dostaneš coiny, za jamku na jednu ránu bonus.</li>
+      <li>Vyhrává nejméně ran za celé hřiště. Za zápas dostaneš <b>coiny</b> (10 za zápas, +30 za výhru, +2 za každou dokončenou jamku, +15 za jamku na jednu ránu). V <b>obchodu</b> za ně koupíš skiny míčků, efekty výhry a hole, které zesílí ránu.</li>
     </ol>
     <div class="acts"><button class="btn main" id="howClose" type="button"><b>Rozumím</b></button></div>
   </div>
@@ -97,7 +109,7 @@
     <div class="timer" id="timer"><b id="tVal">60</b><i id="tBar"></i></div>
   </div>
   <div class="board" id="board"></div>
-  <div class="strokes" id="strokes"><span>Rány</span><b id="sVal">0</b></div>
+  <div class="strokes" id="strokes"><span>Rány</span><b id="sVal">0</b><small class="clubTag" id="clubTag" hidden></small></div>
   <div class="banner" id="banner" hidden></div>
   <div class="intro" id="intro" hidden><small id="iHole"></small><b id="iName"></b><span id="iPar"></span><em id="iCount"></em></div>
   <div class="power" id="power" hidden><i id="pFill"></i><b id="pTxt">0 %</b></div>
@@ -124,7 +136,7 @@
   </div>
 </div>
 <div class="toast" id="toast" hidden></div>
-<script src="config.js?v=3"></script>
-<script type="module" src="golf.js?v=3"></script>
+<script src="config.js?v=4"></script>
+<script type="module" src="golf.js?v=4"></script>
 </body>
 </html>

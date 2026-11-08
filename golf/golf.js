@@ -25,9 +25,11 @@ export function golfOf(acc) {
   for (const k of ['wins', 'games', 'aces', 'holes']) t[k] = Math.max(0, Math.min(1e7, Math.floor(Number(t[k]) || 0)));
   t.color = K.colorIdx(t.color);   // -1 = ještě nevybráno
   t.coins = Number.isFinite(t.coins) ? Math.max(0, Math.min(1e9, Math.floor(t.coins))) : K.START_COINS;
+  const own = new Set(); if (Array.isArray(t.own)) for (const k of t.own) { if (typeof k !== 'string') continue; const [c, id] = k.split(':'); if (K.shopItem(c, id)) own.add(c + ':' + id); }
+  t.own = [...own]; t.eq = K.cleanEq(t.eq, own);
   return t;
 }
-function profileOf(acc, linked) { const t = golfOf(acc); return { account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, golf: { color: t.color, wins: t.wins, games: t.games, aces: t.aces, holes: t.holes, coins: t.coins }, coinRules: K.COINS }; }
+function profileOf(acc, linked) { const t = golfOf(acc); return { account: true, linked: !!linked, name: acc.name, avatar: acc.avatar, golf: { color: t.color, wins: t.wins, games: t.games, aces: t.aces, holes: t.holes, coins: t.coins, own: t.own, eq: t.eq }, coinRules: K.COINS }; }
 function identify(msg) {
   if (!deps || !msg || typeof msg.token !== 'string' || !deps.TOKEN_RE.test(msg.token)) return null;
   try { return deps.resolveAccount({ token: msg.token, session: typeof msg.session === 'string' ? msg.session : undefined, name: msg.name }); } catch { return null; }
@@ -39,6 +41,19 @@ export function api(action, body) {
     const ident = identify(body || {}); if (!ident) return { status: 401, json: { error: 'Pro uložení barvy se musíš přihlásit.' } };
     const c = K.colorIdx(body.color); if (c < 0) return { status: 400, json: { error: 'Neznámá barva.' } };
     golfOf(ident.acc).color = c; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
+  }
+  if (action === 'buy' || action === 'equip') {   // obchod: koupě za coiny / výběr (prázdné id = základ zdarma)
+    const ident = identify(body || {}); if (!ident) return { status: 401, json: { error: 'Do obchodu se musíš přihlásit.' } };
+    const t = golfOf(ident.acc); const cat = String(body.cat ?? ''); const id = String(body.id ?? '');
+    if (!K.SHOP_CATS.includes(cat)) return { status: 400, json: { error: 'Neznámá kategorie.' } };
+    if (action === 'equip') {
+      if (id !== '' && !(K.shopItem(cat, id) && t.own.includes(cat + ':' + id))) return { status: 403, json: { error: 'Tuhle věc ještě nemáš.' } };
+      t.eq[cat] = id; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
+    }
+    const it = K.shopItem(cat, id); if (!it) return { status: 400, json: { error: 'Neznámá věc.' } };
+    if (t.own.includes(cat + ':' + id)) return { status: 409, json: { error: 'Tuhle věc už máš.' } };
+    if (t.coins < it.price) return { status: 402, json: { error: `Chybí ti ${it.price - t.coins} coinů.` } };
+    t.coins -= it.price; t.own.push(cat + ':' + id); t.eq[cat] = id; dirty(); return { status: 200, json: profileOf(ident.acc, ident.linked) };
   }
   return { status: 404, json: { error: 'Neznámá akce.' } };
 }
@@ -56,14 +71,19 @@ function freeColor(room, want, except) {
 }
 
 // ------------------------------------------------------------------ stav pro klienty
-function playerView(p) {
-  const t = p.acc ? golfOf(p.acc) : null;
-  return { name: p.name, avatar: p.acc ? p.acc.avatar : null, bot: p.bot || 0, connected: p.connected, color: p.color, left: !!p.left, wins: t ? t.wins : 0, games: t ? t.games : 0 };
+/** Veřejná výbava hráče (skin míčku a efekt výhry): z účtu, boti dostanou náhodnou. Při zápase je zamčená, aby se mezi jamkami nic neměnilo. */
+function eqOf(p) {
+  if (p.bot) return p.eq || (p.eq = { skin: Math.random() < 0.6 ? K.SKINS[Math.floor(Math.random() * K.SKINS.length)].id : '', fx: Math.random() < 0.5 ? K.WINFX[Math.floor(Math.random() * K.WINFX.length)].id : '' });
+  return p.acc ? K.pubEq(golfOf(p.acc).eq) : { skin: '', fx: '' };
+}
+function playerView(p, room) {
+  const t = p.acc ? golfOf(p.acc) : null; const eq = p.eqLock && room.phase !== 'lobby' ? p.eqLock : eqOf(p);
+  return { name: p.name, avatar: p.acc ? p.acc.avatar : null, bot: p.bot || 0, connected: p.connected, color: p.color, left: !!p.left, wins: t ? t.wins : 0, games: t ? t.games : 0, sk: eq.skin, fx: eq.fx };
 }
 function view(room, pid) {
   return {
     t: 'state', code: room.code, phase: room.phase, you: room.players.findIndex((p) => p.id === pid), host: room.players.findIndex((p) => p.id === room.host), quick: !!room.quick, solo: !!room.solo,
-    course: room.course, cfg: room.cfg, players: room.players.map(playerView), result: room.result, rematch: room.players.map((p) => p.bot || room.rematch.has(p.id)), matchId: room.matchId,
+    course: room.course, cfg: room.cfg, players: room.players.map((p) => playerView(p, room)), result: room.result, rematch: room.players.map((p) => p.bot || room.rematch.has(p.id)), matchId: room.matchId,
     auto: room.quick && room.autoAt ? Math.max(0, Math.round((room.autoAt - now()) / 1000)) : null,
     drop: room.dropFor ? { idx: room.players.findIndex((p) => p.id === room.dropFor), left: Math.max(0, Math.round((room.dropAt - now()) / 1000)) } : null,
   };
@@ -83,7 +103,7 @@ function broadcast(room, obj) { const json = typeof obj === 'string' ? obj : JSO
 
 // ------------------------------------------------------------------ průběh zápasu
 function startMatch(room) {
-  for (const p of room.players) p.left = false;
+  for (const p of room.players) { p.left = false; p.eqLock = { ...eqOf(p) }; }   // výbava se na začátku zápasu zamkne (změny v obchodě platí od dalšího zápasu)
   room.game = G.newGame(room.players.map((p) => ({ name: p.name, color: p.color, bot: p.bot })), crypto.randomInt(1, 2 ** 31), room.course, room.cfg);
   room.result = null; room.rematch = new Set(); room.matchId = (room.matchId || 0) + 1; room.autoAt = null; room.phase = 'play'; room.lastActive = now(); room.tickN = 0;
   for (const p of room.players) if (p.left) G.forfeit(room.game, room.players.indexOf(p));

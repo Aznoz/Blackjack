@@ -57,7 +57,7 @@ export function shot(g, i, m) {
 export function report(g, i, m) {
   const p = g.players[i]; if (!p || g.phase !== 'play' || p.done || p.left || p.bot) return;
   const x = Number(m.x), z = Number(m.z); if (!Number.isFinite(x) || !Number.isFinite(z)) return;
-  p.x = K.clamp(x, 0, g.W.w); p.z = K.clamp(z, 0, g.W.h); p.vx = K.clamp(Number(m.vx) || 0, -30, 30); p.vz = K.clamp(Number(m.vz) || 0, -30, 30); p.m = m.m ? 1 : 0;
+  p.x = K.clamp(x, 0, g.W.w); p.z = K.clamp(z, 0, g.W.h); p.vx = K.clamp(Number(m.vx) || 0, -40, 40); p.vz = K.clamp(Number(m.vz) || 0, -40, 40); p.m = m.m ? 1 : 0;
   if (!p.m && p.strokes >= g.cap) finishPlayer(g, i, 'pickup');   // vyčerpané rány: míček se zvedne
 }
 /** Míček spadl do vody/lávy: penalizační rána (nejvýš jedna za ránu) a návrat na místo posledního úderu. */

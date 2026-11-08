@@ -1,9 +1,10 @@
 // MINIGOLF – klient: menu, čekárna a hra. 3D scéna je v scene.js (three.js), fyzika míčku v phys.js (stejná jako na serveru): míček hráče se počítá tady v prohlížeči
 // a hlásí se serveru, ostatní míčky se dopočítávají z jeho snímků. Ovládání: táhni prstem dozadu a pusť (prak), kamera je za míčkem a jde otáčet.
-import * as K from './shared.js?v=3';
-import * as P from './phys.js?v=3';
-import * as C from './courses.js?v=3';
-import { createScene } from './scene.js?v=3';
+import * as K from './shared.js?v=4';
+import * as P from './phys.js?v=4';
+import * as C from './courses.js?v=4';
+import { createScene } from './scene.js?v=4';
+import { skinPreviewURL, fxIconURL, clubIconURL } from './cosm.js?v=4';
 
 const CFG = window.GOLF_CONFIG || {};
 const $ = (id) => document.getElementById(id);
@@ -16,6 +17,10 @@ const coarse = () => matchMedia('(pointer: coarse)').matches;
 const angDiff = (a, b) => { let d = (b - a) % (Math.PI * 2); if (d > Math.PI) d -= Math.PI * 2; if (d < -Math.PI) d += Math.PI * 2; return d; };
 const LEVELS = [[1, 'Nováček', 'Míří nejistě, často minimálně o kus.'], [2, 'Hráč', 'Slušně míří a zvládne většinu jamek.'], [3, 'Šampion', 'Skoro neomylný, počítej s jamkou na jednu ránu.']];
 const colorHex = (i) => (K.COLORS[i] || K.COLORS[0]).c;
+let prof = null;   // profil účtu (null = host bez účtu)
+const myEq = () => (prof && prof.account && prof.golf.eq) || { skin: '', fx: '', club: '' };
+const myClub = () => K.clubOf(myEq().club);
+let curClub = K.BASE_CLUB;   // hůl platná pro rozehranou jamku
 
 // ------------------------------------------------------------------ identita
 let memToken = null;
@@ -32,7 +37,6 @@ function getToken() {
 }
 function getSession() { let x = LS.get('portal_session'); try { x = JSON.parse(x); } catch (e) { /* surový řetězec */ } return typeof x === 'string' ? x : undefined; }
 const ident = () => ({ token: getToken(), session: getSession() });
-let prof = null;
 const myName = () => { const el = $('name'); const v = el && !el.closest('[hidden]') ? el.value.trim() : ''; return v || (prof && prof.name) || LS.get('golf_name') || undefined; };
 let myColor = Number.isFinite(+LS.get('golf_color')) && LS.get('golf_color') !== null ? +LS.get('golf_color') : -1;
 async function call(action, body) {
@@ -197,6 +201,55 @@ $('bQuick').onclick = () => { sfx.click(); audio(); enter(() => sendMsg({ t: 'qu
 $('bCreate').onclick = () => { sfx.click(); audio(); enter(() => sendMsg({ t: 'create', ...join({ course: 0 }) })); };
 $('joinForm').onsubmit = (e) => { e.preventDefault(); const code = $('code').value.trim().toUpperCase(); if (code.length < 4) return status('Napiš čtyřmístný kód.'); sfx.click(); audio(); enter(() => sendMsg({ t: 'join', code, ...join() })); };
 $('bHow').onclick = () => { sfx.click(); $('howModal').hidden = false; }; $('howClose').onclick = () => { $('howModal').hidden = true; };
+document.addEventListener('click', (e) => { if (e.target.closest('[data-close]')) { const m = e.target.closest('.modal'); if (m) { m.hidden = true; if (m.id === 'shopModal') shopOpen = false; } } });
+
+// ------------------------------------------------------------------ obchod: skiny míčků, efekty výhry a hole za coiny
+const FX_INFO = {
+  '': 'Barevné konfety z jamky.', sparks: 'Fontána zlatých jiskřiček.', stars: 'Hvězdičky létají vzhůru a snášejí se dolů.', rings: 'Rázové vlny se rozbíhají od jamky.', hearts: 'Srdíčka pomalu stoupají.',
+  rainbow: 'Vysoký duhový gejzír.', fireworks: 'Raketa a salva barevných ohňostrojů.', lightning: 'Blesk udeří přímo do jamky.', meteor: 'Z nebe dopadne ohnivý meteorit.', goldrain: 'Zlatý déšť a třpytky.', nova: 'Výbuch supernovy s rázovými vlnami.',
+};
+const SHOP = {
+  skin: { tab: 'Míčky', base: { id: '', name: 'Základní míček', price: 0 }, list: K.SKINS, hint: (it) => (it.id ? 'Vzhled míčku, vidí ho všichni hráči. Barva hráče zůstává u jmenovky.' : 'Obyčejný míček v tvé barvě.') },
+  fx: { tab: 'Efekty výhry', base: { id: '', name: 'Konfety', price: 0 }, list: K.WINFX, hint: (it) => FX_INFO[it.id] + ' Přehraje se, když míček spadne do jamky (u jamky na jednu ránu větší), a po vítězství v zápase.' },
+  club: { tab: 'Hole', base: K.BASE_CLUB, list: K.CLUBS, hint: (it) => it.desc + ' Hůl vidíš jen ty.' },
+};
+let shopTab = 'skin', shopSel = { skin: '', fx: '', club: '' }, shopOpen = false, shopBusy = false;
+const hasAcc = () => !!(prof && prof.account);
+const ownsItem = (cat, id) => id === '' || (hasAcc() && prof.golf.own.includes(cat + ':' + id));
+const eqOf = (cat) => (hasAcc() ? prof.golf.eq[cat] : '');
+const coinsNow = () => (hasAcc() ? prof.golf.coins : 0);
+function shopImg(cat, it, size) { return cat === 'skin' ? skinPreviewURL(it.id, size, colorHex(Math.max(0, myColor))) : cat === 'fx' ? fxIconURL(it.id, size) : clubIconURL(it.id, size); }
+function statRow(label, frac, txt) { return `<div class="st"><span>${label}</span><span class="bar"><i style="width:${Math.round(clamp(frac, 0, 1) * 100)}%"></i></span><span>${txt}</span></div>`; }
+function renderShop() {
+  const cfg = SHOP[shopTab]; const items = [cfg.base, ...cfg.list]; let sel = items.find((x) => x.id === shopSel[shopTab]) || items[0]; shopSel[shopTab] = sel.id;
+  $('shopCoins').textContent = coinsNow();
+  $('shopTabs').innerHTML = Object.entries(SHOP).map(([k, c]) => `<button type="button" data-tab="${k}" class="${k === shopTab ? 'on' : ''}">${c.tab}</button>`).join('');
+  $('shopGrid').innerHTML = items.map((it) => { const own = ownsItem(shopTab, it.id), eq = own && eqOf(shopTab) === it.id; return `<button type="button" class="scard${it.id === sel.id ? ' sel' : ''}${own ? ' own' : ''}${eq ? ' eq' : ''}${!own && it.price > coinsNow() ? ' lock' : ''}" data-id="${it.id}"><img src="${shopImg(shopTab, it, 64)}" alt="" width="64" height="64"><b>${esc(it.name)}</b><small>${own ? (it.id === '' ? 'základ' : 'máš') : `<i class="coin"></i>${it.price}`}</small></button>`; }).join('');
+  $('shopPrev').src = shopImg(shopTab, sel, 104); $('shopName').textContent = sel.name; $('shopHint').textContent = cfg.hint(sel);
+  $('shopStats').innerHTML = shopTab === 'club' ? statRow('Síla rány', (sel.pw - 1) / 0.3, `+${Math.round((sel.pw - 1) * 100)} %`) + statRow('Zaměřovač', (sel.aim - 1) / 0.6, `+${Math.round((sel.aim - 1) * 100)} %`) + statRow('Písek brzdí', 1 - sel.sand, sel.sand < 1 ? `−${Math.round((1 - sel.sand) * 100)} %` : 'jako vždy') : '';
+  const own = ownsItem(shopTab, sel.id), eq = own && eqOf(shopTab) === sel.id; const b = $('shopBuy'); b.hidden = false; b.disabled = shopBusy; const bt = b.firstElementChild;
+  if (!hasAcc()) { bt.textContent = 'Přihlas se pro nákup'; b.disabled = true; } else if (eq) { bt.textContent = 'Nasazeno'; b.disabled = true; } else if (own) bt.textContent = 'Nasadit'; else bt.textContent = `Koupit za ${sel.price} coinů`;
+  b.classList.toggle('main', hasAcc() && !eq); $('shopTry').hidden = shopTab !== 'fx' || !W;
+  $('shopNote').textContent = hasAcc() ? 'Coiny dostaneš za zápas (10), výhru (+30), každou dokončenou jamku (+2) a jamku na jednu ránu (+15).' : 'Coiny se ukládají do účtu na portálu. Přihlášený hráč tu může nakupovat.';
+}
+function openShop() { shopOpen = true; $('shopModal').hidden = false; renderShop(); }
+$('bShop').onclick = () => { sfx.click(); openShop(); };
+$('shopTabs').onclick = (e) => { const b = e.target.closest('[data-tab]'); if (!b) return; sfx.click(); shopTab = b.dataset.tab; renderShop(); $('shopGrid').scrollTop = 0; };
+$('shopGrid').onclick = (e) => { const b = e.target.closest('[data-id]'); if (!b) return; sfx.click(); shopSel[shopTab] = b.dataset.id; renderShop(); };
+$('shopBuy').onclick = async () => {
+  const cat = shopTab, id = shopSel[cat]; if (!hasAcc() || shopBusy) return; const own = ownsItem(cat, id); const it = id === '' ? SHOP[cat].base : K.shopItem(cat, id);
+  if (!own && it.price > coinsNow()) { sfx.bad(); toast(`Chybí ti ${it.price - coinsNow()} coinů.`); return; }
+  shopBusy = true; renderShop();
+  try { prof = await call(own ? 'equip' : 'buy', { cat, id }); sfx.cup(); toast(own ? `Nasazeno: ${it.name}` : `Koupeno: ${it.name}`); $('pCoins').lastElementChild.textContent = prof.golf.coins; if (cat === 'skin') previewMenu(); }
+  catch (err) { sfx.bad(); toast(err.message); }
+  shopBusy = false; renderShop();
+};
+let demoUntil = 0;
+$('shopTry').onclick = () => {   // ukázka efektu: na chvíli se schová menu a efekt se přehraje nad jamkou v pozadí
+  if (!W || !V) return; const id = shopSel.fx; $('shopModal').hidden = true; $('menu').style.visibility = 'hidden'; $('lobby').style.visibility = 'hidden'; demoUntil = performance.now() + 4200; preview = preview || { a: 0 };
+  setTimeout(() => V.fx.win(id, W.cup[0], W.cup[1], false), 350); setTimeout(() => V.fx.win(id, W.cup[0], W.cup[1], true), 1700);
+  setTimeout(() => { $('menu').style.visibility = ''; $('lobby').style.visibility = ''; demoUntil = 0; if (shopOpen) { $('shopModal').hidden = false; renderShop(); } }, 4300);
+};
 
 // --- hra proti botům
 const bs = { course: 0, holes: 3, n: 2, lv: 2, time: 60 };
@@ -249,7 +302,7 @@ let preview = null, previewKey = '';
 function previewHole(c) {
   if (!V) return; const cc = c === C.MIX ? Math.floor(Math.random() * C.COURSES.length) : c; const key = 'p' + c; if (previewKey === key && W) return; previewKey = key;
   const k = c === C.MIX ? Math.floor(Math.random() * 6) : [0, 3, 4, 5][Math.floor(Math.random() * 4)];
-  W = P.buildWorld(C.holeDef(cc, k)); V.setHole(W); V.setBalls([{ color: colorHex(Math.max(0, myColor)), name: '', mine: true }]); V.moveBall(0, W.tee[0], W.tee[1]); preview = { a: Math.random() * 6 };
+  W = P.buildWorld(C.holeDef(cc, k)); V.setHole(W); V.setBalls([{ color: colorHex(Math.max(0, myColor)), name: '', mine: true, skin: myEq().skin }]); V.moveBall(0, W.tee[0], W.tee[1]); preview = { a: Math.random() * 6 };
 }
 function previewMenu() { previewKey = ''; previewHole(Math.floor(Math.random() * C.COURSES.length)); if (V && W) V.moveBall(0, W.tee[0], W.tee[1]); }
 function previewLobby(c) { previewHole(c); }
@@ -274,8 +327,9 @@ function hintYaw(x, z) {   // směr po nejkratší cestě k jamce (kamera se po 
 }
 function setupHole() {
   W = P.buildWorld(C.holeDef(GS.c, GS.k)); DF = P.distField(W); previewKey = ''; V.setHole(W);
-  V.setBalls(S.players.map((p, i) => ({ color: colorHex(p.color), name: p.name, mine: i === me })));
-  ball = P.newBall(W.tee[0], W.tee[1]); strokes = 0; lastShot = { x: W.tee[0], z: W.tee[1] }; sunkLocal = false; doneSrv = 0; respawnAt = 0; acc = 0; lastMv = false; sinkT = S.players.map(() => 0); cups = S.players.map(() => null);
+  V.setBalls(S.players.map((p, i) => ({ color: colorHex(p.color), name: p.name, mine: i === me, skin: p.sk })));
+  curClub = myClub(); const ct = $('clubTag'); ct.hidden = !curClub.id; ct.textContent = curClub.id ? `${curClub.name} +${Math.round((curClub.pw - 1) * 100)} %` : '';
+  ball = P.newBall(W.tee[0], W.tee[1]); ball.sand = curClub.sand; strokes = 0; lastShot = { x: W.tee[0], z: W.tee[1] }; sunkLocal = false; doneSrv = 0; respawnAt = 0; acc = 0; lastMv = false; sinkT = S.players.map(() => 0); cups = S.players.map(() => null);
   others = S.players.map(() => ({ x: W.tee[0], z: W.tee[1], rx: W.tee[0], rz: W.tee[1], vx: 0, vz: 0, m: 0, s: 0, d: 0, recv: 0 }));
   yaw = hintYaw(W.tee[0], W.tee[1]); yawGoal = null; camInit = false; $('banner').hidden = true; $('scoreOv').hidden = true;
   for (let i = 0; i < S.players.length; i++) V.moveBall(i, W.tee[0], W.tee[1], 1);
@@ -307,7 +361,7 @@ function onEvent(e) {
   else if (k === 'pen') { if (i !== me) { const o = others[i]; V.fx.splash(o.rx, o.rz); sfx.splash(); } }
   else if (k === 'fin') {
     if (i === me) { doneSrv = e[2] ? 2 : 1; if (!e[2] && !sunkLocal) { banner(`Míček zvednut<small>${GS.cap} ran – nestíhal(a) jsi</small>`, 2600); sfx.bad(); } }
-    else { const o = others[i]; if (e[2]) { startCup(i, o); V.fx.confetti(W.cup[0], W.cup[1]); sfx.cup(); toast(`${p.name} dokončil(a) jamku za ${e[3]}`, 1800); } else { sinkT[i] = -1; toast(`${p.name} zvedl(a) míček`, 1800); } }
+    else { const o = others[i]; if (e[2]) { startCup(i, o); V.fx.win(p.fx || '', W.cup[0], W.cup[1], e[3] === 1); sfx.cup(); toast(`${p.name} dokončil(a) jamku za ${e[3]}`, 1800); } else { sinkT[i] = -1; toast(`${p.name} zvedl(a) míček`, 1800); } }
   }
 }
 function banner(html, ms = 2200) { const b = $('banner'); b.innerHTML = html; b.hidden = false; b.style.animation = 'none'; void b.offsetWidth; b.style.animation = ''; clearTimeout(banner.t); banner.t = setTimeout(() => { b.hidden = true; }, ms); }
@@ -337,7 +391,7 @@ function stepCup(cb, dt) {
   while (cb.acc >= P.DT) { cb.acc -= P.DT; P.stepBall(W, cb, 0); }
 }
 function onSink() {
-  sunkLocal = true; V.fx.confetti(W.cup[0], W.cup[1]); sendMsg({ t: 'sink', x: ball.x, z: ball.z });
+  sunkLocal = true; V.fx.win((S.players[me] && S.players[me].fx) || '', W.cup[0], W.cup[1], strokes === 1); sendMsg({ t: 'sink', x: ball.x, z: ball.z });
   const ace = strokes === 1; (ace ? sfx.ace : sfx.cup)(); banner(`${scoreWord(strokes, GS.par)}<small>${strokes} ${strokes === 1 ? 'rána' : strokes < 5 ? 'rány' : 'ran'} · par ${GS.par}</small>`, 2800);
   sendRep(true);
 }
@@ -350,7 +404,7 @@ function sendRep(force) {
   if (force || (mv && now - lastRep > 85) || mv !== lastMv || (!mv && now - lastRep > 1000)) { sendMsg({ t: 'rep', x: +ball.x.toFixed(2), z: +ball.z.toFixed(2), vx: +ball.vx.toFixed(2), vz: +ball.vz.toFixed(2), m: mv ? 1 : 0 }); lastRep = now; lastMv = mv; }
 }
 function shoot(ang, pow) {
-  lastShot = { x: ball.x, z: ball.z }; P.shoot(ball, ang, pow); strokes++; acc = 0; sendMsg({ t: 'shot', x: +ball.x.toFixed(2), z: +ball.z.toFixed(2), a: +ang.toFixed(3), p: +pow.toFixed(3) });
+  lastShot = { x: ball.x, z: ball.z }; P.shoot(ball, ang, pow, curClub.pw); strokes++; acc = 0; sendMsg({ t: 'shot', x: +ball.x.toFixed(2), z: +ball.z.toFixed(2), a: +ang.toFixed(3), p: +pow.toFixed(3) });
   sfx.hit(pow); V.fx.puff(ball.x, ball.z); lastRep = 0; sendRep(true); LS.set('golf_tip', '1'); $('tip').hidden = true; yawGoal = null;
 }
 
@@ -412,7 +466,9 @@ function updateCamera(dt) {
     tgt = { px: lerp(o.px, b.px, e), py: lerp(o.py, b.py, e), pz: lerp(o.pz, b.pz, e), lx: lerp(o.lx, b.lx, e), ly: lerp(o.ly, b.ly, e), lz: lerp(o.lz, b.lz, e) }; camInit = false;
     camP.x = tgt.px; camP.y = tgt.py; camP.z = tgt.pz; camL.x = tgt.lx; camL.y = tgt.ly; camL.z = tgt.lz;
   } else if (ph === 'score' || ph === 'over' || !GS) {
-    preview = preview || { a: 0 }; preview.a += dt * 0.15; const R = Math.max(W.w, W.h) * 0.8 + 5; tgt = { px: cx + Math.cos(preview.a) * R, py: R * 0.55 + 2, pz: cz + Math.sin(preview.a) * R * 0.8, lx: cx, ly: 0, lz: cz };
+    preview = preview || { a: 0 };
+    if (ph === 'over' && performance.now() < celebUntil) { preview.a += dt * 0.55; const hh = gh(W.cup[0], W.cup[1]); tgt = { px: W.cup[0] + Math.cos(preview.a) * 5.8, py: hh + 3.6, pz: W.cup[1] + Math.sin(preview.a) * 5.8, lx: W.cup[0], ly: hh + 1.5, lz: W.cup[1] }; }
+    else { preview.a += dt * 0.15; const R = Math.max(W.w, W.h) * 0.8 + 5; tgt = { px: cx + Math.cos(preview.a) * R, py: R * 0.55 + 2, pz: cz + Math.sin(preview.a) * R * 0.8, lx: cx, ly: 0, lz: cz }; }
   } else if (topView) {
     const H = clamp(Math.max(W.w, W.h) * 0.62 * zoom + 3, 7, 40); up.set(f[0], 0, f[1]); tgt = { px: cx - f[0] * 0.02, py: H, pz: cz - f[1] * 0.02, lx: cx, ly: 0, lz: cz };
   } else tgt = behind();
@@ -452,9 +508,11 @@ function frame(now) {
     const wasMoving = ball && !P.isRest(ball); stepMine(dt); if (ball && !sunkLocal && GS.ph === 'play' && !respawnAt) { sendRep(false); if (wasMoving && P.isRest(ball)) { yawGoal = hintYaw(ball.x, ball.z); sendRep(true); } }
     const mb = V.balls[me]; if (mb) mb.sink = P.BR - ball.y;
     V.moveBall(me, ball.x, ball.z, sinkT[me] < 0 ? 0 : 1);
-    if (pull) { const v = pullVec(); if (v && v.ok && canShoot()) { V.aim(true, ball.x, ball.z, v.dx, v.dz, v.p); $('power').hidden = false; $('pFill').style.width = v.p * 100 + '%'; $('pTxt').textContent = Math.round(v.p * 100) + ' %'; } else { V.aim(false); $('power').hidden = true; } }
+    if (pull) { const v = pullVec(); if (v && v.ok && canShoot()) { V.aim(true, ball.x, ball.z, v.dx, v.dz, v.p, curClub.aim); $('power').hidden = false; $('pFill').style.width = v.p * 100 + '%'; $('pTxt').textContent = Math.round(v.p * 100) + ' %'; } else { V.aim(false); $('power').hidden = true; } }
     updateOthers(dt);
-  } else if (screen !== 'game' && W) { preview = preview || { a: 0 }; preview.a += dt * 0.13; const cx = W.w / 2, cz = W.h / 2, R = Math.max(W.w, W.h) * 0.62 + 5; V.cam.up.set(0, 1, 0); V.cam.position.set(cx + Math.cos(preview.a) * R, R * 0.62 + 2.5, cz + Math.sin(preview.a) * R * 0.8); V.cam.lookAt(cx, 0, cz); V.aim(false); }
+  } else if (screen !== 'game' && W) { preview = preview || { a: 0 }; V.cam.up.set(0, 1, 0); V.aim(false);
+    if (demoUntil > performance.now()) { preview.a += dt * 0.5; const hh = P.heightAt(W, W.cup[0], W.cup[1]).y; V.cam.position.set(W.cup[0] + Math.cos(preview.a) * 5.6, hh + 3.4, W.cup[1] + Math.sin(preview.a) * 5.6); V.cam.lookAt(W.cup[0], hh + 1.4, W.cup[1]); }
+    else { preview.a += dt * 0.13; const cx = W.w / 2, cz = W.h / 2, R = Math.max(W.w, W.h) * 0.62 + 5; V.cam.position.set(cx + Math.cos(preview.a) * R, R * 0.62 + 2.5, cz + Math.sin(preview.a) * R * 0.8); V.cam.lookAt(cx, 0, cz); } }
   if (screen === 'game' && W) updateCamera(dt);
   V.update(dt, screen === 'game' && GS ? tObs() : performance.now() / 1000);
   V.render(); updateHud(dt);
@@ -477,8 +535,16 @@ function renderScore() {
   $('scoreOv').innerHTML = `<div class="ovbox"><h2>Jamka ${g.hole + 1} hotova</h2><div class="sub">${esc(W.def.name)} · par ${g.par}</div><table class="tbl"><tbody>${lines}</tbody></table><div style="height:10px"></div>${scoreTable(rowsDone, g.totals, pars, g.hole, null)}<div class="count" id="scoreCount"></div></div>`;
   $('scoreOv').hidden = false;
 }
+let celebFor = -1, celebUntil = 0, celebT = 0;
+function startCeleb(r) {   // oslava vítěze: pár vteřin kamera krouží kolem jamky a hrají se efekty výhry vítězů, až potom naskočí tabulka
+  const win = r.winners || []; if (!win.length || win.length === S.players.length || !W) return;
+  celebUntil = performance.now() + 4300; banner(`Vítěz<small>${esc(win.map((i) => S.players[i].name).join(' a '))}</small>`, 3800); preview = preview || { a: 0 };
+  [200, 1100, 2000, 2900].forEach((d) => setTimeout(() => { if (curMatch !== celebFor || !W) return; for (const w of win) V.fx.win((S.players[w] && S.players[w].fx) || '', W.cup[0], W.cup[1], true); }, d));
+}
 function renderOver() {
-  const r = S && S.result; if (!r || !GS) return; const pars = r.pars; const win = r.winners; const names = win.map((i) => S.players[i].name);
+  const r = S && S.result; if (!r || !GS) return;
+  if (celebFor !== curMatch) { celebFor = curMatch; startCeleb(r); }
+  if (performance.now() < celebUntil) { clearTimeout(celebT); celebT = setTimeout(renderOver, celebUntil - performance.now() + 40); $('overOv').hidden = true; return; } const pars = r.pars; const win = r.winners; const names = win.map((i) => S.players[i].name);
   const draw = win.length === S.players.length; const youWin = win.includes(me) && !draw;
   const my = r.coins && r.coins[me];
   const rem = S.rematch; const need = S.players.filter((p) => !p.bot && !p.left).length; const got = S.players.filter((p, i) => !p.bot && rem[i]).length;

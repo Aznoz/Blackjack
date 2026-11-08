@@ -79,8 +79,8 @@ export function gateLift(o, t) { const p = ((t / o.per + (o.ph || 0)) % 1 + 1) %
 export const newBall = (x, z) => ({ x, z, vx: 0, vz: 0, y: BR, vy: 0, still: 99, sunk: false, tw: 0, hit: 0, hk: '' });
 export const speedOf = (b) => Math.hypot(b.vx, b.vz);
 export const isRest = (b) => b.still >= 12 && !b.sunk;
-/** Rána: úhel (radiány, 0 = +x, π/2 = +z) a síla 0–1. */
-export function shoot(b, ang, pow) { const v = powV(pow); b.vx = Math.cos(ang) * v; b.vz = Math.sin(ang) * v; b.still = 0; }
+/** Rána: úhel (radiány, 0 = +x, π/2 = +z), síla 0–1, mul = násobek rychlosti od hole (nejvýš 1,5). */
+export function shoot(b, ang, pow, mul = 1) { const v = powV(pow) * (mul > 0 && mul <= 1.5 ? mul : 1); b.vx = Math.cos(ang) * v; b.vz = Math.sin(ang) * v; b.still = 0; }
 
 function pushCircle(b, cx, cz, r, e, vsx, vsz, kind) {   // míček proti kruhu (sloup, nárazník) s povrchovou rychlostí vs
   const dx = b.x - cx, dz = b.z - cz, rr = r + BR, d2 = dx * dx + dz * dz; if (d2 >= rr * rr) return false;
@@ -140,8 +140,8 @@ export function stepBall(W, b, t) {
   const bo = BOOST[ty]; if (bo && b.vx * bo[0] + b.vz * bo[1] < BOOST_V) { ax += bo[0] * BOOST_A; az += bo[1] * BOOST_A; }
   for (const o of W.objs) if (o.k === 'wind' && b.x > o.x - o.w / 2 && b.x < o.x + o.w / 2 && b.z > o.z - o.d / 2 && b.z < o.z + o.d / 2) { ax += o.ax; az += o.az; }
   b.vx += ax * DT; b.vz += az * DT;
-  const fr = FRIC[ty] || FRIC[C.GRASS]; const sp = Math.hypot(b.vx, b.vz);
-  if (sp > 0 && b.y <= BR + 0.02 && b.y >= 0) { const dec = (fr[0] + fr[1] * sp) * DT; if (sp <= dec) { b.vx = 0; b.vz = 0; } else { const k = (sp - dec) / sp; b.vx *= k; b.vz *= k; } }
+  const fr = FRIC[ty] || FRIC[C.GRASS]; const sp = Math.hypot(b.vx, b.vz); const fk = ty === C.SAND && b.sand > 0 ? b.sand : 1;   // pískovka: písek brzdí míň
+  if (sp > 0 && b.y <= BR + 0.02 && b.y >= 0) { const dec = (fr[0] + fr[1] * sp) * DT * fk; if (sp <= dec) { b.vx = 0; b.vz = 0; } else { const k = (sp - dec) / sp; b.vx *= k; b.vz *= k; } }
   b.x += b.vx * DT; b.z += b.vz * DT;
   // zdi (políčka)
   for (let it = 0; it < 2; it++) {
