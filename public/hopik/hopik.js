@@ -1,10 +1,10 @@
 // HOPÍK – klient: menu s výběrem postavičky, čekárna, a hra (výběr kusu → pokládání → běh) na canvasu. Pohyb vlastní postavy se počítá tady v prohlížeči
 // (stejná fyzika jako na serveru, phys.js) a každých pár ticků se hlásí serveru; ostatní hráči se zobrazují z jeho snímků a mezi nimi se plynule dopočítávají.
-import * as K from './shared.js?v=4';
-import * as P from './phys.js?v=4';
-import * as A from './art.js?v=4';
-import { startScene, stopScene } from './scene.js?v=4';
-import { createMusic } from './music.js?v=4';
+import * as K from './shared.js?v=5';
+import * as P from './phys.js?v=5';
+import * as A from './art.js?v=5';
+import { startScene, stopScene } from './scene.js?v=5';
+import { createMusic } from './music.js?v=5';
 const { COLS, ROWS, TPS, CHARS, STAGES } = K;
 
 const CFG = window.HOPIK_CONFIG || {};
@@ -95,7 +95,9 @@ document.addEventListener('visibilitychange', syncMusic);
 let screen = 'menu';
 function show(name) {
   screen = name; for (const id of ['menu', 'lobby', 'game']) $(id).hidden = id !== name;
-  if (name === 'game') resize();
+  $('game').classList.toggle('ov', !!coarse());   // na dotykovém zařízení ovládání i výběr kusů překrývají hru
+  if (name === 'game') { resize(); if (isFs() && coarse()) lockLand(false); } else unlockLand();
+
   if (name === 'menu') startScene($('mscene')); else stopScene();
 }
 let toastT = null;
@@ -216,6 +218,7 @@ function sendMsg(m) {
 setInterval(() => { if (ws && ws.readyState === 1 && screen !== 'menu') { try { ws.send('{"t":"ping"}'); } catch (e) { /* nic */ } } }, 20000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden && session && wantOpen && !ws) connect(); });
 function startGame(req) {
+  autoFs();
   setStatus(''); LS.set('hopik_name', ($('name').value || '').trim());
   session = null; LS.del('hopik_resume'); S = null; GS = null; resetRun(); outbox = []; retry = 0;
   if (!(ws && ws.readyState === 1)) setStatus('Připojuji…');
@@ -398,11 +401,36 @@ function renderPicks() {
 }
 $('cards').addEventListener('click', (e) => { const b = e.target.closest('[data-k]'); if (!b || b.disabled || !GS || phase() !== 'pick' || GS.offers.some((o) => o[1] === me)) return; audio(); sfx.pick(); sendMsg({ t: 'pick', k: +b.dataset.k }); });
 const coarse = () => window.matchMedia && matchMedia('(pointer: coarse)').matches;
+// ------------------------------------------------------------------ celá obrazovka + otočení na šířku (stejně jako v Tancích)
+const rootEl = document.documentElement;
+const fsOK = !!(rootEl.requestFullscreen || rootEl.webkitRequestFullscreen);
+const isFs = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+let lockWhy = '';
+async function lockLand(verbose) {   // zámek orientace jde jen v celé obrazovce; zkusí se víc způsobů, protože prohlížeče se liší
+  if (!coarse()) return false;
+  lockWhy = ''; const so = screen.orientation;
+  for (const mode of ['landscape', 'landscape-primary']) { try { if (so && so.lock) { await so.lock(mode); return true; } } catch (e) { lockWhy = (e && e.name) || 'chyba'; } }
+  try { const old = screen.lockOrientation || screen.mozLockOrientation || screen.msLockOrientation; if (old && old.call(screen, 'landscape')) return true; } catch (e) { /* nic */ }
+  if (verbose && window.innerHeight > window.innerWidth) toast(so && so.lock ? `Telefon zámek na šířku nepovolil (${lockWhy || 'neznámý důvod'}). Zkus zapnout automatické otáčení a otočit ho.` : 'Tenhle prohlížeč neumí zamknout šířku, otoč telefon ručně.');
+  return false;
+}
+function unlockLand() { try { if (screen.orientation && screen.orientation.unlock) screen.orientation.unlock(); } catch (e) { /* nic */ } }
+async function enterFs() {
+  try { if (rootEl.requestFullscreen) await rootEl.requestFullscreen({ navigationUI: 'hide' }); else if (rootEl.webkitRequestFullscreen) rootEl.webkitRequestFullscreen(); } catch (e) { /* prohlížeč nepustil */ }
+  await lockLand(true);
+}
+function exitFs() { unlockLand(); try { if (document.exitFullscreen) document.exitFullscreen(); else if (document.webkitExitFullscreen) document.webkitExitFullscreen(); } catch (e) { /* nic */ } }
+function autoFs() { if (fsOK && coarse() && !isFs() && LS.get('hopik_fs') !== '0') enterFs(); }   // na dotykových zařízeních se při startu hry zkusí celá obrazovka + šířka (jde jen z klepnutí)
+function toggleFs() { if (isFs()) { LS.set('hopik_fs', '0'); exitFs(); } else { LS.set('hopik_fs', '1'); enterFs(); } }
+function syncFs() { const on = isFs(); if (on && coarse() && screen === 'game') lockLand(false); $('fsBtn').textContent = on ? '⤢' : '⛶'; $('fsBtn').setAttribute('aria-label', on ? 'Ukončit celou obrazovku' : 'Celá obrazovka'); $('pFs').innerHTML = `<b>Celá obrazovka: ${on ? 'zapnutá' : 'vypnutá'}</b>`; setTimeout(resize, 150); }
+if (fsOK) { $('fsBtn').hidden = false; $('pFs').hidden = false; $('fsBtn').onclick = toggleFs; $('pFs').onclick = toggleFs; document.addEventListener('fullscreenchange', syncFs); document.addEventListener('webkitfullscreenchange', syncFs); syncFs(); }
+$('rotateSkip').onclick = () => { $('rotate').classList.add('skip'); };
 function renderHint() {
   const el = $('hint'); const ph = phase(); let txt = '';
   if (ph === 'place') { const g = GS; if (g.placed[me] || !g.piece[me]) txt = g.piece[me] ? 'Hotovo. Čekáme na ostatní…' : 'Tentokrát nemáš co pokládat.'; else txt = coarse() ? 'Přetáhni kus prstem, otoč ho a polož.' : 'Kus se hýbe myší. Otočíš ho R nebo pravým tlačítkem, položíš kliknutím.'; }
   else if (ph === 'run') txt = run.dead ? 'Vypadl jsi. Sleduj ostatní.' : run.fin ? 'V cíli! Čekáme na ostatní.' : '';
   else if (ph === 'reveal') txt = 'Kusy se odhalují…';
+  $('game').classList.toggle('pk', ph === 'pick'); $('game').classList.toggle('pl', ph === 'place');
   const sig = txt + '|' + ph; if (sig === hintSig) return; hintSig = sig; el.textContent = txt; el.hidden = !txt;
   const placing = ph === 'place' && GS && !GS.placed[me] && !!GS.piece[me];
   $('ppad').hidden = !placing; $('tpad').hidden = placing; $('tbJ').hidden = placing;

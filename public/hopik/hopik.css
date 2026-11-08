@@ -179,3 +179,30 @@ body { background-image: radial-gradient(rgba(43, 33, 24, .09) 1.4px, transparen
 .cfgrow { display: grid; grid-template-columns: 112px 1fr; gap: 8px; align-items: center; font-weight: 800; font-size: 13px; }
 .seg.mini { gap: 5px; } .seg.mini button { padding: 6px 2px; border-radius: 9px; border-width: 2px; font-size: 13px; }
 .cfgsum { border: 3px solid var(--ink); border-radius: 12px; padding: 6px 10px; background: #fff8e1; display: flex; flex-direction: column; gap: 2px; } .cfgsum small { color: var(--mut); font-weight: 800; } .cfgsum b { font-size: 13px; }
+
+/* ----- dotyková zařízení: hra na celou obrazovku, ovládání a výběr kusů překrývají hru (jako v Tancích) */
+.rotate { position: absolute; inset: 0; z-index: 25; background: rgba(255, 241, 201, .97); display: none; align-items: center; justify-content: center; text-align: center; font-weight: 900; font-size: 20px; }
+.rotate > div { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.phone { width: 44px; height: 76px; margin-bottom: 14px; border: 5px solid #2b2118; border-radius: 10px; background: #fff; box-shadow: 0 4px 0 #2b2118; position: relative; animation: rot 1.8s ease-in-out infinite; }
+.phone::after { content: ''; position: absolute; left: 50%; bottom: 4px; width: 10px; height: 4px; margin-left: -5px; border-radius: 2px; background: #2b2118; }
+@keyframes rot { 0%, 20% { transform: rotate(0); } 60%, 100% { transform: rotate(-90deg); } }
+@media (orientation: portrait) and (max-width: 760px) { #game.ov:not([hidden]) .rotate:not(.skip) { display: flex; } }
+#game.ov .gfield { position: absolute; inset: 0; margin: 0; padding: 0; }
+#game.ov #cv { border-width: 0; border-radius: 0; box-shadow: none; }
+#game.ov .gtop { position: absolute; left: 0; right: 0; top: 0; z-index: 8; padding: calc(env(safe-area-inset-top) + 4px) calc(env(safe-area-inset-right) + 8px) 4px calc(env(safe-area-inset-left) + 8px); pointer-events: none; gap: 6px; }
+#game.ov .gtop > * { pointer-events: auto; }
+#game.ov .pchips { pointer-events: none; } #game.ov .pc { opacity: .9; }
+#game.ov .gtime { background: rgba(255, 255, 255, .85); border: 3px solid var(--ink); border-radius: 12px; padding: 3px 8px; }
+#game.ov .gtime b { font-size: 22px; }
+#game.ov .ghud { position: absolute; left: 0; right: 0; bottom: 0; z-index: 8; pointer-events: none; padding: 8px calc(env(safe-area-inset-right) + 14px) calc(env(safe-area-inset-bottom) + 10px) calc(env(safe-area-inset-left) + 14px); }
+#game.ov .ghud .tb, #game.ov .ghud .btn { pointer-events: auto; opacity: .6; } #game.ov .ghud .tb.down, #game.ov .ghud .tb:active { opacity: 1; }
+#game.ov .ghud .tpad { pointer-events: none; }
+#game.ov.pk .ghud { display: none; }
+#game.ov .picks { z-index: 9; padding-top: calc(env(safe-area-inset-top) + 58px); background: rgba(255, 241, 201, .72); border-radius: 0; }
+#game.ov .hint { bottom: 84px; }
+#game.ov .rothint { display: none; }
+@media (max-height: 520px) {
+  #game.ov .tb { width: 66px; height: 58px; } #game.ov .tb.jump { width: 84px; }
+  #game.ov .picks { gap: 4px; } #game.ov .picks h2 { font-size: 18px; } #game.ov .pcard { width: clamp(84px, 12.6vw, 140px); padding: 4px 4px 6px; } #game.ov .pcard b { font-size: 12.5px; } #game.ov .cards { max-width: 98vw; flex-wrap: nowrap; } #game.ov .pcard small { display: none; } #game.ov .pcard img.ic { max-width: 64px; }
+  #game.ov .cards { gap: 6px; }
+}
