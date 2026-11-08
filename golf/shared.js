@@ -25,7 +25,7 @@ export const SHOP_CATS = ['skin', 'fx', 'club'];
 export const SKINS = [
   { id: 'dots', name: 'Puntíkáč', price: 80 }, { id: 'checker', name: 'Šachovnice', price: 100 }, { id: 'tennis', name: 'Tenisák', price: 120 }, { id: 'stars', name: 'Hvězdná obloha', price: 140 },
   { id: 'smile', name: 'Smajlík', price: 160 }, { id: 'soccer', name: 'Fotbal', price: 180 }, { id: 'basket', name: 'Basketbal', price: 180 }, { id: 'bee', name: 'Včelka', price: 200 },
-  { id: 'eight', name: 'Osmička', price: 220 }, { id: 'camo', name: 'Maskáč', price: 240 }, { id: 'melon', name: 'Meloun', price: 260 }, { id: 'earth', name: 'Planeta', price: 300 },
+  { id: 'eight', name: 'Osmička', price: 220 }, { id: 'camo', name: 'Maskáč', price: 240 }, { id: 'melon', name: 'Meloun', price: 260 }, { id: 'candy', name: 'Lízátko', price: 280 }, { id: 'earth', name: 'Planeta', price: 300 },
   { id: 'pumpkin', name: 'Dýně', price: 340 }, { id: 'lava', name: 'Láva', price: 400 }, { id: 'ice', name: 'Ledovec', price: 400 }, { id: 'neon', name: 'Neon', price: 450 },
   { id: 'galaxy', name: 'Galaxie', price: 600 }, { id: 'rainbow', name: 'Duha', price: 700 }, { id: 'matrix', name: 'Matrix', price: 750 }, { id: 'chrome', name: 'Chrom', price: 800 },
   { id: 'disco', name: 'Disco koule', price: 900 }, { id: 'gold', name: 'Zlato', price: 1200 }, { id: 'void', name: 'Černá díra', price: 1500 },

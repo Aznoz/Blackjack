@@ -221,8 +221,8 @@ const eqOf = (cat) => (hasAcc() ? prof.golf.eq[cat] : '');
 const coinsNow = () => (hasAcc() ? prof.golf.coins : 0);
 function shopImg(cat, it, size) { return cat === 'skin' ? skinPreviewURL(it.id, size, colorHex(Math.max(0, myColor))) : cat === 'fx' ? fxIconURL(it.id, size) : clubIconURL(it.id, size); }
 function statRow(label, frac, txt) { return `<div class="st"><span>${label}</span><span class="bar"><i style="width:${Math.round(clamp(frac, 0, 1) * 100)}%"></i></span><span>${txt}</span></div>`; }
-/** V obchodě jsou vždy čtyři věci na řádek (míčky, efekty i hole). */
-function fitShopGrid() { $('shopGrid').style.gridTemplateColumns = 'repeat(4, minmax(0, 1fr))'; }
+/** V obchodě je vždy pět věcí na řádek (míčky, efekty i hole). */
+function fitShopGrid() { $('shopGrid').style.gridTemplateColumns = 'repeat(5, minmax(0, 1fr))'; }
 function renderShop() {
   const cfg = SHOP[shopTab]; const items = [cfg.base, ...cfg.list]; let sel = items.find((x) => x.id === shopSel[shopTab]) || items[0]; shopSel[shopTab] = sel.id;
   $('shopCoins').textContent = coinsNow();

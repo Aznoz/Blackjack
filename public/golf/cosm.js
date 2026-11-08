@@ -65,6 +65,10 @@ export const SKIN_ART = {
     g.fillStyle = '#4cb852'; g.fillRect(0, 0, w, h); g.strokeStyle = '#14672c'; g.lineWidth = 9; g.lineCap = 'round';
     for (let i = 0; i < 8; i++) { g.beginPath(); for (let y = 0; y <= h; y += 6) { const x = i * w / 8 + Math.sin(y / 14 + i) * 5; if (y) g.lineTo(x, y); else g.moveTo(x, y); } g.stroke(); }
     g.fillStyle = 'rgba(255,255,255,.18)'; g.fillRect(0, h * 0.2, w, 5); } },
+  candy: { rough: 0.2, metal: 0, paint(g, w, h) {
+    g.fillStyle = '#fff4f6'; g.fillRect(0, 0, w, h); g.fillStyle = '#ff3d6e'; const per = w / 8;
+    for (let i = -2; i < 10; i++) { g.beginPath(); g.moveTo(i * per, 0); g.lineTo(i * per + per / 2, 0); g.lineTo(i * per + per / 2 + h / 2, h); g.lineTo(i * per + h / 2, h); g.closePath(); g.fill(); }
+    g.fillStyle = 'rgba(255,255,255,.3)'; g.fillRect(0, h * 0.18, w, 5); } },
   pumpkin: { rough: 0.55, metal: 0, paint(g, w, h) {
     g.fillStyle = '#f08a1c'; g.fillRect(0, 0, w, h); for (let i = 0; i < 8; i++) { const x = i * w / 8; const gr = g.createLinearGradient(x - 14, 0, x + 14, 0); gr.addColorStop(0, 'rgba(150,60,0,0)'); gr.addColorStop(0.5, 'rgba(150,60,0,.5)'); gr.addColorStop(1, 'rgba(150,60,0,0)'); g.fillStyle = gr; wrapDraw(w, (o) => g.fillRect(x - 14 + o, 0, 28, h)); }
     g.fillStyle = '#3a6a1a'; g.fillRect(0, 0, w, 10); g.fillRect(0, h - 8, w, 8);
