@@ -107,3 +107,7 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: #fff; font-f
 @media (max-height: 520px) { .shopGrid { max-height: 30vh; } .shopTop { grid-template-columns: 76px 1fr; } .shopTop img { width: 76px; height: 76px; } }
 
 @media (max-width: 560px) { .shopGrid { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 7px; } .scard { padding: 7px 3px 6px; } .scard b { font-size: 11px; } .scard small { font-size: 10.5px; } .scard.eq::after { font-size: 8px; } }
+
+/* tabulka skóre pro víc než 6 jamek: užší buňky a případné posouvání do strany */
+.tblwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.tbl.wide { font-size: 12px; } .tbl.wide th, .tbl.wide td { padding: 3px 2px; text-align: center; } .tbl.wide td.nm, .tbl.wide th.nm { text-align: left; max-width: 74px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-left: 4px; } .tbl.wide td.sc { font-size: 14px; }

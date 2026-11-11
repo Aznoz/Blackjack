@@ -1,6 +1,6 @@
 // MINIGOLF – kresba kosmetiky z dat (žádné obrázky): textury skinů míčků (válcová projekce 256 × 128 na kouli), jejich náhled v obchodě,
 // ikony efektů výhry a holí. Seznamy věcí a ceny jsou v shared.js; tady je jen vzhled. Bez three.js, takže jde použít v menu i ve 3D scéně.
-import * as K from './shared.js?v=4';
+import * as K from './shared.js?v=5';
 
 const TAU = Math.PI * 2;
 function rngOf(seed) { let s = (seed >>> 0) || 1; return () => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; }; }

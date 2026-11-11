@@ -8,8 +8,8 @@ export const COLORS = [
   { name: 'Oranžová', c: '#ff8a1f' }, { name: 'Fialová', c: '#9b59ff' }, { name: 'Růžová', c: '#ff6fb5' }, { name: 'Tyrkysová', c: '#19d3c5' },
 ];
 export const colorIdx = (v) => { const n = Math.floor(Number(v)); return Number.isFinite(n) && n >= 0 && n < COLORS.length ? n : -1; };
-// Nastavení zápasu: holes = počet jamek, time = limit na jamku (s), grace = kolik zbývá ostatním po prvním dokončení (s).
-export const CFG_OPTS = { holes: [3, 6], time: [45, 60, 90], grace: [15, 25, 40] };
+// Nastavení zápasu: holes = počet jamek (11 = celé hřiště), time = limit na jamku (s), grace = kolik zbývá ostatním po prvním dokončení (s).
+export const CFG_OPTS = { holes: [3, 6, 11], time: [45, 60, 90], grace: [15, 25, 40] };
 export const CFG_DEFAULT = { holes: 6, time: 60, grace: 25 };
 export function cleanCfg(c) { const o = {}; for (const k of Object.keys(CFG_DEFAULT)) { const v = c ? Number(c[k]) : NaN; o[k] = CFG_OPTS[k].includes(v) ? v : CFG_DEFAULT[k]; } return o; }
 export const INTRO_S = 4, SCORE_S = 6;          // úvod jamky (přelet kamery) a tabulka po jamce

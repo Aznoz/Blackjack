@@ -1,10 +1,10 @@
 // MINIGOLF – klient: menu, čekárna a hra. 3D scéna je v scene.js (three.js), fyzika míčku v phys.js (stejná jako na serveru): míček hráče se počítá tady v prohlížeči
 // a hlásí se serveru, ostatní míčky se dopočítávají z jeho snímků. Ovládání: táhni prstem dozadu a pusť (prak), kamera je za míčkem a jde otáčet.
-import * as K from './shared.js?v=4';
-import * as P from './phys.js?v=4';
-import * as C from './courses.js?v=4';
-import { createScene } from './scene.js?v=4';
-import { skinPreviewURL, fxIconURL, clubIconURL } from './cosm.js?v=4';
+import * as K from './shared.js?v=5';
+import * as P from './phys.js?v=5';
+import * as C from './courses.js?v=5';
+import { createScene } from './scene.js?v=5';
+import { skinPreviewURL, fxIconURL, clubIconURL } from './cosm.js?v=5';
 
 const CFG = window.GOLF_CONFIG || {};
 const $ = (id) => document.getElementById(id);
@@ -261,7 +261,7 @@ function chips(el, items, cur, on, cls = '') { el.innerHTML = items.map(([v, lab
 const courseItems = () => [...C.COURSES.map((c, i) => [i, c.name]), [C.MIX, 'Mix']];
 function renderBot() {
   chips($('botCourse'), courseItems(), bs.course, (v) => { bs.course = v; renderBot(); });
-  chips($('botHoles'), K.CFG_OPTS.holes.map((v) => [v, v + ' jamek']), bs.holes, (v) => { bs.holes = v; renderBot(); });
+  chips($('botHoles'), K.CFG_OPTS.holes.map((v) => [v, v >= 11 ? 'Celé hřiště' : v + ' jamek']), bs.holes, (v) => { bs.holes = v; renderBot(); });
   chips($('botN'), [1, 2, 3].map((v) => [v, v === 1 ? '1 soupeř' : v + ' soupeři']), bs.n, (v) => { bs.n = v; renderBot(); });
   chips($('botLv'), LEVELS.map(([v, n]) => [v, n]), bs.lv, (v) => { bs.lv = v; renderBot(); });
   chips($('botTime'), K.CFG_OPTS.time.map((v) => [v, v + ' s']), bs.time, (v) => { bs.time = v; renderBot(); });
@@ -288,7 +288,7 @@ function renderLobby() {
     const can = host && !s.quick; const dis = !can;
     const mk = (id, items, cur, key, fn) => { chips($(id), items, cur, (v) => { if (can) fn(v); }); for (const b of $(id).children) b.disabled = dis && !(b.classList.contains('on')); };
     mk('lobCourse', courseItems(), s.course, 'course', (v) => sendMsg({ t: 'course', course: v }));
-    mk('lobHoles', K.CFG_OPTS.holes.map((v) => [v, String(v)]), s.cfg.holes, 'holes', (v) => sendMsg({ t: 'cfg', cfg: { holes: v } }));
+    mk('lobHoles', K.CFG_OPTS.holes.map((v) => [v, v >= 11 ? 'Vše' : String(v)]), s.cfg.holes, 'holes', (v) => sendMsg({ t: 'cfg', cfg: { holes: v } }));
     mk('lobTime', K.CFG_OPTS.time.map((v) => [v, v + ' s']), s.cfg.time, 'time', (v) => sendMsg({ t: 'cfg', cfg: { time: v } }));
     mk('lobGrace', K.CFG_OPTS.grace.map((v) => [v, v + ' s']), s.cfg.grace, 'grace', (v) => sendMsg({ t: 'cfg', cfg: { grace: v } }));
   }
@@ -305,7 +305,7 @@ $('lobCopy').onclick = async () => { try { await navigator.clipboard.writeText(S
 let preview = null, previewKey = '';
 function previewHole(c) {
   if (!V) return; const cc = c === C.MIX ? Math.floor(Math.random() * C.COURSES.length) : c; const key = 'p' + c; if (previewKey === key && W) return; previewKey = key;
-  const k = c === C.MIX ? Math.floor(Math.random() * 6) : [0, 3, 4, 5][Math.floor(Math.random() * 4)];
+  const k = Math.floor(Math.random() * C.COURSES[cc].holes.length);
   W = P.buildWorld(C.holeDef(cc, k)); V.setHole(W); V.setBalls([{ color: colorHex(Math.max(0, myColor)), name: '', mine: true, skin: myEq().skin }]); V.moveBall(0, W.tee[0], W.tee[1]); preview = { a: Math.random() * 6 };
 }
 function previewMenu() { previewKey = ''; previewHole(Math.floor(Math.random() * C.COURSES.length)); if (V && W) V.moveBall(0, W.tee[0], W.tee[1]); }
@@ -530,7 +530,7 @@ function scoreTable(rows, totals, pars, upto, winners) {
   const order = S.players.map((p, i) => i).sort((a, b) => totals[a] - totals[b]);
   const body = order.map((i) => { const p = S.players[i]; const cells = pars.map((par, h) => { const v = rows[i] && rows[i][h]; if (v === undefined) return '<td>·</td>'; const cls = v < par ? 'under' : v > par ? 'over' : ''; return `<td class="${cls}">${v}</td>`; }).join(''); return `<tr class="${winners && winners.includes(i) ? 'gold' : ''}${i === me ? ' me' : ''}"><td class="nm"><span style="--c:${colorHex(p.color)}"></span>${esc(p.name)}</td>${cells}<td class="sc">${totals[i]}</td></tr>`; }).join('');
   const parRow = `<tr><td class="nm">Par</td>${pars.map((p) => `<td>${p}</td>`).join('')}<td class="sc">${pars.reduce((a, b) => a + b, 0)}</td></tr>`;
-  return `<table class="tbl"><thead><tr><th class="nm"></th>${heads}<th>Σ</th></tr></thead><tbody>${parRow}${body}</tbody></table>`;
+  return `<div class="tblwrap"><table class="tbl${pars.length > 6 ? ' wide' : ''}"><thead><tr><th class="nm"></th>${heads}<th>Σ</th></tr></thead><tbody>${parRow}${body}</tbody></table></div>`;
 }
 function renderScore() {
   const g = GS; if (!g || g.ph !== 'score') return; const res = g.res || []; const hl = C.holeList(S.course, S.cfg.holes, g.seed); const pars = []; for (let h = 0; h <= g.hole; h++) pars.push(C.holeDef(hl[h][0], hl[h][1]).par);
@@ -558,6 +558,6 @@ function renderOver() {
 }
 
 // ------------------------------------------------------------------ start
-window.__golf = { get V() { return V; }, get S() { return S; }, get GS() { return GS; }, get ball() { return ball; }, get W() { return W; }, get strokes() { return strokes; }, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, shoot, canShoot, get me() { return me; }, tObs };
+window.__golf = { show(c, k) { W = P.buildWorld(C.holeDef(c, k)); V.setHole(W); V.setBalls([{ color: colorHex(Math.max(0, myColor)), name: '', mine: true, skin: myEq().skin }]); V.moveBall(0, W.tee[0], W.tee[1]); previewKey = 'dbg'; preview = { a: 0.6 }; }, get V() { return V; }, get S() { return S; }, get GS() { return GS; }, get ball() { return ball; }, get W() { return W; }, get strokes() { return strokes; }, get yaw() { return yaw; }, set yaw(v) { yaw = v; }, shoot, canShoot, get me() { return me; }, tObs };
 syncAudioUi(); refreshProfile();
 const saved = SS.get('golf_room'); if (saved) { try { const r = JSON.parse(saved); connect().then(() => sendMsg({ t: 'resume', code: r.code, token: r.token })).catch(() => SS.del('golf_room')); } catch (e) { SS.del('golf_room'); } }

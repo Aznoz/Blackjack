@@ -1,8 +1,8 @@
 // MINIGOLF – 3D scéna (three.js): stavba jamky z mapy (terén po vrcholech, zdi, voda/láva, překážky, vlajka), míčky se jmenovkami, částice, kamera.
 // Fyzika je v phys.js (stejná jako na serveru), tady se jen kreslí. Všechno se kreslí z dat, žádné obrázky.
 import * as THREE from './vendor/three.module.min.js';
-import * as P from './phys.js?v=4';
-import { SKIN_ART } from './cosm.js?v=4';
+import * as P from './phys.js?v=5';
+import { SKIN_ART } from './cosm.js?v=5';
 
 const rgb = (h) => new THREE.Color(h);
 // Vzhled prostředí: nebe (nahoře, u obzoru), mlha, barvy podlahy, písku, ledu, zdí, tekutiny, okolí a doplňky.
@@ -10,6 +10,7 @@ export const THEMES = {
   meadow: { sky: [0x58b8ff, 0xdff6ff], fog: 0xcdefff, floor: [0x63d35b, 0x59c852], sand: 0xf3dc94, ice: 0xc4ecff, wallSide: 0xc08a52, wallTop: 0xfaf3e2, liq: 0x2f93ff, liqEm: 0x0a3a80, out: 0x4fae4a, flag: 0xff3b3b, sun: 0xfff2d0, hemi: [0xdff4ff, 0x77c46a] },
   desert: { sky: [0xffb866, 0xffe9c2], fog: 0xffe0b0, floor: [0xe0a35c, 0xd69852], sand: 0xfbe58f, ice: 0xc4ecff, wallSide: 0xa5622b, wallTop: 0xfff0cf, liq: 0x28d0d8, liqEm: 0x0a5a60, out: 0xe0b46c, flag: 0x1c8fff, sun: 0xffe4b0, hemi: [0xfff0d8, 0xc89a5c] },
   ice: { sky: [0x7fc7ff, 0xf1fbff], fog: 0xe6f7ff, floor: [0xc2ebff, 0xb7e3fa], sand: 0xf3f3e8, ice: 0xc2ebff, wallSide: 0xb5cde4, wallTop: 0xffffff, liq: 0x2a6fbf, liqEm: 0x0a2a60, out: 0xf4fbff, flag: 0xff4f6a, sun: 0xeaf6ff, hemi: [0xeaf6ff, 0x9fc4e0] },
+  space: { sky: [0x05061a, 0x2a2a6a], fog: 0x14163a, floor: [0x5d6c9c, 0x52609a], sand: 0x9a93ad, ice: 0x9fe8ff, wallSide: 0x1b2240, wallTop: 0x5ec8ff, liq: 0x6a2cff, liqEm: 0x5a1cff, out: 0x0b0e26, flag: 0x5ef0ff, sun: 0xc6d8ff, hemi: [0x9ab4ff, 0x1c2040] },
   lava: { sky: [0x1a0710, 0x7a2a14], fog: 0x4a1a14, floor: [0x6e5656, 0x654e4e], sand: 0x8a6a4a, ice: 0xc4ecff, wallSide: 0x2a2226, wallTop: 0x4a3c42, liq: 0xff5a14, liqEm: 0xff3a00, out: 0x2a1c1e, flag: 0xffd24a, sun: 0xffc090, hemi: [0xff9a6a, 0x3a2022] },
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -49,7 +50,7 @@ export function createScene(canvas, opts = {}) {
     clearHole(); W = world; th = THEMES[world.theme] || THEMES.meadow; const w = W.w, h = W.h;
     holeGroup = new THREE.Group(); scene.add(holeGroup);
     skyMat.uniforms.top.value.set(th.sky[0]); skyMat.uniforms.hor.value.set(th.sky[1]); scene.fog = new THREE.Fog(th.fog, 30, 130);
-    hemi.color.set(th.hemi[0]); hemi.groundColor.set(th.hemi[1]); hemi.intensity = world.theme === 'lava' ? 1.2 : 1.55; sun.color.set(th.sun); sun.intensity = world.theme === 'lava' ? 1.6 : 2.4;
+    hemi.color.set(th.hemi[0]); hemi.groundColor.set(th.hemi[1]); hemi.intensity = world.theme === 'lava' ? 1.2 : world.theme === 'space' ? 1.35 : 1.55; sun.color.set(th.sun); sun.intensity = world.theme === 'lava' ? 1.6 : world.theme === 'space' ? 2.0 : 2.4;
     const cx = w / 2, cz = h / 2; const R = Math.max(w, h) * 0.75;
     sun.position.set(cx - 0.5 * R, 1.1 * R, cz + 0.35 * R); sun.target.position.set(cx, 0, cz);
     const sc = sun.shadow.camera; sc.left = -R * 0.75; sc.right = R * 0.75; sc.top = R * 0.75; sc.bottom = -R * 0.75; sc.near = 1; sc.far = R * 4; sc.updateProjectionMatrix();
@@ -77,8 +78,8 @@ export function createScene(canvas, opts = {}) {
     };
     if (hpos.length) {
       const hg = new THREE.BufferGeometry(); hg.setAttribute('position', new THREE.Float32BufferAttribute(hpos, 3)); hg.setAttribute('uv', new THREE.Float32BufferAttribute(huv, 2)); hg.computeVertexNormals();
-      const lava = world.theme === 'lava'; const lt = liquidTex(lava ? '#ff6a1a' : '#' + rgb(th.liq).getHexString(), lava ? '#ffd24a' : '#bfe6ff'); const lm = std({ map: lt, emissive: rgb(th.liqEm), emissiveIntensity: lava ? 0.9 : 0.25, roughness: 0.25, transparent: !lava, opacity: lava ? 1 : 0.92 });
-      holeGroup.add(new THREE.Mesh(hg, lm)); anim.push((t) => { lt.offset.x = t * 0.04; lt.offset.y = t * 0.02; lm.emissiveIntensity = lava ? 0.75 + Math.sin(t * 2) * 0.2 : 0.25; });
+      const lava = world.theme === 'lava', void_ = world.theme === 'space'; const lt = liquidTex(lava ? '#ff6a1a' : void_ ? '#1a0a40' : '#' + rgb(th.liq).getHexString(), lava ? '#ffd24a' : void_ ? '#b07aff' : '#bfe6ff'); const lm = std({ map: lt, emissive: rgb(th.liqEm), emissiveIntensity: lava ? 0.9 : void_ ? 0.55 : 0.25, roughness: 0.25, transparent: !lava, opacity: lava ? 1 : 0.92 });
+      holeGroup.add(new THREE.Mesh(hg, lm)); anim.push((t) => { lt.offset.x = t * 0.04; lt.offset.y = t * 0.02; lm.emissiveIntensity = lava ? 0.75 + Math.sin(t * 2) * 0.2 : void_ ? 0.5 + Math.sin(t * 1.6) * 0.2 : 0.25; });
       const cg = new THREE.BufferGeometry(); cg.setAttribute('position', new THREE.Float32BufferAttribute(curb, 3)); cg.setAttribute('color', new THREE.Float32BufferAttribute(curbc, 3)); cg.computeVertexNormals(); holeGroup.add(new THREE.Mesh(cg, std({ vertexColors: true, side: THREE.DoubleSide })));
     }
     // zdi: vrch + boční stěny (dolů k terénu, ven až pod zem)
@@ -143,6 +144,7 @@ export function createScene(canvas, opts = {}) {
       if (T === 'meadow') { g.add(cast(new THREE.Mesh(new THREE.CylinderGeometry(o.r * 0.55, o.r * 0.7, 0.8, 10), std({ color: 0x8a5a2b })))).position.y = 0.4; const f = cast(new THREE.Mesh(new THREE.SphereGeometry(o.r * 1.35, 14, 10), std({ color: 0x2f9c3c }))); f.position.y = 1.0; g.add(f); const f2 = cast(new THREE.Mesh(new THREE.SphereGeometry(o.r * 0.95, 12, 8), std({ color: 0x45b84c }))); f2.position.set(0.1, 1.45, 0.05); g.add(f2); }
       else if (T === 'desert') { const c = std({ color: 0x3f9a4a }); const body = cast(new THREE.Mesh(new THREE.CapsuleGeometry(o.r * 0.7, 0.9, 6, 12), c)); body.position.y = 0.6; g.add(body); for (const s of [-1, 1]) { const arm = cast(new THREE.Mesh(new THREE.CapsuleGeometry(o.r * 0.32, 0.35, 4, 8), c)); arm.position.set(s * o.r * 1.05, 0.75 + s * 0.08, 0); g.add(arm); const up = cast(new THREE.Mesh(new THREE.CapsuleGeometry(o.r * 0.3, 0.3, 4, 8), c)); up.position.set(s * o.r * 1.3, 1.05 + s * 0.08, 0); g.add(up); } }
       else if (T === 'ice') { const cr = cast(new THREE.Mesh(new THREE.OctahedronGeometry(o.r * 1.1, 0), std({ color: 0x9fe0ff, roughness: 0.1, metalness: 0.1, transparent: true, opacity: 0.88 }))); cr.scale.set(1, 2.1, 1); cr.position.y = o.r * 2.0; g.add(cr); const c2 = cast(new THREE.Mesh(new THREE.OctahedronGeometry(o.r * 0.6, 0), std({ color: 0xc8f0ff, roughness: 0.1, transparent: true, opacity: 0.9 }))); c2.scale.set(1, 1.7, 1); c2.position.set(o.r * 0.8, o.r * 0.9, 0.1); g.add(c2); }
+      else if (T === 'space') { const body = cast(new THREE.Mesh(new THREE.CylinderGeometry(o.r * 0.7, o.r * 0.9, 0.7, 14), std({ color: 0x59638a, metalness: 0.5, roughness: 0.35 }))); body.position.y = 0.35; g.add(body); const core = new THREE.Mesh(new THREE.CylinderGeometry(o.r * 0.38, o.r * 0.38, 0.9, 12), bas({ color: 0x5ef0ff })); core.position.y = 1.05; g.add(core); const cap = cast(new THREE.Mesh(new THREE.CylinderGeometry(o.r * 0.8, o.r * 0.6, 0.16, 14), std({ color: 0x3a4468, metalness: 0.6, roughness: 0.3 }))); cap.position.y = 1.58; g.add(cap); anim.push((t) => { core.scale.set(1, 0.9 + Math.sin(t * 3 + o.x) * 0.1, 1); }); }
       else { const rk = cast(new THREE.Mesh(new THREE.DodecahedronGeometry(o.r * 1.15, 0), std({ color: 0x3a2e34, roughness: 0.9 }))); rk.scale.set(1, 1.5, 1); rk.position.y = o.r * 1.2; g.add(rk); const gl = new THREE.Mesh(new THREE.SphereGeometry(o.r * 0.5, 10, 8), bas({ color: 0xff6a1a })); gl.position.set(0, o.r * 0.4, o.r * 0.6); g.add(gl); }
     } else if (o.k === 'bump') {
       g.position.set(o.x, y, o.z);
@@ -191,6 +193,10 @@ export function createScene(canvas, opts = {}) {
       inst(new THREE.SphereGeometry(1, 16, 10), std({ color: 0xf7fcff }), place(9, 4, 40, (r) => ({ big: 1, y: -0.4, sx: 6 + r() * 8, sy: 2 + r() * 3, sz: 6 + r() * 8 })));
       inst(new THREE.ConeGeometry(0.9, 3, 8), std({ color: 0xeaf6ff }), place(22, 1, 34, (r) => ({ y: 1.1, sx: 0.7 + r() * 0.6, sy: 0.8 + r() * 1.0, sz: 0.7 + r() * 0.6 })));
       inst(new THREE.OctahedronGeometry(1, 0), std({ color: 0x9fe0ff, transparent: true, opacity: 0.85, roughness: 0.1 }), place(8, 4, 34, (r) => ({ y: 1.4, sx: 1 + r(), sy: 2.4 + r() * 2, sz: 1 + r(), r: r() * 3 })));
+    } else if (T === 'space') {
+      inst(new THREE.DodecahedronGeometry(1, 0), std({ color: 0x6b6f88, roughness: 0.9, flatShading: true }), place(14, 3, 44, (r) => ({ big: 1, y: -0.8 + r() * 3, sx: 2 + r() * 5, sy: 1.5 + r() * 4, sz: 2 + r() * 5, r: r() * 3 })));
+      inst(new THREE.OctahedronGeometry(1, 0), std({ color: 0x5ec8ff, emissive: 0x2a8ac8, emissiveIntensity: 0.8, roughness: 0.2 }), place(10, 2, 34, (r) => ({ y: 1.2, sx: 0.5 + r() * 0.5, sy: 1.4 + r() * 1.6, sz: 0.5 + r() * 0.5, r: r() * 3 })));
+      inst(new THREE.TorusGeometry(1, 0.05, 6, 40), bas({ color: 0xb06aff }), place(3, 14, 40, (r) => ({ big: 1, y: 3.5 + r() * 3, sx: 6 + r() * 6, sy: 6 + r() * 6, sz: 6 + r() * 6, r: r() * 3 })));
     } else {
       inst(new THREE.ConeGeometry(5, 7, 10), std({ color: 0x2e2024 }), place(7, 6, 44, (r) => ({ big: 1, y: 2.8, sx: 0.8 + r(), sy: 0.8 + r() * 1.2, sz: 0.8 + r() })));
       inst(new THREE.ConeGeometry(0.5, 2.4, 5), std({ color: 0x3a2a30 }), place(20, 1, 34, (r) => ({ y: 0.7, sx: 0.8 + r() * 0.8, sy: 0.8 + r(), sz: 0.8 + r() * 0.8 })));
@@ -322,7 +328,7 @@ export function createScene(canvas, opts = {}) {
   // ambient: sníh / jiskry / listí
   const amb = { n: 110, pos: new Float32Array(110 * 3), v: new Float32Array(110 * 3) }; const ag = new THREE.BufferGeometry(); ag.setAttribute('position', new THREE.BufferAttribute(amb.pos, 3));
   const am = new THREE.PointsMaterial({ size: 0.12, color: 0xffffff, transparent: true, opacity: 0.8, depthWrite: false, map: glowTex }); const ambPts = new THREE.Points(ag, am); ambPts.frustumCulled = false; scene.add(ambPts);
-  function resetAmb() { const cx = W.w / 2, cz = W.h / 2, R = Math.max(W.w, W.h); const T = W.theme; am.visible = T !== 'meadow' || true; am.color.set(T === 'lava' ? 0xff9a3a : T === 'ice' ? 0xffffff : T === 'desert' ? 0xffe2a0 : 0xfff6c0); am.size = T === 'ice' ? 0.12 : 0.09;
+  function resetAmb() { const cx = W.w / 2, cz = W.h / 2, R = Math.max(W.w, W.h); const T = W.theme; am.visible = T !== 'meadow' || true; am.color.set(T === 'space' ? 0xcfe4ff : T === 'lava' ? 0xff9a3a : T === 'ice' ? 0xffffff : T === 'desert' ? 0xffe2a0 : 0xfff6c0); am.size = T === 'ice' ? 0.12 : T === 'space' ? 0.22 : 0.09;
     for (let i = 0; i < amb.n; i++) { amb.pos[i * 3] = cx + (Math.random() - 0.5) * R * 1.8; amb.pos[i * 3 + 1] = Math.random() * 7; amb.pos[i * 3 + 2] = cz + (Math.random() - 0.5) * R * 1.8; const up = T === 'lava'; amb.v[i * 3] = (Math.random() - 0.5) * 0.4; amb.v[i * 3 + 1] = up ? 0.4 + Math.random() * 0.7 : T === 'ice' ? -(0.3 + Math.random() * 0.5) : (Math.random() - 0.5) * 0.12; amb.v[i * 3 + 2] = (Math.random() - 0.5) * 0.4; } }
 
   function update(dt, t) {
