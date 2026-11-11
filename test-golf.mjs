@@ -15,8 +15,8 @@ assert.equal(JSON.parse(fs.readFileSync('./golf/package.json', 'utf8')).type, 'm
 
 // --- hřiště: tvar, start a jamka, pole výšek
 {
-  assert.equal(C.COURSES.length, 4); for (const c of C.COURSES) assert.equal(c.holes.length, 6, c.id);
-  for (let c = 0; c < C.COURSES.length; c++) for (let k = 0; k < 6; k++) {
+  assert.equal(C.COURSES.length, 5); for (const c of C.COURSES) assert.equal(c.holes.length, c.id === 'space' ? 10 : 11, c.id);
+  for (let c = 0; c < C.COURSES.length; c++) for (let k = 0; k < C.COURSES[c].holes.length; k++) {
     const d = C.holeDef(c, k); const W = P.buildWorld(d); const txt = d.map.join('');
     assert.equal((txt.match(/T/g) || []).length, 1, d.name + ': právě jeden start'); assert.equal((txt.match(/H/g) || []).length, 1, d.name + ': právě jedna jamka');
     assert.equal(P.cellType(W, W.tee[0], W.tee[1]), P.C.GRASS); assert.ok(d.par >= 2 && d.par <= 5);
@@ -80,7 +80,7 @@ const roll = (W, b, sec, t0 = 0) => { let ev = null; for (let i = 0; i < sec / P
 // --- řešitelnost všech jamek: bot Šampion je dohraje do par + 3 ran (z různých časů, kvůli pohyblivým překážkám)
 {
   let seed = 7; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
-  for (let c = 0; c < C.COURSES.length; c++) for (let k = 0; k < 6; k++) {
+  for (let c = 0; c < C.COURSES.length; c++) for (let k = 0; k < C.COURSES[c].holes.length; k++) {
     const def = C.holeDef(c, k); const W = P.buildWorld(def); const df = P.distField(W); let best = 99;
     for (let trial = 0; trial < 3; trial++) {
       let x = W.tee[0], z = W.tee[1], t = 4 + trial * 1.7, st = 0, done = false;
@@ -200,5 +200,14 @@ function client() {
   t.coins = 100; t.own = []; t.eq = { skin: '', fx: '', club: '' };
   const bots = client(); bots.say({ t: 'bot', token: TK[4], name: 'Karel', level: 1, n: 3, cfg: { holes: 3, time: 45, grace: 15 } }); const sb = bots.last('state'); assert.ok(sb.players.slice(1).every((p) => (p.sk === '' || K.shopItem('skin', p.sk)) && (p.fx === '' || K.shopItem('fx', p.fx))), 'boti mají jen existující výbavu'); bots.say({ t: 'leave' });
 }
+
+// --- celé hřiště (11 = všechny jamky hřiště) a nové hřiště Vesmír
+{
+  const K = await import('./golf/shared.js'); assert.equal(K.cleanCfg({ holes: 11 }).holes, 11); assert.equal(K.cleanCfg({ holes: 7 }).holes, K.CFG_DEFAULT.holes);
+  const sp = C.COURSES.findIndex((c) => c.id === 'space'); assert.ok(sp >= 0); assert.equal(C.holeList(sp, 11).length, 10); assert.equal(C.holeList(0, 11).length, 11);
+  const mixAll = C.holeList(C.MIX, 11, 5); assert.equal(mixAll.length, 11); assert.equal(new Set(mixAll.map((m) => m.join())).size, 11);
+  const g = G.newGame([{ name: 'a', color: 0 }, { name: 'b', color: 1 }], 5, sp, { holes: 11, time: 45, grace: 15 }); assert.equal(g.holes.length, 10); assert.ok(g.holes.every((h) => h[0] === sp));
+}
+
 console.log('Minigolf: všechny testy prošly');
 process.exit(0);
