@@ -1,5 +1,5 @@
 // MECHA ARÉNA – kresba: roboti poskládaní z karet (SVG, žádné obrázky ani emoji), ikony karet, technické bedny a pozadí aren.
-import * as H from './shared.js?v=3';
+import * as H from './shared.js?v=4';
 
 const METAL = ['#8e9aa6', '#7db98e', '#6ea4dc', '#a98ae0', '#e2b455'], LIGHT = ['#b6c1cc', '#a6dfb6', '#9fcdf5', '#cdb4f5', '#ffdf8a'];
 const DARK = '#252c34', GLOW = ['#9fb0c0', '#5ed17a', '#4aa8ff', '#b36bff', '#ffb52e'];
@@ -16,7 +16,7 @@ const L = (x1, y1, x2, y2, s, w = 2, extra = '') => `<line x1="${x1}" y1="${y1}"
 const OUT = 'stroke="#10151a" stroke-width="1.4" stroke-linejoin="round"';
 
 // ------------------------------------------------------------ zbraně (úchop v bodě 0,0, míří doprava)
-export const HAND_LEN = { mg: 58, plas: 38, laser: 70, rail: 80, blade: 56, hammer: 46, flame: 52, tesla: 48, shot: 44, emp: 46 };
+export const HAND_LEN = { axe: 56, claw: 46, pile: 70, hook: 64, mg: 58, plas: 38, laser: 70, rail: 80, blade: 56, hammer: 46, flame: 52, tesla: 48, shot: 44, emp: 46 };
 export const SH_OFF = { rocket: [48, -6], mortar: [30, -38], turret: [36, -4], micro: [36, -8], snip: [66, -6], pcan: [46, -10] };
 export const MOUNT = { hdR: [150, 112], hdL: [140, 134], shR: [132, 66], shL: [70, 60] };
 const WS = 1.3, SS = 1.2;   // zbraně jsou větší než na kartě: roboti jsou obří stroje
@@ -37,6 +37,10 @@ function handGun(fam, c) {
     case 'flame': return R(-10, -14, 18, 26, m, 4, OUT) + R(8, -4, 30, 8, d, 2, OUT) + R(34, -6, 8, 12, l, 2, OUT) + `<path d="M43 0 Q50 -7 52 0 Q50 7 43 0Z" fill="${a}"/>` + `<path d="M43 0 Q47 -3 49 0 Q47 3 43 0Z" fill="#fff" opacity=".8"/>`;
     case 'tesla': return R(-4, -5, 14, 10, d, 2, OUT) + R(10, -7, 28, 14, m, 3, OUT) + [16, 24, 32].map((x) => R(x, -10, 3, 20, a, 1)).join('') + C(42, 0, 5, l, OUT) + `<path d="M46 -3 L52 -8 L50 -1 L56 -4" stroke="${a}" fill="none" stroke-width="1.6"/>`;
     case 'shot': return R(-4, -7, 18, 14, d, 3, OUT) + R(14, -7, 30, 6, m, 2, OUT) + R(14, 1, 30, 6, m, 2, OUT) + R(40, -8, 5, 16, l, 1) + R(2, 7, 8, 11, d, 2, OUT);
+    case 'axe': return R(-10, -4, 46, 8, d, 2, OUT) + R(-2, -6, 8, 12, l, 2, OUT) + `<path d="M28 -26 Q52 -22 58 0 Q52 22 28 26 Q38 0 28 -26Z" fill="${m}" ${OUT}/><path d="M32 -20 Q52 -16 55 0" fill="none" stroke="#fff" stroke-width="2.4" opacity=".7" stroke-linecap="round"/><path d="M58 0 Q52 22 28 26" fill="none" stroke="${a}" stroke-width="2.6" ${GL(a, 4)}/>` + C(30, 0, 3, a);
+    case 'claw': return R(-8, -9, 20, 18, m, 5, OUT) + R(-4, -12, 12, 4, l, 1) + [-9, 0, 9].map((y, k) => `<path d="M12 ${y} Q34 ${y - 8 + k * 2} 46 ${y * 0.6 + 6}" fill="none" stroke="${a}" stroke-width="5.5" stroke-linecap="round" ${GL(a, 5)}/><path d="M12 ${y} Q34 ${y - 8 + k * 2} 46 ${y * 0.6 + 6}" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" opacity=".8"/>`).join('') + C(2, 0, 3, a);
+    case 'pile': return R(-8, -11, 34, 22, m, 4, OUT) + [0, 1, 2].map((k) => L(2 + k * 8, -9, 2 + k * 8, 9, '#000', 1.5, 'opacity=".35"')).join('') + R(26, -6, 28, 12, d, 2, OUT) + R(28, -4, 22, 3, '#aeb9c4', 1) + Pg('54,-6 68,0 54,6', l, OUT) + R(8, -15, 14, 5, a, 1, GL(a, 4)) + R(-4, 9, 10, 10, d, 2, OUT);
+    case 'hook': return R(-6, -8, 26, 16, m, 4, OUT) + C(8, -12, 9, d, OUT) + C(8, -12, 4, l) + L(18, 0, 40, 0, '#aeb9c4', 3) + `<path d="M40 -10 Q60 -12 58 4 Q56 12 48 10" fill="none" stroke="${l}" stroke-width="5" stroke-linecap="round"/><path d="M40 -10 Q60 -12 58 4 Q56 12 48 10" fill="none" stroke="${d}" stroke-width="1.6" stroke-linecap="round"/>` + Pg('46,13 50,5 54,13', l, OUT) + R(2, 8, 8, 10, d, 2, OUT);
     case 'emp': return R(-4, -5, 16, 12, d, 3, OUT) + R(12, -3, 10, 6, m, 1, OUT) + `<path d="M22 -14 L44 -22 L44 22 L22 14Z" fill="${m}" ${OUT}/>` + C(40, 0, 4, a) + `<path d="M30 -8 Q36 0 30 8" stroke="${a}" fill="none" stroke-width="1.6"/>`;
     default: return R(-4, -6, 24, 12, m, 3, OUT);
   }
@@ -50,6 +54,7 @@ function shoulderGun(fam, c) {
     case 'micro': return R(-6, -14, 40, 24, m, 3, OUT) + [0, 1, 2].flatMap((r) => [0, 1].map((q) => C(8 + r * 10, -8 + q * 12, 3.4, d))).join('') + R(30, -14, 6, 24, l, 2, OUT) + R(-6, -15, 40, 3, a, 1);
     case 'snip': return R(-8, -5, 22, 12, m, 3, OUT) + R(14, -3, 56, 6, d, 2, OUT) + R(66, -5, 5, 10, l, 1) + R(8, -12, 24, 6, l, 2, OUT) + C(14, -9, 3, a) + C(28, -9, 3, a);
     case 'pcan': return R(-8, -9, 28, 20, m, 4, OUT) + R(20, -6, 28, 14, d, 3, OUT) + R(44, -9, 6, 20, l, 2, OUT) + C(47, 1, 3.5, a) + R(-2, -12, 14, 4, a, 1);
+    case 'tele': return R(-10, -10, 34, 30, m, 6, OUT) + C(10, 5, 13, d, OUT) + C(10, 5, 9, a, `opacity=".9" ${GL(a, 7)}`) + C(10, 5, 4, '#fff', 'opacity=".9"') + `<ellipse cx="10" cy="5" rx="19" ry="6" fill="none" stroke="${l}" stroke-width="2" transform="rotate(-24 10 5)"/><ellipse cx="10" cy="5" rx="19" ry="6" fill="none" stroke="${a}" stroke-width="1.4" transform="rotate(30 10 5)" opacity=".8"/>` + R(-6, -14, 8, 5, l, 1, OUT) + R(14, -14, 8, 5, l, 1, OUT);
     default: return R(-6, -8, 30, 14, m, 3, OUT);
   }
 }
@@ -144,6 +149,7 @@ export function cardIcon(it) {
     const hand = it.fit[0] === 'hand', len = hand ? HAND_LEN[it.fam] : 60, s = Math.min(1.25, 62 / len);
     body = `<g transform="translate(${40 - (hand ? len / 2 : 20) * s} 32) scale(${s})">${hand ? handGun(it.fam, c) : shoulderGun(it.fam, c)}</g>`;
   } else if (it.kind === 'drone') body = `<g transform="translate(40 30) scale(1.5)">${droneSVG(it.dr.dtype, it.tier)}</g>`;
+  else if (it.fit[0] === 'shoulder') body = `<g transform="translate(34 28) scale(1.35)">${shoulderGun(it.fam, c)}</g>`;
   else if (it.fit[0] === 'head') body = `<g transform="translate(-105 -50) scale(1.4)">${headSVG(it.fam, c)}</g>`;
   else if (it.fit[0] === 'chest') body = `<g transform="translate(-30 -48) scale(.7)">${chestSVG(it.fam, c)}</g>`;
   else body = `<g transform="translate(-12 -104) scale(.7)">${legSVG(it.fam, 74, c, true)}</g>`;

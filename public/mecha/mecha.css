@@ -211,3 +211,6 @@ button { font: inherit; color: inherit; cursor: pointer; }
 .chap > .chbg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; opacity: .55; } .chap::before { content: ''; position: absolute; inset: 0; z-index: 1; background: linear-gradient(90deg, rgba(10,14,18,.88), rgba(10,14,18,.5) 55%, rgba(10,14,18,.72)); }
 .chap small { color: #aab8c6; }
 @media (max-aspect-ratio: 1/1) { #battle .arena { max-height: 92vw; } #battle .ib { width: 70px; height: 78px; } #battle .ib .ic { height: 42px; } #battle .ib.end { width: 84px; } }
+.tile-tp { fill: rgba(192,112,255,.14); stroke: #c070ff; stroke-width: 1; stroke-opacity: .7; animation: pulse2 1s infinite; }
+.arena .mus { position: absolute; right: 8px; top: 8px; z-index: 3; width: 34px; height: 34px; padding: 6px; background: rgba(10,14,18,.7); border: 1px solid var(--line); color: var(--amber2); clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 0 100%); }
+.arena .mus svg { width: 100%; height: 100%; display: block; } .arena .mus .x { opacity: 0; } .arena .mus.off { color: var(--dim); } .arena .mus.off .x { opacity: 1; }

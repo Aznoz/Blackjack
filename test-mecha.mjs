@@ -13,7 +13,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // --- katalog
 {
-  const ids = H.ITEMS.map((i) => i.id); assert.equal(ids.length, 180); assert.equal(new Set(ids).size, 180);
+  const ids = H.ITEMS.map((i) => i.id); assert.equal(ids.length, 205); assert.equal(new Set(ids).size, 205);
   for (const id of ids) { const it = H.item(id); assert.match(id, /^[a-z]{2,8}[1-5]$/); assert.ok(it.kind && it.price > 0 && it.sell > 0 && it.sell < it.price, id); }
   for (const c of H.CRATES) { const tot = c.odds.reduce((a, b) => a + b, 0); assert.ok(Math.abs(tot - 100) < 1e-6, c.id + ' šance dávají 100 %'); }
   const rng = (() => { let s = 7; return () => ((s = (s * 16807) % 2147483647) / 2147483647); })();
@@ -46,6 +46,30 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   assert.equal(play(9), play(9), 'stejné semínko = stejný souboj'); assert.ok(JSON.parse(play(9)));
   assert.equal(S.apply(S.newBattle(mA, mB, 1, 0).st, 1, { t: 'end' }), null, 'cizí tah se nepovolí');
   const x = S.newBattle(mA, mB, 1, 0).st; assert.equal(S.apply(x, 0, { t: 'fire', slot: 'hdL', tgt: 'mech' }) === null || true, true);
+}
+// --- hák, teleportér a nové blízké zbraně
+{
+  const mkInv = (b) => Object.fromEntries(Object.values(b).filter(Boolean).map((id) => [id, { n: 3, lv: 1 }]));
+  const bA = { ...H.emptyBuild(), chest: 'reac2', hdL: 'hook2', hdR: 'axe2', shL: 'tele2', lgL: 'servo1', lgR: 'servo1' }, bB = { ...H.emptyBuild(), chest: 'plate1', hdL: 'mg1', hdR: 'claw3', lgL: 'servo1', lgR: 'servo1', shR: 'pile1' };
+  assert.equal(H.buildError(bA, mkInv(bA)), null); assert.equal(H.buildError(bB, mkInv(bB)), null);
+  const sA = H.mechStats(bA, mkInv(bA)); assert.equal(sA.tele, 5); assert.equal(sA.teleEn, 5); assert.equal(sA.weapons.find((w) => w.id === 'hook2').ap, 1);
+  assert.ok(H.item('tele1').fit.includes('shoulder') && H.item('hook1').fit.includes('hand') && H.item('axe1').wp.rng[1] === 1 && H.item('pile3').wp.ap === 2);
+  assert.equal(H.cleanBuild({ hdL: 'tele1' }).hdL, '', 'teleportér patří na rameno, ne do ruky');
+  const { st } = S.newBattle({ name: 'A', stats: sA }, { name: 'B', stats: H.mechStats(bB, mkInv(bB)) }, 5, 0);
+  assert.equal(st.turn, 0); assert.ok(st.sides[0].x < st.sides[1].x);
+  // teleport: 1 TB, energie, jednou za tah, jen na volné pole v dosahu
+  const L = S.legalActions(st, 0).filter((l) => l.t === 'tele'); assert.ok(L.length >= 4); assert.ok(L.every((l) => l.x !== st.sides[1].x && l.x !== st.sides[0].x && Math.abs(l.x - st.sides[0].x) <= 5));
+  const ap0 = st.sides[0].ap, en0 = st.sides[0].en, tx = st.sides[1].x - 1;
+  assert.equal(S.apply(st, 0, { t: 'tele', x: st.sides[1].x }), null, 'na soupeře se teleportovat nejde');
+  const ev = S.apply(st, 0, { t: 'tele', x: tx }); assert.ok(ev && ev[0].k === 'tele'); assert.equal(st.sides[0].x, tx); assert.equal(st.sides[0].ap, ap0 - 1); assert.equal(st.sides[0].en, en0 - 5);
+  assert.ok(!S.legalActions(st, 0).some((l) => l.t === 'tele'), 'jen jednou za tah');
+  // hák: 1 TB, zasáhne a přitáhne soupeře až před robota (nejvýš o 4 pole u Mk II)
+  const { st: g } = S.newBattle({ name: 'A', stats: sA }, { name: 'B', stats: H.mechStats(bB, mkInv(bB)) }, 5, 0); g.sides[0].x = 0; g.sides[1].x = 7; g.sides[0].en = 20;
+  const hk = S.apply(g, 0, { t: 'fire', slot: 'hdL', tgt: 'mech' }, { ev: true }); assert.ok(hk); const fe = hk.find((e) => e.k === 'fire'); assert.equal(g.sides[0].ap, sA.ap - 1);
+  assert.ok(fe.fx.pull && fe.fx.push, 'hák přitáhne'); assert.equal(g.sides[1].x, 3); assert.equal(fe.fx.push[0], 7);
+  g.sides[1].x = 2; g.sides[0].x = 0; g.sides[0].ap = 2; g.sides[0].used = {}; const hk2 = S.apply(g, 0, { t: 'fire', slot: 'hdL', tgt: 'mech' }, { ev: true }); assert.ok(hk2, 'dosah háku začíná na dvou polích'); assert.equal(g.sides[1].x, 1, 'už je u robota, přitáhne se jen těsně před něj');
+  // boti s hákem a teleportérem dohrají celý souboj
+  for (let g = 0; g < 8; g++) { const { st: z } = S.newBattle({ name: 'A', stats: sA }, { name: 'B', stats: H.mechStats(bB, mkInv(bB)) }, 30 + g, g % 2); let n = 0, tele = 0; while (!z.over && n++ < 200) { const i = z.turn; for (const a of B.planTurn(z, i, 3, Math.random)) { if (a.t === 'tele') tele++; assert.ok(S.apply(z, i, a), JSON.stringify(a)); } if (!z.over) S.apply(z, i, { t: 'end' }); } assert.ok(z.over); }
 }
 // --- kampaň
 {

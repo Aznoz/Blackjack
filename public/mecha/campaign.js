@@ -14,7 +14,7 @@ const NAMES = [
   'Magmoun', 'Žhář', 'Pevnostní věž', 'Vulkán-9', 'Pán ohně',
   'Orbiter', 'Hvězdný lovec', 'Kosmický kat', 'Strážce stanice', 'Velitel Omega',
 ];
-const HANDS = ['mg', 'plas', 'laser', 'rail', 'blade', 'hammer', 'flame', 'tesla', 'shot', 'emp'];
+const HANDS = ['mg', 'plas', 'laser', 'rail', 'blade', 'hammer', 'flame', 'tesla', 'shot', 'emp', 'axe', 'claw', 'pile', 'hook'];
 const SHOULDERS = ['rocket', 'mortar', 'turret', 'micro', 'snip', 'pcan'];
 const HEADS = ['sens', 'helm', 'cpu', 'radar', 'visor'], LEGS = ['servo', 'greave', 'gyro', 'frame', 'thrust'], DRONES = ['adron', 'rdron', 'sdron', 'jdron'];
 function mul32(a) { return () => { a = (a + 0x6d2b79f5) >>> 0; let t = Math.imul(a ^ (a >>> 15), a | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; }

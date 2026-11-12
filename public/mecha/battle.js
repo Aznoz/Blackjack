@@ -1,10 +1,10 @@
 // MECHA ARÉNA – souboj: SVG aréna (boční pohled, 10 polí), roboti poskládaní z karet, přehrávání událostí ze serveru (střelba, pohyb, skoky, dron, oheň, šok)
 // a ovládání tahu. Pravidla počítá server; tady se jen zobrazují a nabízejí se akce podle S.legalActions nad snímkem stavu.
-import * as H from './shared.js?v=3';
-import * as S from './sim.js?v=3';
-import * as C from './campaign.js?v=3';
-import * as A from './art.js?v=3';
-import { itemLines } from './info.js?v=3';
+import * as H from './shared.js?v=4';
+import * as S from './sim.js?v=4';
+import * as C from './campaign.js?v=4';
+import * as A from './art.js?v=4';
+import { itemLines } from './info.js?v=4';
 
 const NS = 'http://www.w3.org/2000/svg';
 const TILE = 100, X0 = 50, GY = 332, SC = 0.96, VW = 1100, VH = 440, BOT = 408, TURN_S = 75;
@@ -14,6 +14,7 @@ const VIS = {
   rail: { k: 'beam', col: '#ffe2a0', w: 7, ms: 280, gap: 160, shake: 1 }, laser: { k: 'beam', col: '#7af0ff', w: 3.5, ms: 220, gap: 160 }, plas: { k: 'orb', col: '#7af0ff', r: 9, ms: 240, gap: 160 }, pcan: { k: 'orb', col: '#8af4ff', r: 15, ms: 300, gap: 160 },
   tesla: { k: 'bolt', col: '#9ae6ff', ms: 240, gap: 160 }, emp: { k: 'ring', col: '#b89cff', ms: 320, gap: 160 },
   rocket: { k: 'rocket', col: '#ff9a4a', ms: 400, gap: 160, arc: 30 }, micro: { k: 'rocket', col: '#ff9a4a', ms: 360, gap: 80, arc: 50, small: 1 }, mortar: { k: 'rocket', col: '#ffb060', ms: 700, gap: 160, arc: 230 },
+  axe: { k: 'melee', col: '#ffe08a', heavy: 0, gap: 160 }, claw: { k: 'melee', col: '#8af0ff', claw: 1, gap: 110 }, pile: { k: 'melee', col: '#ff9a4a', heavy: 1, gap: 160 }, hook: { k: 'hook', col: '#c9d2da', ms: 280, gap: 160 },
   flame: { k: 'flame', col: '#ff8a30', ms: 320, gap: 160 }, blade: { k: 'melee', col: '#7af0ff', gap: 160 }, hammer: { k: 'melee', col: '#ffd45a', heavy: 1, gap: 160 },
 };
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -24,18 +25,20 @@ const cxOf = (x) => X0 + x * TILE + TILE / 2;
 const BASEY = GY + 8 - 233 * SC;   // y počátku robota (v souřadnicích robota je zem ve 233)
 
 export function createBattle(root, hooks) {
-  let dead = false, you = 0, players = [], stats = [], view = null, theme = 'junk', chain = Promise.resolve(), over = false, busy = true, deadline = 0, hoverW = null, jumpMode = false, tgtPick = null, endInfo = null, rematchSent = false, lastLog = '';
-  const pos = [0, 0], jy = [0, 0], shk = [[0, 0], [0, 0]], blink = [0, 0], cam = { x: 0, w: VW, tx: 0, tw: VW }, bob = { t: 0 };
+  let dead = false, you = 0, players = [], stats = [], view = null, theme = 'junk', chain = Promise.resolve(), over = false, busy = true, deadline = 0, hoverW = null, jumpMode = false, tgtPick = null, teleMode = false, hookEls = null, endInfo = null, rematchSent = false, lastLog = '';
+  const pos = [0, 0], jy = [0, 0], fade = [1, 1], shk = [[0, 0], [0, 0]], blink = [0, 0], cam = { x: 0, w: VW, tx: 0, tw: VW }, bob = { t: 0 };
   let svg, bgF, bgM, fxg, botG = [], drnG = [], gsh = [], tilesG, tileEls = [], stripEls = [], elHud, elActs, elLog, elBanner, elArena, raf = 0, tmr = 0, shake = 0;
   const narrow = () => root.clientWidth < 700;
   const face = (i) => (pos[1 - i] >= pos[i] ? 1 : -1);
+  const sepOf = (i) => -face(i) * 34 * clamp(2 - Math.abs(pos[0] - pos[1]), 0, 1);   // v těsné blízkosti se roboti vizuálně odtáhnou, aby se nepřekrývali
+  const cxS = (i) => cxOf(pos[i]) + sepOf(i);
 
   // ------------------------------------------------------------ stavba
   function build() {
     const sides = [0, 1];
     root.innerHTML = `<div class="hz-bar"></div><div class="hud">${sides.map((i) => `<div class="hp ${i === 0 ? 'lft' : 'rgt'} ${i === you ? 'own' : 'opp'}" data-s="${i}"><div class="nm"></div><div class="bar2"><i class="hpf"></i><i class="shf"></i><em></em></div><div class="bar2 thin"><i class="enf"></i></div><div class="pips"></div><div class="sts"></div></div>`).join('').replace('</div></div><div class="hp rgt', '</div></div><div class="mid"><span class="rd"></span><b class="tm"></b></div><div class="hp rgt')}</div>
-    <div class="arena"><svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMax meet"></svg><div class="banner"></div></div><div class="log"></div><div class="acts2"></div>`;
-    elHud = root.querySelector('.hud'); elArena = root.querySelector('.arena'); elBanner = root.querySelector('.banner'); elLog = root.querySelector('.log'); elActs = root.querySelector('.acts2'); svg = elArena.querySelector('svg');
+    <div class="arena"><svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMax meet"></svg><div class="banner"></div>${hooks.music ? `<button class="mus${hooks.music.isOn() ? '' : ' off'}" type="button" aria-label="Hudba"><svg viewBox="0 0 24 24"><path d="M9 3v11.3A3.5 3.5 0 1 0 11 17.5V7.5l8-2v7.8A3.5 3.5 0 1 0 21 16.5V2z" fill="currentColor"/><path class="x" d="M3 3l18 18" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/></svg></button>` : ''}</div><div class="log"></div><div class="acts2"></div>`;
+    elHud = root.querySelector('.hud'); elArena = root.querySelector('.arena'); elBanner = root.querySelector('.banner'); const mb = root.querySelector('.mus'); if (mb) mb.onclick = () => { mb.classList.toggle('off', !hooks.music.toggle()); }; elLog = root.querySelector('.log'); elActs = root.querySelector('.acts2'); svg = elArena.querySelector('svg');
     const tiles = Array.from({ length: H.ARENA.len }, (_, i) => `<rect class="floor" x="${X0 + i * TILE + 2}" y="${GY}" width="${TILE - 4}" height="12" fill="#fff" opacity="${i % 2 ? 0.05 : 0.09}"/>`).join('');
     const botHtml = (i) => `<g class="bot" data-i="${i}"><g class="gsh"><ellipse cx="100" cy="125" rx="78" ry="112" fill="rgba(74,168,255,.12)" stroke="#4aa8ff" stroke-width="3" opacity="0"/></g><g class="in">${A.robotSVG(players[i].build, players[i].inv, { team: i === you ? '#ffb000' : '#ff4d3d' })}</g></g>`;
     svg.innerHTML = `${A.arenaBG(theme)}${tiles}<g id="drn0"></g><g id="drn1"></g>${botHtml(0)}${botHtml(1)}<g id="fx"></g><g id="tiles"></g>`;
@@ -54,9 +57,9 @@ export function createBattle(root, hooks) {
   function frame(now) {
     if (dead) return; raf = requestAnimationFrame(frame); bob.t = now / 1000;
     for (let i = 0; i < 2; i++) {
-      const cx = cxOf(pos[i]), dx = shk[i][0], dy = shk[i][1], y = BASEY + dy - jy[i];
+      const cx = cxS(i), dx = shk[i][0], dy = shk[i][1], y = BASEY + dy - jy[i];
       botG[i].setAttribute('transform', face(i) === 1 ? `translate(${cx - 100 * SC + dx} ${y}) scale(${SC})` : `translate(${cx + 100 * SC + dx} ${y}) scale(${-SC} ${SC})`);
-      botG[i].style.opacity = blink[i] > now ? (Math.floor(now / 55) % 2 ? 0.35 : 1) : 1;
+      botG[i].style.opacity = (blink[i] > now ? (Math.floor(now / 55) % 2 ? 0.35 : 1) : 1) * fade[i];
       const d = drnG[i].firstChild; if (d) { const dir = face(i), bx = cx - dir * 64, by = GY - 175 * SC - 30 + Math.sin(bob.t * 2.4 + i) * 6 - jy[i] * 0.4; d.setAttribute('transform', `translate(${(d._ox ?? bx) + (d._fx || 0)} ${(d._oy ?? by)})`); d._tx = bx; d._ty = by; if (d._ox === undefined || d._snap) { d._ox = bx; d._oy = by; d._snap = 0; } else { d._ox += (bx - d._ox) * 0.2; d._oy += (by - d._oy) * 0.2; } }
     }
     const lo = Math.min(cxOf(pos[0]), cxOf(pos[1])), hi = Math.max(cxOf(pos[0]), cxOf(pos[1]));
@@ -94,9 +97,10 @@ export function createBattle(root, hooks) {
     tileEls.forEach((t, i) => {
       let cls = 'tilehit'; if (mine && s) {
         if (jumpMode) { const a = legal().find((l) => l.t === 'jump' && s.x + l.dir * l.n === i); if (a) cls += ' tile-jmp'; }
+        else if (teleMode) { if (legal().some((l) => l.t === 'tele' && l.x === i)) cls += ' tile-tp'; }
         else { const w = hoverW && stats[you].weapons.find((x) => x.slot === hoverW); if (w) { const d = Math.abs(i - s.x); if (i !== s.x && d >= w.rng[0] && d <= (w.rng[1] > 1 ? w.rng[1] + stats[you].rngb : w.rng[1])) cls += ' tile-rng'; } }
       }
-      t.setAttribute('class', cls); stripEls[i].setAttribute('fill', cls.includes('tile-rng') ? '#ff4d3d' : cls.includes('tile-jmp') ? '#4aa8ff' : 'none'); stripEls[i].setAttribute('opacity', 0.85);
+      t.setAttribute('class', cls); stripEls[i].setAttribute('fill', cls.includes('tile-rng') ? '#ff4d3d' : cls.includes('tile-jmp') ? '#4aa8ff' : cls.includes('tile-tp') ? '#c070ff' : 'none'); stripEls[i].setAttribute('opacity', 0.85);
     });
   }
   // ------------------------------------------------------------ pseudo-stav pro pravidla
@@ -113,6 +117,7 @@ export function createBattle(root, hooks) {
     jump: '<svg viewBox="0 0 48 48"><path d="M6 38Q24 -6 42 38" fill="none" stroke="currentColor" stroke-width="4" stroke-linecap="round" stroke-dasharray="1 7"/><path d="M36 26l8 14-16-3z" fill="currentColor"/><rect x="16" y="30" width="14" height="10" rx="2" fill="currentColor"/><path d="M19 42l3 5 3-5z" fill="#ffb000"/></svg>',
     guard: '<svg viewBox="0 0 48 48"><path d="M24 4l16 6v12c0 11-7 18-16 22C15 40 8 33 8 22V10z" fill="currentColor"/><path d="M24 11l9 3v8c0 6-4 11-9 14-5-3-9-8-9-14v-8z" fill="#0d1217" opacity=".55"/></svg>',
     repair: '<svg viewBox="0 0 48 48"><rect x="17" y="6" width="14" height="36" rx="3" fill="currentColor"/><rect x="6" y="17" width="36" height="14" rx="3" fill="currentColor"/><circle cx="24" cy="24" r="5" fill="#0d1217" opacity=".5"/></svg>',
+    tele: '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="7" fill="currentColor"/><circle cx="24" cy="24" r="15" fill="none" stroke="currentColor" stroke-width="3" stroke-dasharray="4 5"/><path d="M24 2v8M24 38v8M2 24h8M38 24h8" stroke="currentColor" stroke-width="3.5" stroke-linecap="round"/></svg>',
     end: '<svg viewBox="0 0 48 48"><circle cx="24" cy="24" r="18" fill="none" stroke="currentColor" stroke-width="4"/><path d="M17 14v20l17-10z" fill="currentColor"/></svg>',
   };
   const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true;
@@ -134,7 +139,7 @@ export function createBattle(root, hooks) {
       if (!f.length) why = s.used.includes(w.slot) ? 'Už použito v tomhle tahu.' : s.ap < w.ap ? 'Málo tahových bodů.' : s.en < w.en ? 'Málo energie.' : d < w.rng[0] ? 'Soupeř je příliš blízko.' : d > maxR ? 'Soupeř je mimo dosah.' : '';
       const it = H.item(w.id), ch = hitChance(w);
       defs['w' + w.slot] = { tip: `<b>${esc(w.name)}</b> <span class="sl">${H.SLOT_NAME[w.slot]}</span><div class="chips">${itemLines(it, w.lv).replace(/<span class="chip">váha[^<]*<\/span>/, '')}</div><p>Šance na zásah teď: <b>${ch} %</b>${why ? `<br><span class="why">${why}</span>` : ''}</p>`, dis: !f.length, w, run: () => { hoverW = w.slot; if (f.length > 1) { tgtPick = w; renderActs(); } else send({ t: 'fire', slot: w.slot, tgt: 'mech' }); } };
-      grpW.push(ibtn({ key: 'w' + w.slot, icon: A.cardIcon(it), label: esc(it.famName.split(' ')[0]), tc: TC[w.type], ap: w.ap, en: w.en, pc: ch, dis: !f.length, cls: 'wp' }));
+      grpW.push(ibtn({ key: 'w' + w.slot, icon: A.cardIcon(it), label: esc(({ hook: 'Hák', claw: 'Drápy', pile: 'Kůl', axe: 'Sekera' })[it.fam] || it.famName.split(' ')[0]), tc: TC[w.type], ap: w.ap, en: w.en, pc: ch, dis: !f.length, cls: 'wp' }));
     }
     const fwd = o.x > s.x ? 1 : -1, canM = (dir) => L.some((a) => a.t === 'move' && a.dir === dir), canJ = L.some((a) => a.t === 'jump');
     for (const [k, dir, lbl, ic] of [['mf', fwd, 'Vpřed', 'fwd'], ['mb', -fwd, 'Vzad', 'back']]) {
@@ -142,8 +147,13 @@ export function createBattle(root, hooks) {
       defs[k] = { tip: `<b>${lbl}</b><p>Chůze o ${Math.abs(to - s.x)} ${Math.abs(to - s.x) === 1 ? 'pole' : 'pole'} směrem ${dir === fwd ? 'k soupeři' : 'od soupeře'}. Stojí 1 tahový bod.</p>${ok ? '' : '<p class="why">Tam se jít nedá.</p>'}`, dis: !ok, run: () => send({ t: 'move', dir }) };
       grpM.push(ibtn({ key: k, icon: dir === 1 ? IC.fwd : IC.back, label: lbl, ap: 1, dis: !ok }));
     }
-    defs.jump = { tip: `<b>Skok</b><p>Přeskočí až ${st.jmp} ${st.jmp === 1 ? 'pole' : 'pole'}, i přes soupeře. Stojí 1 tahový bod a 2 energie. Do konce tahu máš +15 % úhybu.</p><p>Po klepnutí vyber modré pole.</p>${canJ ? '' : '<p class="why">Teď se skákat nedá.</p>'}`, dis: !canJ, run: () => { jumpMode = !jumpMode; hoverW = null; renderActs(); } };
+    defs.jump = { tip: `<b>Skok</b><p>Přeskočí až ${st.jmp} ${st.jmp === 1 ? 'pole' : 'pole'}, i přes soupeře. Stojí 1 tahový bod a 2 energie. Do konce tahu máš +15 % úhybu.</p><p>Po klepnutí vyber modré pole.</p>${canJ ? '' : '<p class="why">Teď se skákat nedá.</p>'}`, dis: !canJ, run: () => { jumpMode = !jumpMode; teleMode = false; hoverW = null; renderActs(); } };
     grpM.push(ibtn({ key: 'jump', icon: IC.jump, label: 'Skok', ap: 1, en: 2, dis: !canJ, cls: jumpMode ? 'on' : '' }));
+    if (st.tele) {
+      const canT = L.some((a) => a.t === 'tele');
+      defs.tele = { tip: `<b>Teleport</b><p>Přenese tě na libovolné volné pole až ${st.tele} polí daleko, i za soupeře. Stojí 1 tahový bod a ${st.teleEn} energie, jednou za tah.</p><p>Po klepnutí vyber fialové pole.</p>${canT ? '' : `<p class="why">${s.used.includes('tele') ? 'Už použito v tomhle tahu.' : s.ap < 1 ? 'Málo tahových bodů.' : 'Málo energie.'}</p>`}`, dis: !canT, run: () => { teleMode = !teleMode; jumpMode = false; hoverW = null; renderActs(); } };
+      grpM.push(ibtn({ key: 'tele', icon: IC.tele, label: 'Teleport', ap: 1, en: st.teleEn, dis: !canT, tc: '#c070ff', cls: teleMode ? 'on' : '' }));
+    }
     const canG = L.some((a) => a.t === 'guard');
     defs.guard = { tip: `<b>Štít</b><p>Do konce kola jsou zásahy o 25 % slabší. Stojí 1 tahový bod.</p>${s.guard ? '<p class="why">Štít už držíš.</p>' : ''}`, dis: !canG, run: () => send({ t: 'guard' }) };
     grpU.push(ibtn({ key: 'guard', icon: IC.guard, label: 'Štít', ap: 1, dis: !canG, tc: '#7ac8ff' }));
@@ -166,17 +176,17 @@ export function createBattle(root, hooks) {
     renderTiles();
     if (L.length === 1 && s.ap === 0) setTimeout(() => { if (!dead && !busy && view && view.turn === you && !over && S.legalActions(pseudo(), you).length === 1) send({ t: 'end' }); }, 700);
   }
-  function onTile(i) { if (busy || over || !view || view.turn !== you || !jumpMode) return; const s = view.sides[you]; const a = legal().find((l) => l.t === 'jump' && s.x + l.dir * l.n === i); if (a) send({ t: 'jump', dir: a.dir, n: a.n }); }
-  function send(a) { busy = true; jumpMode = false; tgtPick = null; hoverW = null; hooks.sfx.click(); hooks.send({ t: 'act', a }); renderActs(); }
-  function unlock() { busy = false; jumpMode = false; tgtPick = null; renderActs(); }
+  function onTile(i) { if (busy || over || !view || view.turn !== you || !(jumpMode || teleMode)) return; const s = view.sides[you]; if (teleMode) { if (legal().some((l) => l.t === 'tele' && l.x === i)) send({ t: 'tele', x: i }); return; } const a = legal().find((l) => l.t === 'jump' && s.x + l.dir * l.n === i); if (a) send({ t: 'jump', dir: a.dir, n: a.n }); }
+  function send(a) { busy = true; jumpMode = false; teleMode = false; tgtPick = null; hoverW = null; hooks.sfx.click(); hooks.send({ t: 'act', a }); renderActs(); }
+  function unlock() { busy = false; jumpMode = false; teleMode = false; tgtPick = null; renderActs(); }
 
   // ------------------------------------------------------------ efekty
   function mk(tag, at, parent = fxg) { const e = document.createElementNS(NS, tag); for (const k of Object.keys(at)) e.setAttribute(k, at[k]); parent.appendChild(e); return e; }
   function tween(ms, fn) { return new Promise((res) => { if (dead || document.hidden) { fn(1); return res(); } const t0 = performance.now(); const step = (now) => { if (dead) return res(); const k = Math.min(1, (now - t0) / ms); fn(k); if (k < 1) requestAnimationFrame(step); else res(); }; requestAnimationFrame(step); }); }
   function float(x, y, txt, col, size = 30) { size = Math.round(size * clamp(cam.w / 1000, 0.62, 1.15)); const t = mk('text', { x, y, 'text-anchor': 'middle', 'font-size': size, fill: col, class: 'fl' }); t.textContent = txt; tween(950, (k) => { t.setAttribute('y', y - 60 * ease(k)); t.setAttribute('opacity', k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3); }).then(() => t.remove()); }
-  const bodyPos = (i) => [cxOf(pos[i]), BASEY + 112 * SC - jy[i]];
+  const bodyPos = (i) => [cxS(i), BASEY + 112 * SC - jy[i]];
   const dronePos = (i) => { const d = drnG[i].firstChild; return d && d._ox !== undefined ? [d._ox, d._oy] : bodyPos(i); };
-  function muzzlePos(i, slot, fam) { const [mx, my] = A.muzzle(slot, fam), cx = cxOf(pos[i]); return [face(i) === 1 ? cx - 100 * SC + mx * SC : cx + 100 * SC - mx * SC, BASEY - jy[i] + my * SC]; }
+  function muzzlePos(i, slot, fam) { const [mx, my] = A.muzzle(slot, fam), cx = cxS(i); return [face(i) === 1 ? cx - 100 * SC + mx * SC : cx + 100 * SC - mx * SC, BASEY - jy[i] + my * SC]; }
   const hurt = (i, k = 1) => { blink[i] = performance.now() + 260; shk[i] = [(Math.random() - 0.5) * 14 * k, (Math.random() - 0.5) * 6 * k]; setTimeout(() => { shk[i] = [0, 0]; }, 110); };
   const recoil = (i) => { shk[i] = [-face(i) * 7, 0]; setTimeout(() => { shk[i] = [0, 0]; }, 90); };
   function burst(x, y, col, n = 7, r = 26) { for (let k = 0; k < n; k++) { const a = Math.random() * Math.PI * 2, l = r * (0.6 + Math.random() * 0.7), e = mk('line', { x1: x, y1: y, x2: x, y2: y, stroke: col, 'stroke-width': 3, 'stroke-linecap': 'round' }); tween(260, (t) => { const q = ease(t); e.setAttribute('x1', x + Math.cos(a) * l * q * 0.5); e.setAttribute('y1', y + Math.sin(a) * l * q * 0.5); e.setAttribute('x2', x + Math.cos(a) * l * q); e.setAttribute('y2', y + Math.sin(a) * l * q); e.setAttribute('opacity', 1 - t); }).then(() => e.remove()); } }
@@ -190,6 +200,7 @@ export function createBattle(root, hooks) {
       case 'orb': { const c = mk('circle', { r: v.r, fill: v.col, opacity: 0.95, filter: 'url(#fxglow)' }); const c2 = mk('circle', { r: v.r * 0.45, fill: '#fff' }); await tween(v.ms, (k) => { const x = from[0] + (end[0] - from[0]) * k, y = from[1] + (end[1] - from[1]) * k; c.setAttribute('cx', x); c.setAttribute('cy', y); c2.setAttribute('cx', x); c2.setAttribute('cy', y); }); c.remove(); c2.remove(); break; }
       case 'bolt': { const p = mk('polyline', { fill: 'none', stroke: v.col, 'stroke-width': 3.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', filter: 'url(#fxglow)' }); const pts = []; const n = 8; for (let k = 0; k <= n; k++) { const t = k / n; pts.push([from[0] + (end[0] - from[0]) * t + (k && k < n ? (Math.random() - 0.5) * 34 : 0), from[1] + (end[1] - from[1]) * t + (k && k < n ? (Math.random() - 0.5) * 34 : 0)]); } p.setAttribute('points', pts.map((q) => q.join(',')).join(' ')); await tween(v.ms, (k) => p.setAttribute('opacity', 1 - k * k)); p.remove(); break; }
       case 'ring': { const c = mk('circle', { cx: from[0], cy: from[1], r: 6, fill: 'none', stroke: v.col, 'stroke-width': 4 }); await tween(v.ms, (k) => { c.setAttribute('cx', from[0] + (end[0] - from[0]) * k); c.setAttribute('cy', from[1] + (end[1] - from[1]) * k); c.setAttribute('r', 6 + 26 * k); c.setAttribute('opacity', 1 - k * 0.5); }); c.remove(); break; }
+      case 'hook': { const l = mk('line', { x1: from[0], y1: from[1], x2: from[0], y2: from[1], stroke: '#aeb9c4', 'stroke-width': 3.5, 'stroke-linecap': 'round' }), h = mk('circle', { cx: from[0], cy: from[1], r: 7, fill: '#e6edf2', stroke: '#10151a', 'stroke-width': 2 }); const set = (x, y) => { l.setAttribute('x2', x); l.setAttribute('y2', y); h.setAttribute('cx', x); h.setAttribute('cy', y); }; await tween(v.ms, (k) => set(from[0] + (end[0] - from[0]) * k, from[1] + (end[1] - from[1]) * k)); if (!miss) { hookEls = [l, h]; break; } await tween(200, (k) => set(end[0] + (from[0] - end[0]) * k, end[1] + (from[1] - end[1]) * k)); l.remove(); h.remove(); break; }
       case 'rocket': { const g = mk('g', {}); mk('rect', { x: -10, y: -3, width: 16, height: 6, rx: 3, fill: '#d8dde2' }, g); mk('polygon', { points: '6,-3 13,0 6,3', fill: v.col }, g); const fl = mk('polygon', { points: '-10,-3 -20,0 -10,3', fill: '#ffcf5a' }, g); const sc = v.small ? 0.7 : 1; await tween(v.ms, (k) => { const x = from[0] + (end[0] - from[0]) * k, y = from[1] + (end[1] - from[1]) * k - Math.sin(Math.PI * k) * v.arc, a = Math.atan2(end[1] - from[1] - Math.cos(Math.PI * k) * Math.PI * v.arc, end[0] - from[0]); g.setAttribute('transform', `translate(${x} ${y}) rotate(${a * 57.3}) scale(${sc})`); if (Math.random() < 0.5) { const sm = mk('circle', { cx: x, cy: y, r: 4, fill: '#9aa3ac', opacity: 0.6 }); tween(300, (t) => { sm.setAttribute('r', 4 + 8 * t); sm.setAttribute('opacity', 0.6 * (1 - t)); }).then(() => sm.remove()); } }); fl.remove(); g.remove(); break; }
       case 'flame': { const n = 10; const ps = []; for (let k = 0; k < n; k++) ps.push(tween(v.ms, (t) => { const tt = clamp(t * 1.2 - k * 0.04, 0, 1); return tt; }).then(() => 0)); for (let k = 0; k < n; k++) { const c = mk('circle', { r: 6, fill: k % 2 ? '#ff7a20' : '#ffcf5a', opacity: 0 }); const off = (Math.random() - 0.5) * 24; setTimeout(() => tween(v.ms, (t) => { c.setAttribute('cx', from[0] + (end[0] - from[0]) * t); c.setAttribute('cy', from[1] + (end[1] + off - from[1]) * t); c.setAttribute('r', 5 + 14 * t); c.setAttribute('opacity', 0.9 * (1 - t * 0.7)); }).then(() => c.remove()), k * 28); } await sleep(v.ms + 280); break; }
       default: await sleep(150);
@@ -203,7 +214,8 @@ export function createBattle(root, hooks) {
     hooks.sfx[(H.item(e.wid) || {}).wp ? it.wp.type : 'kin']?.();
     const jobs = e.hits.map((h, k) => sleep(k * (v.gap || 120)).then(async () => {
       const to = [toMech[0] + (Math.random() - 0.5) * 18, toMech[1] + (Math.random() - 0.5) * 30];
-      if (v.k === 'melee') { const sl = mk('path', { d: `M${to[0] - 30} ${to[1] - 40} Q${to[0] + 10} ${to[1]} ${to[0] - 30} ${to[1] + 40}`, fill: 'none', stroke: v.col, 'stroke-width': v.heavy ? 9 : 5, 'stroke-linecap': 'round' }); tween(220, (t) => sl.setAttribute('opacity', 1 - t)).then(() => sl.remove()); if (v.heavy) { shake = 10; ring(to[0], GY + 6, '#ffd45a', 6, 70, 300); } }
+      if (v.k === 'melee' && v.claw) { for (let q = -1; q <= 1; q++) { const sl = mk('path', { d: `M${to[0] - 26} ${to[1] - 34 + q * 16} L${to[0] + 22} ${to[1] + 22 + q * 16}`, fill: 'none', stroke: v.col, 'stroke-width': 4, 'stroke-linecap': 'round', filter: 'url(#fxglow)' }); tween(240, (t) => sl.setAttribute('opacity', 1 - t)).then(() => sl.remove()); } }
+      else if (v.k === 'melee') { const sl = mk('path', { d: `M${to[0] - 30} ${to[1] - 40} Q${to[0] + 10} ${to[1]} ${to[0] - 30} ${to[1] + 40}`, fill: 'none', stroke: v.col, 'stroke-width': v.heavy ? 9 : 5, 'stroke-linecap': 'round' }); tween(220, (t) => sl.setAttribute('opacity', 1 - t)).then(() => sl.remove()); if (v.heavy) { shake = 10; ring(to[0], GY + 6, '#ffd45a', 6, 70, 300); } }
       else await projectile(v, from, to, !h.h);
       const fxp = [to[0] + (k - (e.hits.length - 1) / 2) * 30, to[1] - 30 - (k % 2) * 22];
       if (h.h) { hooks.sfx.hit(h.c); impactFx(v, to, 1); hit(o, e.tgt, h); float(fxp[0], fxp[1], (h.d > 0 ? '-' + Math.round(h.d) : '0') + (h.a > 0 ? ' (štít ' + Math.round(h.a) + ')' : ''), h.c ? '#ffe35a' : h.a > 0 && h.d === 0 ? '#7ac8ff' : '#ff7a6a', h.c ? 38 : 28); if (h.c) float(fxp[0], fxp[1] - 30, 'KRIT!', '#ffe35a', 20); } else impactFx(v, [to[0] + 40, to[1]], 0, k === 0 && !e.hits.some((q) => q.h));
@@ -214,7 +226,8 @@ export function createBattle(root, hooks) {
     if (fx.burn) { float(tp[0], tp[1] - 70, `HOŘÍ ${fx.burn}×`, '#ff9a4a', 22); for (let k = 0; k < 6; k++) setTimeout(() => burst(tp[0] + (Math.random() - 0.5) * 50, tp[1] + (Math.random() - 0.5) * 60, '#ff8a30', 3, 22), k * 60); }
     if (fx.shock) { float(tp[0], tp[1] - 90, 'ŠOK', '#8fd4ff', 26); ring(tp[0], tp[1], '#8fd4ff', 10, 70, 360); }
     if (fx.emp) float(tp[0], tp[1] - 90, `−${fx.emp} EN`, '#b89cff', 24);
-    if (fx.push) { const [a, b] = fx.push; await tween(260, (k) => { pos[o] = a + (b - a) * ease(k); }); pos[o] = b; }
+    if (fx.push) { const [a, b] = fx.push, he = hookEls; hookEls = null; const sl = e.slot; if (fx.pull) hooks.sfx.hook?.(); await tween(he ? 380 : 260, (k) => { pos[o] = a + (b - a) * ease(k); if (he) { const m = muzzlePos(i, sl, fam), t = bodyPos(o); he[0].setAttribute('x1', m[0]); he[0].setAttribute('y1', m[1]); he[0].setAttribute('x2', t[0]); he[0].setAttribute('y2', t[1]); he[1].setAttribute('cx', t[0]); he[1].setAttribute('cy', t[1]); } }); pos[o] = b; if (he) { he[0].remove(); he[1].remove(); } }
+    if (hookEls) { hookEls[0].remove(); hookEls[1].remove(); hookEls = null; }
     if (fx.droneDown) { const dp = dronePos(o); boom(dp[0], dp[1], 0.6); float(dp[0], dp[1] - 30, 'DRON ZNIČEN', '#ffb060', 20); }
     await sleep(120);
   }
@@ -232,6 +245,7 @@ export function createBattle(root, hooks) {
         case 'fire': { const w = H.item(e.wid); logTxt(`${players[e.i].name}: ${w ? w.famName : 'zbraň'} · ${e.hits.filter((h) => h.h).length}/${e.hits.length} zásahů`); await animFire(e); break; }
         case 'move': { hooks.sfx.step(); const n = Math.abs(e.to - e.from); for (let k = 0; k < n; k++) { hooks.sfx.step(); } await tween(180 + n * 130, (k) => { pos[e.i] = e.from + (e.to - e.from) * ease(k); jy[e.i] = Math.abs(Math.sin(k * Math.PI * n)) * 6; }); pos[e.i] = e.to; jy[e.i] = 0; logTxt(`${players[e.i].name} jde.`); break; }
         case 'jump': { hooks.sfx.jump(); const p = bodyPos(e.i); await tween(520, (k) => { pos[e.i] = e.from + (e.to - e.from) * ease(k); jy[e.i] = Math.sin(Math.PI * k) * 110; }); pos[e.i] = e.to; jy[e.i] = 0; ring(cxOf(e.to), GY + 6, '#c9d2da', 6, 50, 280); shake = 4; logTxt(`${players[e.i].name} skáče.`); break; }
+        case 'tele': { hooks.sfx.tele?.(); const i = e.i, p0 = bodyPos(i); ring(p0[0], p0[1], '#c070ff', 70, 10, 260); burst(p0[0], p0[1], '#c070ff', 10, 70); await tween(220, (k) => { fade[i] = 1 - ease(k); }); pos[i] = e.to; const p1 = bodyPos(i); ring(p1[0], p1[1], '#c070ff', 10, 80, 320); burst(p1[0], p1[1], '#e0b0ff', 10, 70); await tween(260, (k) => { fade[i] = ease(k); }); fade[i] = 1; logTxt(`${players[i].name} se teleportuje.`); break; }
         case 'guard': { hooks.sfx.guard(); if (view) view.sides[e.i].guard = true; gsh[e.i].setAttribute('opacity', 1); const p = bodyPos(e.i); float(p[0], p[1] - 90, 'ŠTÍT', '#7ac8ff', 24); renderHud(); await sleep(350); break; }
         case 'repair': { hooks.sfx.heal(); const p = bodyPos(e.i); float(p[0], p[1] - 40, '+' + Math.round(e.h), '#6ce08f', 32); for (let k = 0; k < 5; k++) setTimeout(() => burst(p[0] + (Math.random() - 0.5) * 60, p[1] + (Math.random() - 0.5) * 70, '#6ce08f', 2, 20), k * 70); if (view) view.sides[e.i].hp = Math.min(view.sides[e.i].maxHp, view.sides[e.i].hp + e.h); renderHud(); logTxt('Nano-opravář léčí.'); await sleep(450); break; }
         case 'deploy': { hooks.sfx.deploy(); const it = H.item(e.id); if (view) view.sides[e.i].drone = { id: e.id, dtype: it.dr.dtype, hp: stats[e.i].drone.hp, maxHp: stats[e.i].drone.hp }; renderDrones(); const d = drnG[e.i].firstChild; if (d) { d._ox = cxOf(pos[e.i]); d._oy = BASEY + 30; } logTxt(`${players[e.i].name} vysílá dron.`); await sleep(500); break; }
@@ -248,7 +262,7 @@ export function createBattle(root, hooks) {
     }
   }
   let busyMove = false;
-  function afterPlay(snapView, dl) { view = JSON.parse(JSON.stringify(snapView)); for (let i = 0; i < 2; i++) { pos[i] = view.sides[i].x; jy[i] = 0; } renderHud(); renderDrones(); busy = false; jumpMode = false; tgtPick = null; deadline = Date.now() + TURN_S * 1000; renderActs(); }
+  function afterPlay(snapView, dl) { view = JSON.parse(JSON.stringify(snapView)); for (let i = 0; i < 2; i++) { pos[i] = view.sides[i].x; jy[i] = 0; } renderHud(); renderDrones(); busy = false; jumpMode = false; teleMode = false; tgtPick = null; deadline = Date.now() + TURN_S * 1000; renderActs(); }
 
   // ------------------------------------------------------------ cyklus s hodinami
   function tick() { if (!view || dead) return; const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000)), t = elHud.querySelector('.tm'); if (!t) return; if (over) { t.textContent = ''; return; } t.textContent = view.turn === you ? `${left} s` : `soupeř ${left} s`; t.classList.toggle('low', view.turn === you && left <= 10); }
@@ -266,7 +280,7 @@ export function createBattle(root, hooks) {
   function onEv(m) { busy = true; renderActs(); chain = chain.then(() => play(m.ev)).then(() => { if (!dead) afterPlay(m.s, m.dl); }); }
   function onOver(m) { chain = chain.then(async () => { if (dead) return; over = true; renderActs(); renderTiles(); await sleep(500); showResult(m); }); }
   function showResult(m) {
-    const win = m.winner === you, draw = m.winner === 2, rw = m.reward || {}; win ? hooks.sfx.win() : draw ? hooks.sfx.turn() : hooks.sfx.lose();
+    if (hooks.music) hooks.music.stop(); const win = m.winner === you, draw = m.winner === 2, rw = m.reward || {}; win ? hooks.sfx.win() : draw ? hooks.sfx.turn() : hooks.sfx.lose();
     const why = endInfo && endInfo.forfeit ? (win ? 'Soupeř to vzdal.' : 'Vzdal ses.') : endInfo && endInfo.timeout ? 'Vypršel limit kol, rozhodly životy.' : '';
     const camp = hooks.mission >= 0, idx = hooks.mission, cards = rw.cards || [];
     const el = document.createElement('div'); el.className = 'res';

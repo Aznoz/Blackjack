@@ -193,7 +193,7 @@ function handle(ws, msg) {
   const ctx = ws.ctx; if (!ctx) return; const room = rooms.get(ctx.code); if (!room) return;
   const pl = room.players.find((p) => p.id === ctx.pid); if (!pl) return; const i = room.players.indexOf(pl);
   switch (msg.t) {
-    case 'act': return onAct(room, i, msg.a && typeof msg.a === 'object' ? { t: String(msg.a.t), slot: String(msg.a.slot || ''), tgt: msg.a.tgt === 'drone' ? 'drone' : 'mech', dir: msg.a.dir === -1 ? -1 : 1, n: clampN(msg.a.n, 0, 9) } : null);
+    case 'act': return onAct(room, i, msg.a && typeof msg.a === 'object' ? { t: String(msg.a.t), slot: String(msg.a.slot || ''), tgt: msg.a.tgt === 'drone' ? 'drone' : 'mech', dir: msg.a.dir === -1 ? -1 : 1, n: clampN(msg.a.n, 0, 9), x: clampN(msg.a.x, 0, 9) } : null);
     case 'start': if (room.phase === 'lobby' && room.kind === 'room' && room.host === pl.id) { if (room.players.length < 2) { const lv = clampN(msg.level, 1, 3) || 2; const mir = C.mirrorFor(H.power(pl.build, pl.inv), crypto.randomInt(1, 1e6)); room.players.push(botPlayer(mir.name, mir.build, mir.inv, lv)); } startBattle(room); } return;
     case 'leave': return leave(ws, true);
     case 'rematch': {

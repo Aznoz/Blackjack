@@ -58,6 +58,7 @@ export function legalActions(st, i) {
   if (s.ap >= 1) {
     for (const dir of [-1, 1]) { const nx = stepTo(st, i, dir, s.st.spd); if (nx !== s.x) out.push({ t: 'move', dir }); }
     if (s.en >= 2) for (const dir of [-1, 1]) for (let n = 1; n <= s.st.jmp; n++) { const nx = s.x + dir * n; if (nx >= 0 && nx < ARENA.len && nx !== o.x) out.push({ t: 'jump', dir, n }); }
+    if (s.st.tele && !s.used.tele && s.en >= s.st.teleEn) for (let x = 0; x < ARENA.len; x++) if (x !== s.x && x !== o.x && Math.abs(x - s.x) <= s.st.tele) out.push({ t: 'tele', x });
     if (!s.guard) out.push({ t: 'guard' });
     if (s.st.rep > 0 && s.repLeft > 0 && s.hp < s.maxHp && s.en >= 2) out.push({ t: 'repair' });
   }
@@ -72,7 +73,7 @@ function stepTo(st, i, dir, n) {   // kam až dojde při chůzi (nepřejde soupe
 }
 export function isLegal(st, i, a) {
   if (!a || typeof a.t !== 'string') return false;
-  return legalActions(st, i).some((l) => l.t === a.t && (a.t !== 'fire' || (l.slot === a.slot && l.tgt === (a.tgt === 'drone' ? 'drone' : 'mech'))) && (a.t !== 'move' || l.dir === a.dir) && (a.t !== 'jump' || (l.dir === a.dir && l.n === a.n)));
+  return legalActions(st, i).some((l) => l.t === a.t && (a.t !== 'fire' || (l.slot === a.slot && l.tgt === (a.tgt === 'drone' ? 'drone' : 'mech'))) && (a.t !== 'move' || l.dir === a.dir) && (a.t !== 'jump' || (l.dir === a.dir && l.n === a.n)) && (a.t !== 'tele' || l.x === a.x));
 }
 
 /** Provede akci (musí být legální). opts.ev = očekávané hodnoty místo losování (plánování bota). Vrací pole událostí (poslední je snap). */
@@ -83,6 +84,7 @@ export function apply(st, i, a, opts = {}) {
     case 'fire': fire(st, i, a, ev, !!opts.ev); break;
     case 'move': { s.ap -= 1; const from = s.x; s.x = stepTo(st, i, a.dir, s.st.spd); ev.push({ k: 'move', i, from, to: s.x }); break; }
     case 'jump': { s.ap -= 1; s.en -= 2; const from = s.x; s.x += a.dir * a.n; s.ev = JUMP_EVADE; ev.push({ k: 'jump', i, from, to: s.x }); break; }
+    case 'tele': { s.ap -= 1; s.en -= s.st.teleEn; s.used.tele = true; const from = s.x; s.x = a.x; ev.push({ k: 'tele', i, from, to: s.x }); break; }
     case 'guard': s.ap -= 1; s.guard = true; ev.push({ k: 'guard', i }); break;
     case 'repair': { s.ap -= 1; s.en -= 2; s.repLeft -= 1; const h = Math.min(s.st.rep, s.maxHp - s.hp); s.hp += h; ev.push({ k: 'repair', i, h }); break; }
     case 'drone': { const d = s.st.drone; s.ap -= d.ap; s.en -= d.en; s.droneUsed = true; s.drone = { ...d, hp: d.hp, maxHp: d.hp }; ev.push({ k: 'deploy', i, id: d.id }); break; }
@@ -120,6 +122,7 @@ function fire(st, i, a, ev, evMode) {
       if (w.fx.burn && !o.st.noBurn) { o.burn = { t: w.fx.burn, d: w.fx.burnDmg }; fx.burn = w.fx.burn; }
       if (w.fx.shock && !o.shocked && (evMode ? w.fx.shock >= 0.5 : rnd(st) < w.fx.shock)) { o.shocked = true; fx.shock = 1; }
       if (w.fx.emp) { const lost = Math.min(o.en, w.fx.emp); o.en -= lost; fx.emp = lost; }
+      if (w.fx.pull) { fx.pull = 1; const dir = s.x >= o.x ? 1 : -1; let x = o.x; for (let k = 0; k < w.fx.pull; k++) { const nx = x + dir; if (nx === s.x || nx < 0 || nx >= ARENA.len) break; x = nx; } if (x !== o.x) { fx.push = [o.x, x]; o.x = x; } }
       if (w.fx.push) { const dir = o.x >= s.x ? 1 : -1; let x = o.x; for (let k = 0; k < w.fx.push; k++) { const nx = x + dir; if (nx < 0 || nx >= ARENA.len) break; x = nx; } if (x !== o.x) { fx.push = [o.x, x]; o.x = x; } }
     }
   }

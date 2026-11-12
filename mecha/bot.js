@@ -25,7 +25,7 @@ export function chooseAction(st, i, level = 2, rng = Math.random) {
   for (const a of legal) {
     if (a.t === 'end') continue; const c = S.clone(st); S.apply(c, i, a, { ev: true }); let v = score(c, i);
     if (a.t === 'fire') v += 4;                   // střílet je dobré, i když to vypadá stejně
-    if (a.t === 'jump') v -= 2.5; if (a.t === 'guard') v -= 1;
+    if (a.t === 'jump') v -= 2.5; if (a.t === 'tele') v -= 3; if (a.t === 'guard') v -= 1;
     scored.push({ a, v });
   }
   scored.sort((x, y) => y.v - x.v);

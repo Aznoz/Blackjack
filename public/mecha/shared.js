@@ -29,6 +29,10 @@ const WEAPONS_HAND = [
   { fam: 'rail', name: 'Railgun', w: 8, type: 'kin', ap: 2, en: [6, 6, 7, 7, 8], acc: 82, rng: [3, 10], hits: 1, dmg: [30, 39, 51, 66, 86], fx: { pierce: [0.35, 0.4, 0.45, 0.5, 0.6] }, desc: 'Projektil prorazí odolnost cíle.' },
   { fam: 'blade', name: 'Energetický meč', w: 3, type: 'nrg', ap: 1, en: [2, 2, 3, 3, 3], acc: 92, rng: [1, 1], hits: 1, dmg: [15, 20, 26, 34, 44], crit: [15, 18, 22, 26, 32], desc: 'Jen na dotek, ale s vysokou šancí na kritický zásah.' },
   { fam: 'hammer', name: 'Hydraulické kladivo', w: 7, type: 'kin', ap: 2, en: [3, 3, 4, 4, 5], acc: 76, rng: [1, 1], hits: 1, dmg: [24, 31, 40, 52, 68], fx: { push: [1, 1, 1, 2, 2], shock: [0, 0, 0.35, 0.5, 0.7] }, desc: 'Odhodí soupeře a občas ho omráčí.' },
+  { fam: 'axe', name: 'Bojová sekera', w: 6, type: 'kin', ap: 1, en: [2, 2, 3, 3, 3], acc: 86, rng: [1, 1], hits: 1, dmg: [20, 26, 34, 44, 58], crit: [10, 12, 15, 18, 22], fx: { pierce: [0.2, 0.25, 0.3, 0.35, 0.45] }, desc: 'Těžká čepel jen na dotek; část zásahu projde odolností cíle.' },
+  { fam: 'claw', name: 'Plazmové drápy', w: 4, type: 'nrg', ap: 1, en: [3, 3, 3, 4, 4], acc: 94, rng: [1, 1], hits: [2, 2, 3, 3, 3], dmg: [8, 10, 12, 15, 20], fx: { burn: [0, 0, 1, 2, 2], burnDmg: [0, 0, 3, 4, 5] }, desc: 'Rychlé sekance na dotek. Od Mk III zapalují.' },
+  { fam: 'pile', name: 'Pneumatický kůl', w: 8, type: 'exp', ap: 2, en: [4, 4, 5, 5, 6], acc: 80, rng: [1, 1], hits: 1, dmg: [34, 44, 57, 74, 96], fx: { pierce: [0.4, 0.45, 0.5, 0.55, 0.65] }, desc: 'Pomalý, ale prorazí i silný pancíř.' },
+  { fam: 'hook', name: 'Přitahovací hák', w: 4, type: 'kin', ap: 1, en: [3, 3, 3, 4, 4], acc: 85, rng: [2, 7], hits: 1, dmg: [4, 5, 7, 9, 12], fx: { pull: [3, 4, 5, 6, 8] }, desc: 'Zasáhne a přitáhne soupeře až před sebe. Stojí jen 1 tahový bod.' },
   { fam: 'flame', name: 'Plamenomet', w: 5, type: 'exp', ap: 1, en: [3, 3, 4, 4, 5], acc: 88, rng: [1, 3], hits: 1, dmg: [7, 9, 12, 16, 21], fx: { burn: [2, 2, 3, 3, 4], burnDmg: [3, 4, 5, 7, 9] }, desc: 'Zapálí cíl, hoří několik kol.' },
   { fam: 'tesla', name: 'Tesla cívka', w: 4, type: 'nrg', ap: 1, en: [3, 3, 4, 4, 4], acc: 95, rng: [1, 4], hits: 1, dmg: [9, 12, 15, 20, 26], fx: { shock: [0.4, 0.5, 0.65, 0.8, 1] }, desc: 'Šok: soupeř má příští kolo o tahový bod méně.' },
   { fam: 'shot', name: 'Brokovnice', w: 5, type: 'kin', ap: 1, en: [2, 2, 3, 3, 3], acc: 78, rng: [1, 3], hits: [4, 4, 5, 5, 6], dmg: [5, 6, 8, 10, 13], desc: 'Na blízko devastující.' },
@@ -43,6 +47,8 @@ const WEAPONS_SHOULDER = [
   { fam: 'pcan', name: 'Plazmové dělo', w: 8, type: 'nrg', ap: 1, en: [5, 5, 6, 6, 7], acc: 80, rng: [2, 8], hits: 1, dmg: [17, 22, 29, 38, 49], desc: 'Energetické dělo za jediný tahový bod.' },
 ];
 const MODULES = [
+  // rameno
+  { fam: 'tele', kind: 'shoulder', name: 'Teleportér', w: 7, desc: 'Akce Teleport: za 1 tahový bod se přeneseš na libovolné volné pole v dosahu (jednou za tah).', st: { tele: [4, 5, 6, 8, 10], teleEn: [5, 5, 4, 4, 3] } },
   // hlava
   { fam: 'sens', kind: 'head', name: 'Zaměřovač', w: 2, desc: 'Lepší přesnost a kritické zásahy.', st: { acc: [5, 8, 11, 15, 20], crit: [2, 3, 5, 7, 10], hp: [4, 6, 8, 10, 12] } },
   { fam: 'helm', kind: 'head', name: 'Ocelová přilba', w: 4, desc: 'Odolnost proti kinetickým zásahům.', st: { hp: [12, 18, 26, 36, 50], res: [{ kin: 0.03 }, { kin: 0.05 }, { kin: 0.08 }, { kin: 0.11 }, { kin: 0.15 }] } },
@@ -115,7 +121,7 @@ const RES0 = () => ({ kin: 0, nrg: 0, exp: 0 });
 const lvOf = (inv, id) => (inv && inv[id] ? Math.max(1, Math.min(MAX_LV, inv[id].lv | 0 || 1)) : 1);
 /** Spočítá vlastnosti robota ze sestavy; úrovně karet bere z inv (bez inv = všechno na úrovni 1). */
 export function mechStats(build, inv) {
-  const m = { hp: BASE.hp, ap: BASE.ap, en: BASE.en, regen: BASE.regen, shield: 0, shieldRegen: 0, acc: BASE.acc, crit: BASE.crit, evade: BASE.evade, spd: BASE.spd, jmp: BASE.jmp, cap: BASE.cap, rngb: 0, res: RES0(), weight: 0, rep: 0, repUses: 0, noBurn: false, weapons: [], drone: null };
+  const m = { hp: BASE.hp, ap: BASE.ap, en: BASE.en, regen: BASE.regen, shield: 0, shieldRegen: 0, acc: BASE.acc, crit: BASE.crit, evade: BASE.evade, spd: BASE.spd, jmp: BASE.jmp, cap: BASE.cap, rngb: 0, res: RES0(), weight: 0, rep: 0, repUses: 0, noBurn: false, tele: 0, teleEn: 0, weapons: [], drone: null };
   for (const s of SLOTS) {
     const it = build[s] ? item(build[s]) : null; if (!it) continue; const lv = lvOf(inv, it.id), L = levelMul(lv);
     m.weight += it.w;
@@ -125,6 +131,7 @@ export function mechStats(build, inv) {
       const st = it.st;
       m.hp += Math.round((st.hp || 0) * L); m.ap += st.ap || 0; m.en += Math.round((st.en || 0) * L * 10) / 10; m.regen += st.regen || 0; m.shield += Math.round((st.shield || 0) * L); m.shieldRegen += Math.round((st.shieldRegen || 0) * L);
       m.acc += st.acc || 0; m.crit += st.crit || 0; m.evade += st.evade || 0; m.spd += st.spd || 0; m.jmp += st.jmp || 0; m.cap += st.cap || 0; m.rngb += st.rngb || 0;
+      if (st.tele) { m.tele = Math.max(m.tele, st.tele); m.teleEn = m.teleEn ? Math.min(m.teleEn, st.teleEn) : st.teleEn; }
       if (st.rep) { m.rep += Math.round(st.rep * L); m.repUses += st.repUses || 0; } if (st.noBurn) m.noBurn = true;
       if (st.res) for (const k of Object.keys(st.res)) m.res[k] += st.res[k];
     }
@@ -144,7 +151,7 @@ export function power(build, inv) {
 // odds = šance na úroveň karty (Mk I…V) v %, filter = které karty mohou padnout
 export const CRATES = [
   { id: 'serv', name: 'Servisní bedna', price: 250, cards: 2, color: '#7f8a96', accent: '#c9d2da', desc: 'Základní zásilka dílů: většinou Mk I a II.', odds: [70, 25, 5, 0, 0], filter: null },
-  { id: 'tech', name: 'Technická bedna', price: 450, cards: 2, color: '#3f7fa8', accent: '#8fd4ff', desc: 'Jen moduly do hlavy, hrudi a nohou.', odds: [55, 30, 12, 3, 0], filter: { kind: 'module' } },
+  { id: 'tech', name: 'Technická bedna', price: 450, cards: 2, color: '#3f7fa8', accent: '#8fd4ff', desc: 'Jen moduly do hlavy, hrudi, nohou a ramen.', odds: [55, 30, 12, 3, 0], filter: { kind: 'module' } },
   { id: 'zbroj', name: 'Zbrojní bedna', price: 550, cards: 2, color: '#a8683f', accent: '#ffc08f', desc: 'Jen zbraně do rukou a ramen.', odds: [55, 30, 12, 3, 0], filter: { kind: 'weapon' } },
   { id: 'dron', name: 'Dronová přepravka', price: 600, cards: 1, color: '#3fa88c', accent: '#8fffe1', desc: 'Jeden dron, na vyšší úrovni často lepší.', odds: [45, 33, 17, 5, 0], filter: { kind: 'drone' } },
   { id: 'vojen', name: 'Vojenská bedna', price: 1100, cards: 3, color: '#5b7a3a', accent: '#c5e88f', desc: 'Tři karty, slušná šance na vzácné a epické.', odds: [30, 36, 24, 9, 1], filter: null },

@@ -1,10 +1,10 @@
 // MECHA ARÉNA – klient: menu, garáž (sestava robota z karet), sklad a vylepšování, obchod s bednami, kampaň, online místnosti. Souboj je v battle.js.
-import * as H from './shared.js?v=3';
-import * as C from './campaign.js?v=3';
-import * as A from './art.js?v=3';
-import { sfx, setMuted, isMuted } from './sfx.js?v=3';
-import { createBattle } from './battle.js?v=3';
-import { itemLines, pct } from './info.js?v=3';
+import * as H from './shared.js?v=4';
+import * as C from './campaign.js?v=4';
+import * as A from './art.js?v=4';
+import { sfx, setMuted, isMuted, music, isMusicOn } from './sfx.js?v=4';
+import { createBattle } from './battle.js?v=4';
+import { itemLines, pct } from './info.js?v=4';
 
 const CFG = window.MECHA_CONFIG || {};
 const $ = (id) => document.getElementById(id);
@@ -36,7 +36,7 @@ async function refreshProfile() { try { setProf(await call('me', {})); } catch (
 // ------------------------------------------------------------------ obecné
 let screen = 'menu';
 const SCREENS = ['menu', 'garage', 'shop', 'camp', 'lobby', 'battle'];
-function show(name) { screen = name; for (const s of SCREENS) $(s).hidden = s !== name; closeModal(); if (name === 'menu') updateMenu(); }
+function show(name) { screen = name; if (name !== 'battle') music.play('menu'); for (const s of SCREENS) $(s).hidden = s !== name; closeModal(); if (name === 'menu') updateMenu(); }
 let toastT = null;
 function toast(msg, ms = 2400) { const t = $('toast'); t.textContent = msg; t.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { t.hidden = true; }, ms); }
 const status = (m) => { $('status').textContent = m || ''; };
@@ -58,9 +58,11 @@ function updateMenu() {
   $('shopSub').textContent = m.dailyIn <= 0 && has ? 'bedna zdarma čeká!' : 'bedny s kartami';
   for (const id of ['bCamp', 'bGarage', 'bShop', 'bQuick', 'bTrain', 'bCreate']) $(id).disabled = !has;
   $('heroBot').innerHTML = A.robotSVGFull(has ? m.build : H.STARTER_BUILD, m.inv);
-  $('muteBtn').textContent = isMuted() ? 'Zvuk vyp' : 'Zvuk zap';
+  $('muteBtn').textContent = isMuted() ? 'Zvuk vyp' : 'Zvuk zap'; $('musBtn').textContent = isMusicOn() ? 'Hudba zap' : 'Hudba vyp';
 }
 $('muteBtn').onclick = () => { setMuted(!isMuted()); updateMenu(); };
+$('musBtn').onclick = () => { music.setOn(!isMusicOn()); updateMenu(); };
+for (const ev of ['pointerdown', 'keydown']) document.addEventListener(ev, () => music.unlock(), { once: true, capture: true });
 const fsOK = document.documentElement.requestFullscreen && !/iPhone|iPad/.test(navigator.userAgent);
 if (fsOK) { $('fsBtn').hidden = false; $('fsBtn').onclick = () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen().catch(() => {}); }; }
 $('bGarage').onclick = () => { sfx.click(); openGarage(); };
@@ -231,7 +233,8 @@ function renderLobby() {
 function onStart(m) {
   lastStart = m; show('battle'); status('');
   if (battle) battle.destroy();
-  battle = createBattle($('battle'), { send: sendMsg, toast, sfx, exit: () => backToMenu(), next: (type) => afterBattle(type), kind: room && room.kind, mission: m.mission });
+  music.play(m.theme || 'junk');
+  battle = createBattle($('battle'), { send: sendMsg, toast, sfx, music: { isOn: isMusicOn, toggle: () => { music.setOn(!isMusicOn()); return isMusicOn(); }, stop: () => music.stop() }, exit: () => backToMenu(), next: (type) => afterBattle(type), kind: room && room.kind, mission: m.mission });
   battle.start(m);
 }
 function afterBattle(type) {
