@@ -176,6 +176,21 @@ function cleanGolf(t) {   // Minigolf: barva míčku, výhry zápasů, odehrané
   return out;
 }
 
+function cleanMecha(t) {   // Mecha Aréna: coiny, karty a jejich úrovně, sestava robota, postup v kampani a statistiky (podrobná kontrola je v mecha/mecha.js, mechaOf)
+  if (!t || typeof t !== 'object') return {};
+  const n = (v, hi = 1e7) => (Number.isFinite(v) ? Math.max(0, Math.min(hi, Math.floor(v))) : 0);
+  const ID = /^[a-z]{2,8}[1-5]$/;
+  const out = { wins: n(t.wins), games: n(t.games), losses: n(t.losses), opened: n(t.opened), camp: n(t.camp, 30), daily: n(t.daily, 1e14) };
+  if (Number.isFinite(t.coins)) out.coins = n(t.coins, 1e9);   // bez `coins` a `inv` začíná hráč se startovní sadou (mecha/shared.js)
+  if (t.inv && typeof t.inv === 'object') {
+    const inv = {}; let k = 0;
+    for (const id of Object.keys(t.inv)) { if (!ID.test(id) || ++k > 400) continue; const e = t.inv[id] || {}; const c = n(e.n, 9999); if (c > 0) inv[id] = { n: c, lv: Math.max(1, Math.min(5, n(e.lv, 5))) }; }
+    out.inv = inv;
+  }
+  if (t.build && typeof t.build === 'object') { const b = {}; for (const s of ['head', 'shL', 'shR', 'chest', 'hdL', 'hdR', 'lgL', 'lgR', 'drone']) b[s] = typeof t.build[s] === 'string' && (t.build[s] === '' || ID.test(t.build[s])) ? t.build[s] : ''; out.build = b; }
+  return out;
+}
+
 function makeAccount(key, d = {}) {
   return {
     key,
@@ -196,6 +211,7 @@ function makeAccount(key, d = {}) {
     bombic: cleanBombic(d.bombic), // Bombic: zkušenosti a statistiky
     hopik: cleanHopik(d.hopik), // Hopík: postavička a statistiky
     golf: cleanGolf(d.golf), // Minigolf: barva míčku a statistiky
+    mecha: cleanMecha(d.mecha), // Mecha Aréna: coiny, karty, sestava robota, kampaň
     lastUpload: 0,
     createdAt: d.createdAt || Date.now(),
     lastSeen: d.lastSeen || Date.now(),
@@ -214,7 +230,7 @@ async function loadAccounts() {
     for (const [key, a] of Object.entries(raw)) {
       if (!a || typeof a.balance !== 'number') continue;
       // úklid: anonymní účty, které nikdy nehrály a 30 dní se neozvaly (účty propojené s Googlem se nemažou)
-      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && !(a.arena && a.arena.xp) && !(a.bombic && a.bombic.xp) && !(a.hopik && a.hopik.games) && !(a.golf && a.golf.games) && (a.lastSeen || 0) < cutoff) continue;
+      if (!key.startsWith('g:') && (!a.stats || !a.stats.rounds) && !(a.tank && a.tank.xp) && !(a.arena && a.arena.xp) && !(a.bombic && a.bombic.xp) && !(a.hopik && a.hopik.games) && !(a.golf && a.golf.games) && !(a.mecha && (a.mecha.games || a.mecha.opened)) && (a.lastSeen || 0) < cutoff) continue;
       accounts.set(key, makeAccount(key, a));
     }
     console.log(`Načteno ${accounts.size} účtů.`);
@@ -338,7 +354,7 @@ function saveNow() {
   try {
     const out = {};
     for (const [k, a] of accounts) {
-      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, arena: a.arena, bombic: a.bombic, hopik: a.hopik, golf: a.golf, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
+      out[k] = { name: a.name, balance: a.balance, clawPlays: a.clawPlays | 0, bombAt: a.bombAt || 0, wheelBonus: a.wheelBonus ? 1 : 0, zsTries: a.zsTries | 0, cpCoins: a.cpCoins | 0, zsLetters: a.zsLetters | 0, items: Array.isArray(a.items) ? a.items : [], tank: a.tank, arena: a.arena, bombic: a.bombic, hopik: a.hopik, golf: a.golf, mecha: a.mecha, stats: a.stats, avatar: a.avatar, custom: a.custom, createdAt: a.createdAt, lastSeen: a.lastSeen };
     }
     store.write('players', JSON.stringify(out));
     const g = {};
@@ -1217,6 +1233,11 @@ async function handleApi(req, res, p) {
       const r = golf.api(p.slice('/api/golf/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
     }
+    if (p.startsWith('/api/mecha/') && req.method === 'POST') { // Mecha Aréna: me (profil), build (sestava), buy/daily (bedny), upgrade, sell
+      if (!mecha) return apiJson(res, 503, { error: 'Server se spouští.' }, cors);
+      const r = mecha.api(p.slice('/api/mecha/'.length), await readJson(req));
+      return apiJson(res, r.status, r.json, cors);
+    }
     if (p.startsWith('/api/claw/') && req.method === 'POST') {
       const r = claw.handle(p.slice('/api/claw/'.length), await readJson(req));
       return apiJson(res, r.status, r.json, cors);
@@ -1327,6 +1348,10 @@ const server = http.createServer((req, res) => {
   if (p === '/golf/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
     return res.end(JSON.stringify({ ok: true, ...(golf ? golf.stats() : {}), uptime: Math.round(process.uptime()) }));
+  }
+  if (p === '/mecha/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
+    return res.end(JSON.stringify({ ok: true, ...(mecha ? mecha.stats() : {}), uptime: Math.round(process.uptime()) }));
   }
   if (p === '/hopik/health') {
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*' });
@@ -1453,6 +1478,12 @@ let golf = null;
 import('./golf/golf.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE }); golf = m; console.log('Minigolf: načteno (WebSocket /golf).'); }).catch((e) => console.error('Minigolf se nenačetl:', e.message));
 gwss.on('connection', (ws) => { if (!golf) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } golf.handleConnection(ws); });
 
+// čtrnáctá cesta: /mecha = Mecha Aréna (tahové souboje robotů, složka mecha/): kampaň proti AI i online, karty a bedny se ukládají v účtu
+const mwss = new WebSocketServer({ noServer: true, maxPayload: 4096 });
+let mecha = null;
+import('./mecha/mecha.js').then((m) => { m.init({ resolveAccount, markDirty, TOKEN_RE }); mecha = m; console.log('Mecha Aréna: načteno (WebSocket /mecha).'); }).catch((e) => console.error('Mecha Aréna se nenačetla:', e.message));
+mwss.on('connection', (ws) => { if (!mecha) { ws.close(1013, 'Server se spouští, zkus to za chvilku.'); return; } mecha.handleConnection(ws); });
+
 server.on('upgrade', (req, socket, head) => {
   let p;
   try { p = new URL(req.url, 'http://x').pathname; } catch (e) { return socket.destroy(); }
@@ -1460,7 +1491,7 @@ server.on('upgrade', (req, socket, head) => {
     socket.write('HTTP/1.1 403 Forbidden\r\n\r\n');
     return socket.destroy();
   }
-  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : p === '/arena' ? awss : p === '/bombic' ? bwss2 : p === '/hopik' ? hpwss : p === '/golf' ? gwss : null;
+  const target = p === '/ws' ? wss : p === '/hockey' ? hwss : p === '/komora' ? kwss : p === '/bomba' ? bwss : p === '/stvanice' ? swss : p === '/sachy' ? cwss : p === '/obesenec' ? owss : p === '/kresleni' ? dwss : p === '/tanks' ? twss : p === '/arena' ? awss : p === '/bombic' ? bwss2 : p === '/hopik' ? hpwss : p === '/golf' ? gwss : p === '/mecha' ? mwss : null;
   if (!target) return socket.destroy();
   target.handleUpgrade(req, socket, head, (ws) => target.emit('connection', ws, req));
 });

@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="cs">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>Mecha Aréna</title>
+<meta name="theme-color" content="#10151a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='10' fill='%2310151a'/%3E%3Cpath d='M14 50V22l18-10 18 10v28z' fill='%23ffb000'/%3E%3Crect x='22' y='26' width='20' height='8' fill='%2310151a'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="mecha.css?v=2">
+</head>
+<body>
+<div id="app">
+
+<!-- hlavní menu: velín s hazard pruhy -->
+<main id="menu" class="screen">
+  <div class="hz-bar"></div>
+  <header class="bar">
+    <a class="back" id="back" href="../">‹ Herna</a>
+    <span class="grow"></span>
+    <button class="sq" id="muteBtn" type="button" aria-label="Zvuk"></button>
+    <button class="sq" id="fsBtn" type="button" aria-label="Celá obrazovka" hidden>⛶</button>
+  </header>
+  <div class="menu-grid">
+    <section class="hero">
+      <div class="stencil"><span>MECHA</span><span class="amber">ARÉNA</span></div>
+      <p class="sub">Postav robota z karet. Zvol, co si vezmeš do boje. Každý krok stojí tahový bod.</p>
+      <div class="hero-bot" id="heroBot"></div>
+    </section>
+    <section class="panel menu-panel">
+      <div class="pilot" id="pilot" hidden><div><b id="pName">Pilot</b><small id="pRec"></small></div><div class="coins"><i></i><b id="pCoins">0</b></div></div>
+      <p class="warn" id="noAcc" hidden>Karty, bedny a kampaň se ukládají do účtu. Přihlas se na portálu a vrať se sem.</p>
+      <button class="mbtn primary" id="bCamp" type="button"><b>Kampaň</b><small id="campSub">30 misí proti AI</small></button>
+      <div class="two">
+        <button class="mbtn" id="bGarage" type="button"><b>Garáž</b><small>sestava a sklad</small></button>
+        <button class="mbtn" id="bShop" type="button"><b>Sklad dílů</b><small id="shopSub">bedny s kartami</small></button>
+      </div>
+      <div class="two">
+        <button class="mbtn" id="bQuick" type="button"><b>Online</b><small>rychlý zápas</small></button>
+        <button class="mbtn" id="bTrain" type="button"><b>Trénink</b><small>proti AI</small></button>
+      </div>
+      <div class="two">
+        <button class="mbtn" id="bCreate" type="button"><b>Vytvořit místnost</b><small>kód pro kamaráda</small></button>
+        <form class="mbtn join" id="joinForm"><label for="code">Mám kód</label><span><input id="code" maxlength="4" autocapitalize="characters" autocomplete="off" placeholder="ABCD"><button type="submit">›</button></span></form>
+      </div>
+      <button class="mbtn ghost" id="bHow" type="button"><b>Jak se hraje</b></button>
+      <p class="status" id="status"></p>
+    </section>
+  </div>
+</main>
+
+<!-- ostatní obrazovky: plní je mecha.js -->
+<section id="garage" class="screen" hidden></section>
+<section id="shop" class="screen" hidden></section>
+<section id="camp" class="screen" hidden></section>
+<section id="lobby" class="screen" hidden></section>
+<section id="battle" class="screen" hidden></section>
+
+</div>
+<div id="modal" hidden></div>
+<div id="toast" hidden></div>
+<script src="config.js?v=2"></script>
+<script type="module" src="mecha.js?v=2"></script>
+</body>
+</html>
