@@ -1,10 +1,10 @@
 // MECHA ARÉNA – klient: menu, garáž (sestava robota z karet), sklad a vylepšování, obchod s bednami, kampaň, online místnosti. Souboj je v battle.js.
-import * as H from './shared.js?v=2';
-import * as C from './campaign.js?v=2';
-import * as A from './art.js?v=2';
-import { sfx, setMuted, isMuted } from './sfx.js?v=2';
-import { createBattle } from './battle.js?v=2';
-import { itemLines, pct } from './info.js?v=2';
+import * as H from './shared.js?v=3';
+import * as C from './campaign.js?v=3';
+import * as A from './art.js?v=3';
+import { sfx, setMuted, isMuted } from './sfx.js?v=3';
+import { createBattle } from './battle.js?v=3';
+import { itemLines, pct } from './info.js?v=3';
 
 const CFG = window.MECHA_CONFIG || {};
 const $ = (id) => document.getElementById(id);
@@ -168,7 +168,7 @@ function playOpen(crate, cards, before) {
 // ------------------------------------------------------------------ kampaň
 function openCamp() {
   show('camp'); const s = $('camp'), m = my();
-  s.innerHTML = `${bar('Kampaň')}<div class="wrap">${C.CHAPTERS.map((ch, ci) => `<div class="chap"><h3>${ci + 1}. ${esc(ch.name)}</h3><small>${esc(ch.blurb)}</small><div class="path">${C.MISSIONS.filter((x) => x.ch === ci).map((x) => `<button class="node ${x.idx < m.camp ? 'done' : x.idx === m.camp ? 'cur' : 'lock'} ${x.boss ? 'boss' : ''}" data-m="${x.idx}" type="button"><span class="dot">${x.idx < m.camp ? '✓' : x.title}</span><span>${esc(x.name)}</span></button>`).join('')}</div></div>`).join('')}</div>`;
+  s.innerHTML = `${bar('Kampaň')}<div class="wrap">${C.CHAPTERS.map((ch, ci) => `<div class="chap"><svg class="chbg" viewBox="0 130 1100 210" preserveAspectRatio="xMidYMid slice" aria-hidden="true">${A.arenaBG(ch.theme, `c${ci}`)}</svg><h3>${ci + 1}. ${esc(ch.name)}</h3><small>${esc(ch.blurb)}</small><div class="path">${C.MISSIONS.filter((x) => x.ch === ci).map((x) => `<button class="node ${x.idx < m.camp ? 'done' : x.idx === m.camp ? 'cur' : 'lock'} ${x.boss ? 'boss' : ''}" data-m="${x.idx}" type="button"><span class="dot">${x.idx < m.camp ? '✓' : x.title}</span><span>${esc(x.name)}</span></button>`).join('')}</div></div>`).join('')}</div>`;
   wireGo(s);
   for (const b of s.querySelectorAll('[data-m]')) b.onclick = () => { sfx.click(); missionInfo(+b.dataset.m); };
 }

@@ -1,5 +1,5 @@
 // MECHA ARÉNA – popis karet (štítky s vlastnostmi), společné pro garáž a souboj.
-import * as H from './shared.js?v=2';
+import * as H from './shared.js?v=3';
 export const pct = (v) => Math.round(v * 100) + ' %';
 export function itemLines(it, lv = 1) {
   const L = [], chips = [];

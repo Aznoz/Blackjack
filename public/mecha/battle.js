@@ -1,13 +1,13 @@
 // MECHA ARÉNA – souboj: SVG aréna (boční pohled, 10 polí), roboti poskládaní z karet, přehrávání událostí ze serveru (střelba, pohyb, skoky, dron, oheň, šok)
 // a ovládání tahu. Pravidla počítá server; tady se jen zobrazují a nabízejí se akce podle S.legalActions nad snímkem stavu.
-import * as H from './shared.js?v=2';
-import * as S from './sim.js?v=2';
-import * as C from './campaign.js?v=2';
-import * as A from './art.js?v=2';
-import { itemLines } from './info.js?v=2';
+import * as H from './shared.js?v=3';
+import * as S from './sim.js?v=3';
+import * as C from './campaign.js?v=3';
+import * as A from './art.js?v=3';
+import { itemLines } from './info.js?v=3';
 
 const NS = 'http://www.w3.org/2000/svg';
-const TILE = 100, X0 = 50, GY = 332, SC = 0.96, VW = 1100, VH = 440, TURN_S = 75;
+const TILE = 100, X0 = 50, GY = 332, SC = 0.96, VW = 1100, VH = 440, BOT = 408, TURN_S = 75;
 const TC = { kin: '#ffcf5a', nrg: '#5ee0ff', exp: '#ff8a5a' };
 const VIS = {
   mg: { k: 'trace', col: '#ffd45a', ms: 150, gap: 90 }, shot: { k: 'trace', col: '#ffd45a', ms: 170, gap: 25, spread: 1 }, turret: { k: 'trace', col: '#ffd45a', ms: 150, gap: 120 }, snip: { k: 'trace', col: '#ffffff', ms: 110, gap: 160, len: 90, w: 3 },
@@ -26,7 +26,7 @@ const BASEY = GY + 8 - 233 * SC;   // y počátku robota (v souřadnicích robot
 export function createBattle(root, hooks) {
   let dead = false, you = 0, players = [], stats = [], view = null, theme = 'junk', chain = Promise.resolve(), over = false, busy = true, deadline = 0, hoverW = null, jumpMode = false, tgtPick = null, endInfo = null, rematchSent = false, lastLog = '';
   const pos = [0, 0], jy = [0, 0], shk = [[0, 0], [0, 0]], blink = [0, 0], cam = { x: 0, w: VW, tx: 0, tw: VW }, bob = { t: 0 };
-  let svg, fxg, botG = [], drnG = [], gsh = [], tilesG, tileEls = [], stripEls = [], elHud, elActs, elLog, elBanner, elArena, raf = 0, tmr = 0, shake = 0;
+  let svg, bgF, bgM, fxg, botG = [], drnG = [], gsh = [], tilesG, tileEls = [], stripEls = [], elHud, elActs, elLog, elBanner, elArena, raf = 0, tmr = 0, shake = 0;
   const narrow = () => root.clientWidth < 700;
   const face = (i) => (pos[1 - i] >= pos[i] ? 1 : -1);
 
@@ -37,15 +37,18 @@ export function createBattle(root, hooks) {
     <div class="arena"><svg viewBox="0 0 ${VW} ${VH}" preserveAspectRatio="xMidYMax meet"></svg><div class="banner"></div></div><div class="log"></div><div class="acts2"></div>`;
     elHud = root.querySelector('.hud'); elArena = root.querySelector('.arena'); elBanner = root.querySelector('.banner'); elLog = root.querySelector('.log'); elActs = root.querySelector('.acts2'); svg = elArena.querySelector('svg');
     const tiles = Array.from({ length: H.ARENA.len }, (_, i) => `<rect class="floor" x="${X0 + i * TILE + 2}" y="${GY}" width="${TILE - 4}" height="12" fill="#fff" opacity="${i % 2 ? 0.05 : 0.09}"/>`).join('');
-    const botHtml = (i) => `<g class="bot" data-i="${i}"><g class="gsh"><ellipse cx="100" cy="125" rx="78" ry="112" fill="rgba(74,168,255,.12)" stroke="#4aa8ff" stroke-width="3" opacity="0"/></g><g class="in">${A.robotSVG(players[i].build, players[i].inv)}</g></g>`;
+    const botHtml = (i) => `<g class="bot" data-i="${i}"><g class="gsh"><ellipse cx="100" cy="125" rx="78" ry="112" fill="rgba(74,168,255,.12)" stroke="#4aa8ff" stroke-width="3" opacity="0"/></g><g class="in">${A.robotSVG(players[i].build, players[i].inv, { team: i === you ? '#ffb000' : '#ff4d3d' })}</g></g>`;
     svg.innerHTML = `${A.arenaBG(theme)}${tiles}<g id="drn0"></g><g id="drn1"></g>${botHtml(0)}${botHtml(1)}<g id="fx"></g><g id="tiles"></g>`;
-    fxg = svg.querySelector('#fx'); tilesG = svg.querySelector('#tiles'); botG = [...svg.querySelectorAll('.bot')]; drnG = [svg.querySelector('#drn0'), svg.querySelector('#drn1')]; gsh = botG.map((b) => b.querySelector('.gsh ellipse'));
+    bgF = svg.querySelector('#bgf'); bgM = svg.querySelector('#bgm'); fxg = svg.querySelector('#fx'); tilesG = svg.querySelector('#tiles'); botG = [...svg.querySelectorAll('.bot')]; drnG = [svg.querySelector('#drn0'), svg.querySelector('#drn1')]; gsh = botG.map((b) => b.querySelector('.gsh ellipse'));
     tilesG.innerHTML = Array.from({ length: H.ARENA.len }, (_, i) => `<rect class="tilehit" data-t="${i}" x="${X0 + i * TILE + 2}" y="${GY - 200}" width="${TILE - 4}" height="214" fill="transparent"/><rect class="strip" x="${X0 + i * TILE + 2}" y="${GY}" width="${TILE - 4}" height="12" fill="none" pointer-events="none"/>`).join('');
     tileEls = [...tilesG.querySelectorAll('.tilehit')]; stripEls = [...tilesG.querySelectorAll('.strip')]; for (const t of tileEls) t.onclick = () => onTile(+t.dataset.t);
-    fit();
+    fit(); if (ro) { ro.disconnect(); ro.observe(elArena); }
   }
-  function fit() { if (!elArena) return; const n = narrow(); elArena.style.aspectRatio = n ? '640 / 440' : `${VW} / ${VH}`; }
+  // aréna vyplní zbytek obrazovky (žádný pevný poměr stran) – výška výřezu se dopočítá z jejího skutečného poměru, takže se nikdy neořízne a nic neskroluje
+  let asp = 2.5;
+  function fit() { if (!elArena) return; const w = elArena.clientWidth, h = elArena.clientHeight; if (w > 20 && h > 20) asp = w / h; }
   const onResize = () => fit(); window.addEventListener('resize', onResize);
+  let ro = null; try { ro = new ResizeObserver(() => fit()); } catch (x) { /* starší prohlížeč */ }
 
   // ------------------------------------------------------------ vykreslování (každý snímek)
   function frame(now) {
@@ -57,10 +60,13 @@ export function createBattle(root, hooks) {
       const d = drnG[i].firstChild; if (d) { const dir = face(i), bx = cx - dir * 64, by = GY - 175 * SC - 30 + Math.sin(bob.t * 2.4 + i) * 6 - jy[i] * 0.4; d.setAttribute('transform', `translate(${(d._ox ?? bx) + (d._fx || 0)} ${(d._oy ?? by)})`); d._tx = bx; d._ty = by; if (d._ox === undefined || d._snap) { d._ox = bx; d._oy = by; d._snap = 0; } else { d._ox += (bx - d._ox) * 0.2; d._oy += (by - d._oy) * 0.2; } }
     }
     const lo = Math.min(cxOf(pos[0]), cxOf(pos[1])), hi = Math.max(cxOf(pos[0]), cxOf(pos[1]));
-    cam.tw = narrow() ? clamp(hi - lo + 300, 520, VW) : VW; cam.tx = clamp((lo + hi) / 2 - cam.tw / 2, 0, VW - cam.tw);
-    cam.w += (cam.tw - cam.w) * 0.14; cam.x += (cam.tx - cam.x) * 0.14; cam.x = clamp(cam.x, 0, VW - cam.w);
-    const h = narrow() ? cam.w * (VH / 640) : VH, sx = shake > 0 ? (Math.random() - 0.5) * shake : 0; shake = Math.max(0, shake - 1.2);
-    svg.setAttribute('viewBox', `${(cam.x + sx).toFixed(1)} ${(VH - h + sx).toFixed(1)} ${cam.w.toFixed(1)} ${h.toFixed(1)}`);
+    const minW = 330 * asp;   // aspoň 330 jednotek na výšku (roboti + čísla nad nimi)
+    cam.tw = Math.max(clamp(hi - lo + (narrow() ? 230 : 380), narrow() ? 470 : 520, VW), minW); cam.tx = (lo + hi) / 2 - cam.tw / 2;
+    cam.w += (cam.tw - cam.w) * 0.14; cam.x += (cam.tx - cam.x) * 0.14;
+    const w = Math.max(cam.w, minW), h = w / asp, sx = shake > 0 ? (Math.random() - 0.5) * shake : 0; shake = Math.max(0, shake - 1.2);
+    const x = w >= VW + 100 ? (VW - w) / 2 : clamp(cam.x, -50, VW + 50 - w);
+    svg.setAttribute('viewBox', `${(x + sx).toFixed(1)} ${(BOT - h + sx).toFixed(1)} ${w.toFixed(1)} ${h.toFixed(1)}`);
+    if (bgF) { bgF.setAttribute('transform', `translate(${(x * 0.72).toFixed(1)} 0)`); bgM.setAttribute('transform', `translate(${(x * 0.38).toFixed(1)} 0)`); }
   }
   function renderDrones() {
     for (let i = 0; i < 2; i++) {
@@ -167,7 +173,7 @@ export function createBattle(root, hooks) {
   // ------------------------------------------------------------ efekty
   function mk(tag, at, parent = fxg) { const e = document.createElementNS(NS, tag); for (const k of Object.keys(at)) e.setAttribute(k, at[k]); parent.appendChild(e); return e; }
   function tween(ms, fn) { return new Promise((res) => { if (dead || document.hidden) { fn(1); return res(); } const t0 = performance.now(); const step = (now) => { if (dead) return res(); const k = Math.min(1, (now - t0) / ms); fn(k); if (k < 1) requestAnimationFrame(step); else res(); }; requestAnimationFrame(step); }); }
-  function float(x, y, txt, col, size = 30) { const t = mk('text', { x, y, 'text-anchor': 'middle', 'font-size': size, fill: col, class: 'fl' }); t.textContent = txt; tween(950, (k) => { t.setAttribute('y', y - 60 * ease(k)); t.setAttribute('opacity', k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3); }).then(() => t.remove()); }
+  function float(x, y, txt, col, size = 30) { size = Math.round(size * clamp(cam.w / 1000, 0.62, 1.15)); const t = mk('text', { x, y, 'text-anchor': 'middle', 'font-size': size, fill: col, class: 'fl' }); t.textContent = txt; tween(950, (k) => { t.setAttribute('y', y - 60 * ease(k)); t.setAttribute('opacity', k < 0.7 ? 1 : 1 - (k - 0.7) / 0.3); }).then(() => t.remove()); }
   const bodyPos = (i) => [cxOf(pos[i]), BASEY + 112 * SC - jy[i]];
   const dronePos = (i) => { const d = drnG[i].firstChild; return d && d._ox !== undefined ? [d._ox, d._oy] : bodyPos(i); };
   function muzzlePos(i, slot, fam) { const [mx, my] = A.muzzle(slot, fam), cx = cxOf(pos[i]); return [face(i) === 1 ? cx - 100 * SC + mx * SC : cx + 100 * SC - mx * SC, BASEY - jy[i] + my * SC]; }
@@ -175,14 +181,14 @@ export function createBattle(root, hooks) {
   const recoil = (i) => { shk[i] = [-face(i) * 7, 0]; setTimeout(() => { shk[i] = [0, 0]; }, 90); };
   function burst(x, y, col, n = 7, r = 26) { for (let k = 0; k < n; k++) { const a = Math.random() * Math.PI * 2, l = r * (0.6 + Math.random() * 0.7), e = mk('line', { x1: x, y1: y, x2: x, y2: y, stroke: col, 'stroke-width': 3, 'stroke-linecap': 'round' }); tween(260, (t) => { const q = ease(t); e.setAttribute('x1', x + Math.cos(a) * l * q * 0.5); e.setAttribute('y1', y + Math.sin(a) * l * q * 0.5); e.setAttribute('x2', x + Math.cos(a) * l * q); e.setAttribute('y2', y + Math.sin(a) * l * q); e.setAttribute('opacity', 1 - t); }).then(() => e.remove()); } }
   function ring(x, y, col, r0 = 8, r1 = 60, ms = 340, fill = 'none') { const c = mk('circle', { cx: x, cy: y, r: r0, fill, stroke: col, 'stroke-width': 4 }); return tween(ms, (t) => { c.setAttribute('r', r0 + (r1 - r0) * ease(t)); c.setAttribute('opacity', 1 - t); }).then(() => c.remove()); }
-  function boom(x, y, big = 1) { const c = mk('circle', { cx: x, cy: y, r: 6, fill: '#ffb060' }); const c2 = mk('circle', { cx: x, cy: y, r: 3, fill: '#fff6d0' }); hooks.sfx.boom(); shake = Math.max(shake, 8 * big); tween(420, (t) => { const q = ease(t); c.setAttribute('r', 8 + 52 * big * q); c.setAttribute('opacity', 1 - t); c2.setAttribute('r', 4 + 28 * big * q); c2.setAttribute('opacity', 1 - t * 1.4 < 0 ? 0 : 1 - t * 1.4); }).then(() => { c.remove(); c2.remove(); }); burst(x, y, '#ffcf5a', 9, 60 * big); }
+  function boom(x, y, big = 1) { const c = mk('circle', { cx: x, cy: y, r: 6, fill: '#ffb060', filter: 'url(#fxglow)' }); const c2 = mk('circle', { cx: x, cy: y, r: 3, fill: '#fff6d0' }); hooks.sfx.boom(); shake = Math.max(shake, 8 * big); tween(420, (t) => { const q = ease(t); c.setAttribute('r', 8 + 52 * big * q); c.setAttribute('opacity', 1 - t); c2.setAttribute('r', 4 + 28 * big * q); c2.setAttribute('opacity', 1 - t * 1.4 < 0 ? 0 : 1 - t * 1.4); }).then(() => { c.remove(); c2.remove(); }); burst(x, y, '#ffcf5a', 9, 60 * big); }
   async function projectile(v, from, to, miss) {
     const ang = Math.atan2(to[1] - from[1], to[0] - from[0]), end = miss ? [to[0] + Math.cos(ang) * 120 + (Math.random() - 0.5) * 40, to[1] - 50 + Math.random() * 20] : to;
     switch (v.k) {
-      case 'trace': { const g = mk('g', {}), len = v.len || 26, l = mk('line', { x1: -len, y1: 0, x2: 0, y2: 0, stroke: v.col, 'stroke-width': v.w || 2.5, 'stroke-linecap': 'round' }, g); const sp = v.spread ? (Math.random() - 0.5) * 50 : 0; await tween(v.ms, (k) => { const x = from[0] + (end[0] - from[0]) * k, y = from[1] + (end[1] + sp - from[1]) * k; g.setAttribute('transform', `translate(${x} ${y}) rotate(${ang * 57.3})`); }); g.remove(); l.remove(); break; }
-      case 'beam': { const l = mk('line', { x1: from[0], y1: from[1], x2: end[0], y2: end[1], stroke: v.col, 'stroke-width': v.w, 'stroke-linecap': 'round', opacity: 0.95 }); const l2 = mk('line', { x1: from[0], y1: from[1], x2: end[0], y2: end[1], stroke: '#fff', 'stroke-width': v.w * 0.35, 'stroke-linecap': 'round' }); if (v.shake) shake = 7; await tween(v.ms, (k) => { l.setAttribute('opacity', 1 - k); l2.setAttribute('opacity', 1 - k); l.setAttribute('stroke-width', v.w * (1 - k * 0.6)); }); l.remove(); l2.remove(); break; }
-      case 'orb': { const c = mk('circle', { r: v.r, fill: v.col, opacity: 0.95 }); const c2 = mk('circle', { r: v.r * 0.45, fill: '#fff' }); await tween(v.ms, (k) => { const x = from[0] + (end[0] - from[0]) * k, y = from[1] + (end[1] - from[1]) * k; c.setAttribute('cx', x); c.setAttribute('cy', y); c2.setAttribute('cx', x); c2.setAttribute('cy', y); }); c.remove(); c2.remove(); break; }
-      case 'bolt': { const p = mk('polyline', { fill: 'none', stroke: v.col, 'stroke-width': 3.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round' }); const pts = []; const n = 8; for (let k = 0; k <= n; k++) { const t = k / n; pts.push([from[0] + (end[0] - from[0]) * t + (k && k < n ? (Math.random() - 0.5) * 34 : 0), from[1] + (end[1] - from[1]) * t + (k && k < n ? (Math.random() - 0.5) * 34 : 0)]); } p.setAttribute('points', pts.map((q) => q.join(',')).join(' ')); await tween(v.ms, (k) => p.setAttribute('opacity', 1 - k * k)); p.remove(); break; }
+      case 'trace': { const g = mk('g', {}), len = v.len || 26, l = mk('line', { x1: -len, y1: 0, x2: 0, y2: 0, stroke: v.col, 'stroke-width': v.w || 2.5, 'stroke-linecap': 'round', filter: 'url(#fxglow)' }, g); const sp = v.spread ? (Math.random() - 0.5) * 50 : 0; await tween(v.ms, (k) => { const x = from[0] + (end[0] - from[0]) * k, y = from[1] + (end[1] + sp - from[1]) * k; g.setAttribute('transform', `translate(${x} ${y}) rotate(${ang * 57.3})`); }); g.remove(); l.remove(); break; }
+      case 'beam': { const l = mk('line', { x1: from[0], y1: from[1], x2: end[0], y2: end[1], stroke: v.col, 'stroke-width': v.w, 'stroke-linecap': 'round', opacity: 0.95, filter: 'url(#fxglow)' }); const l2 = mk('line', { x1: from[0], y1: from[1], x2: end[0], y2: end[1], stroke: '#fff', 'stroke-width': v.w * 0.35, 'stroke-linecap': 'round' }); if (v.shake) shake = 7; await tween(v.ms, (k) => { l.setAttribute('opacity', 1 - k); l2.setAttribute('opacity', 1 - k); l.setAttribute('stroke-width', v.w * (1 - k * 0.6)); }); l.remove(); l2.remove(); break; }
+      case 'orb': { const c = mk('circle', { r: v.r, fill: v.col, opacity: 0.95, filter: 'url(#fxglow)' }); const c2 = mk('circle', { r: v.r * 0.45, fill: '#fff' }); await tween(v.ms, (k) => { const x = from[0] + (end[0] - from[0]) * k, y = from[1] + (end[1] - from[1]) * k; c.setAttribute('cx', x); c.setAttribute('cy', y); c2.setAttribute('cx', x); c2.setAttribute('cy', y); }); c.remove(); c2.remove(); break; }
+      case 'bolt': { const p = mk('polyline', { fill: 'none', stroke: v.col, 'stroke-width': 3.5, 'stroke-linejoin': 'round', 'stroke-linecap': 'round', filter: 'url(#fxglow)' }); const pts = []; const n = 8; for (let k = 0; k <= n; k++) { const t = k / n; pts.push([from[0] + (end[0] - from[0]) * t + (k && k < n ? (Math.random() - 0.5) * 34 : 0), from[1] + (end[1] - from[1]) * t + (k && k < n ? (Math.random() - 0.5) * 34 : 0)]); } p.setAttribute('points', pts.map((q) => q.join(',')).join(' ')); await tween(v.ms, (k) => p.setAttribute('opacity', 1 - k * k)); p.remove(); break; }
       case 'ring': { const c = mk('circle', { cx: from[0], cy: from[1], r: 6, fill: 'none', stroke: v.col, 'stroke-width': 4 }); await tween(v.ms, (k) => { c.setAttribute('cx', from[0] + (end[0] - from[0]) * k); c.setAttribute('cy', from[1] + (end[1] - from[1]) * k); c.setAttribute('r', 6 + 26 * k); c.setAttribute('opacity', 1 - k * 0.5); }); c.remove(); break; }
       case 'rocket': { const g = mk('g', {}); mk('rect', { x: -10, y: -3, width: 16, height: 6, rx: 3, fill: '#d8dde2' }, g); mk('polygon', { points: '6,-3 13,0 6,3', fill: v.col }, g); const fl = mk('polygon', { points: '-10,-3 -20,0 -10,3', fill: '#ffcf5a' }, g); const sc = v.small ? 0.7 : 1; await tween(v.ms, (k) => { const x = from[0] + (end[0] - from[0]) * k, y = from[1] + (end[1] - from[1]) * k - Math.sin(Math.PI * k) * v.arc, a = Math.atan2(end[1] - from[1] - Math.cos(Math.PI * k) * Math.PI * v.arc, end[0] - from[0]); g.setAttribute('transform', `translate(${x} ${y}) rotate(${a * 57.3}) scale(${sc})`); if (Math.random() < 0.5) { const sm = mk('circle', { cx: x, cy: y, r: 4, fill: '#9aa3ac', opacity: 0.6 }); tween(300, (t) => { sm.setAttribute('r', 4 + 8 * t); sm.setAttribute('opacity', 0.6 * (1 - t)); }).then(() => sm.remove()); } }); fl.remove(); g.remove(); break; }
       case 'flame': { const n = 10; const ps = []; for (let k = 0; k < n; k++) ps.push(tween(v.ms, (t) => { const tt = clamp(t * 1.2 - k * 0.04, 0, 1); return tt; }).then(() => 0)); for (let k = 0; k < n; k++) { const c = mk('circle', { r: 6, fill: k % 2 ? '#ff7a20' : '#ffcf5a', opacity: 0 }); const off = (Math.random() - 0.5) * 24; setTimeout(() => tween(v.ms, (t) => { c.setAttribute('cx', from[0] + (end[0] - from[0]) * t); c.setAttribute('cy', from[1] + (end[1] + off - from[1]) * t); c.setAttribute('r', 5 + 14 * t); c.setAttribute('opacity', 0.9 * (1 - t * 0.7)); }).then(() => c.remove()), k * 28); } await sleep(v.ms + 280); break; }
@@ -193,7 +199,7 @@ export function createBattle(root, hooks) {
   async function animFire(e) {
     const i = e.i, o = 1 - i, it = H.item(e.wid) || { fam: 'mg' }, fam = it.fam, v = VIS[fam] || VIS.mg, from = muzzlePos(i, e.slot, fam), toMech = e.tgt === 'drone' ? dronePos(o) : bodyPos(o);
     if (v.k === 'melee') { const dir = face(i), tx = TILE * 0.55; await tween(160, (k) => { shk[i] = [dir * tx * ease(k), 0]; }); }
-    else { recoil(i); const f = mk('circle', { cx: from[0], cy: from[1], r: 12, fill: v.col || '#fff', opacity: 0.9 }); tween(120, (t) => { f.setAttribute('r', 12 + 8 * t); f.setAttribute('opacity', 0.9 * (1 - t)); }).then(() => f.remove()); }
+    else { recoil(i); const f = mk('circle', { cx: from[0], cy: from[1], r: 12, fill: v.col || '#fff', opacity: 0.9, filter: 'url(#fxglow)' }); tween(120, (t) => { f.setAttribute('r', 12 + 8 * t); f.setAttribute('opacity', 0.9 * (1 - t)); }).then(() => f.remove()); }
     hooks.sfx[(H.item(e.wid) || {}).wp ? it.wp.type : 'kin']?.();
     const jobs = e.hits.map((h, k) => sleep(k * (v.gap || 120)).then(async () => {
       const to = [toMech[0] + (Math.random() - 0.5) * 18, toMech[1] + (Math.random() - 0.5) * 30];
@@ -273,6 +279,6 @@ export function createBattle(root, hooks) {
     cards.forEach((id, k) => setTimeout(() => hooks.sfx.land(H.item(id).tier - 1), 300 + k * 250));
   }
   function onRematch() { /* druhý hráč čeká: tlačítko už ukazuje stav */ }
-  function destroy() { dead = true; cancelAnimationFrame(raf); clearInterval(tmr); window.removeEventListener('resize', onResize); root.innerHTML = ''; }
+  function destroy() { dead = true; cancelAnimationFrame(raf); clearInterval(tmr); window.removeEventListener("resize", onResize); if (ro) ro.disconnect(); root.innerHTML = ''; }
   return { start, onEv, onOver, onRematch, unlock, destroy, isOver: () => over };
 }
